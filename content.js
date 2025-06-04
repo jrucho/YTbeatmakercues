@@ -1424,14 +1424,43 @@ function crossfadeLoop(buffer, fadeTime) {
   const fadeSamples = Math.floor(buffer.sampleRate * fadeTime);
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const data = buffer.getChannelData(channel);
-    // Crossfade the beginning with the end
     for (let i = 0; i < fadeSamples; i++) {
-      const fadeIn = i / fadeSamples;
+      const fadeIn  = i / fadeSamples;
       const fadeOut = 1 - fadeIn;
-      // Blend the sample at the beginning with the corresponding sample at the end.
-      data[i] = data[i] * fadeIn + data[data.length - fadeSamples + i] * fadeOut;
+      const start   = data[i];
+      const end     = data[data.length - fadeSamples + i];
+      data[i] = start * fadeIn + end * fadeOut;
+      data[data.length - fadeSamples + i] = start * fadeOut + end * fadeIn;
     }
   }
+}
+
+function trimSilence(buf, threshold = 0.001) {
+  const len = buf.length;
+  const chans = buf.numberOfChannels;
+  let start = 0;
+  let end = len;
+
+  outer: for (; start < len; start++) {
+    for (let c = 0; c < chans; c++) {
+      if (Math.abs(buf.getChannelData(c)[start]) > threshold) break outer;
+    }
+  }
+
+  outer2: for (end = len - 1; end >= start; end--) {
+    for (let c = 0; c < chans; c++) {
+      if (Math.abs(buf.getChannelData(c)[end]) > threshold) break outer2;
+    }
+  }
+  end++;
+
+  if (start === 0 && end === len) return buf;
+
+  const newBuf = audioContext.createBuffer(chans, end - start, buf.sampleRate);
+  for (let c = 0; c < chans; c++) {
+    newBuf.getChannelData(c).set(buf.getChannelData(c).subarray(start, end));
+  }
+  return newBuf;
 }
 
 async function processInitialLoop() {
@@ -1440,10 +1469,12 @@ async function processInitialLoop() {
   let arr = await blob.arrayBuffer();
   let buf = await audioContext.decodeAudioData(arr);
 
+  buf = trimSilence(buf);
+
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
-  // Instead of a simple fade in/out, crossfade the end with the beginning:
-  crossfadeLoop(buf, 0.002);
+  // Smooth the transition between loop boundaries
+  crossfadeLoop(buf, 0.01);
 
   pushUndoState();
   loopBuffer = buf;
