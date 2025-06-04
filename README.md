@@ -1,11 +1,12 @@
 # YTbeatmakercues
 Mark cue points, play drum sounds, and customize your experience on YouTube.
-The extension now supports managing multiple sample packs at once. Use the new
-multi-select dropdown in the advanced panel to load several packs together or
-delete unused ones. Create a pack by entering a name—an empty folder is added
-to the list. Use the import buttons beside each drum type to load kicks,
-hihats, or snares into the currently selected pack. Samples from user-created
-packs can be removed individually; the built-in pack cannot be edited.
+The extension supports managing multiple sample packs at once. Use the multi-
+select dropdown in the advanced panel to load several packs together or delete
+unused ones. Creating a new pack now walks you through selecting kicks, hihats
+and snares so the pack is ready immediately. Imported samples are stored in the
+pack and persist between sessions. You can delete individual samples from any
+pack; built-in samples remain protected, but extra ones you add to the built-in
+pack can be removed.
 
 ## Packaging a release
 

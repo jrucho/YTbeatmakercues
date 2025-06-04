@@ -301,9 +301,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       dcBlockB = null,
       activeDeck = "A",       // which deck is currently audible
       crossFadeTime = 0.20,   // 80 ms smoothed constant‑power fade
-	    compMode = "off"
-	
-     
+            compMode = "off";
+
+  const BUILTIN_DEFAULT_COUNT = 10;
+
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(["sampleKeys", "midiNotes"], (res) => {
@@ -3020,7 +3021,7 @@ async function onImportSampleClicked(type) {
   if (!files.length) return;
 
   const pack = samplePacks.find(p => p.name === currentSamplePackName);
-  const canSave = pack && pack.name !== "Built-in";
+  const canSave = Boolean(pack);
 
   pushUndoState();
 
@@ -3533,7 +3534,8 @@ function deleteCurrentSample(type) {
   const meta = sampleOrigin[type][idx];
   if (!meta) return;
   const pack = samplePacks.find(p => p.name === meta.packName);
-  if (!pack || pack.name === "Built-in") return;
+  if (!pack) return;
+  if (pack.name === "Built-in" && meta.index < BUILTIN_DEFAULT_COUNT) return;
   if (!confirm(`Remove this ${type} sample from pack “${pack.name}”?`)) return;
   pack[type].splice(meta.index, 1);
   audioBuffers[type].splice(idx, 1);
@@ -5815,7 +5817,22 @@ async function createEmptySamplePack() {
   const pack = { name, kick: [], hihat: [], snare: [] };
   samplePacks.push(pack);
   currentSamplePackName = name;
-  activeSamplePackNames.push(name);
+  if (!activeSamplePackNames.includes(name)) {
+    activeSamplePackNames.push(name);
+  }
+
+  for (const type of ["kick", "hihat", "snare"]) {
+    const files = await pickSampleFiles(`Select ${type} samples for ${name}`);
+    for (const file of files) {
+      const url = await new Promise(r => {
+        const fr = new FileReader();
+        fr.onload = () => r(fr.result);
+        fr.readAsDataURL(file);
+      });
+      pack[type].push(url);
+    }
+  }
+
   saveSamplePacksToLocalStorage();
   saveMappingsToLocalStorage();
   await applySelectedSamplePacks();
@@ -5891,13 +5908,14 @@ function refreshSamplePackDropdown() {
     packDeleteBtn.style.opacity = en ? "1" : "0.4";
   }
 
-  const builtinOnly = activeSamplePackNames.length === 1 && activeSamplePackNames[0] === "Built-in";
   ["kick","hihat","snare"].forEach(type => {
     const btn = document.querySelector(`.sample-del-btn-${type}`);
-    if (btn) {
-      btn.disabled = builtinOnly;
-      btn.style.opacity = builtinOnly ? "0.4" : "1";
-    }
+    if (!btn) return;
+    const idx = currentSampleIndex[type];
+    const meta = sampleOrigin[type][idx];
+    const disable = !meta || (meta.packName === "Built-in" && meta.index < BUILTIN_DEFAULT_COUNT);
+    btn.disabled = disable;
+    btn.style.opacity = disable ? "0.4" : "1";
   });
 }
 
