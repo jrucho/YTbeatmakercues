@@ -1,0 +1,37 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "webextensions": true
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": 12,
+    "sourceType": "module"
+  },
+  "globals": {
+    "chrome": "readonly"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.js"
+      ],
+      "env": {
+        "jest": true,
+        "node": true
+      }
+    },
+    {
+      "files": [
+        "utils.js"
+      ],
+      "env": {
+        "node": true
+      }
+    }
+  ],
+  "rules": {}
+}
