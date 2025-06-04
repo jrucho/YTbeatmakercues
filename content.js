@@ -169,6 +169,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       looperState = "idle",
       mediaRecorder = null,
       recordedChunks = [],
+      loopRecorderNode = null,
+      recordedFrames = [],
       loopBuffer = null,
       loopSource = null,
       // Video Looper
@@ -1463,18 +1465,36 @@ function trimSilence(buf, threshold = 0.001) {
   return newBuf;
 }
 
-async function processInitialLoop() {
+async function processLoopFromBlob() {
   if (looperState !== "recording") return;
   let blob = new Blob(recordedChunks, { type: "audio/webm" });
   let arr = await blob.arrayBuffer();
   let buf = await audioContext.decodeAudioData(arr);
+  finalizeLoopBuffer(buf);
+}
 
+function processLoopFromFrames(frames) {
+  if (!frames || !frames.length) return;
+  const channels = frames[0].length;
+  const length = frames.reduce((t, f) => t + f[0].length, 0);
+  const buf = audioContext.createBuffer(channels, length, audioContext.sampleRate);
+  let offset = 0;
+  for (const block of frames) {
+    for (let c = 0; c < channels; c++) {
+      buf.getChannelData(c).set(block[c], offset);
+    }
+    offset += block[0].length;
+  }
+  finalizeLoopBuffer(buf);
+}
+
+function finalizeLoopBuffer(buf) {
   buf = trimSilence(buf);
 
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
   // Smooth the transition between loop boundaries
-  crossfadeLoop(buf, 0.01);
+  crossfadeLoop(buf, 0.005);
 
   pushUndoState();
   loopBuffer = buf;
@@ -1500,6 +1520,12 @@ function cleanupResources() {
       mr.stream?.getTracks().forEach(track => track.stop());
     }
   });
+  if (loopRecorderNode) {
+    try { mainRecorderMix.disconnect(loopRecorderNode); } catch {}
+    loopRecorderNode.disconnect();
+    loopRecorderNode = null;
+    recordedFrames = [];
+  }
   if (audioContext) {
     audioContext.close().catch(console.error);
     audioContext = null;
@@ -2242,6 +2268,52 @@ async function createCassetteNode(ctx) {
   return node;
 }
 
+async function createLoopRecorderNode(ctx) {
+  if (!ctx.audioWorklet) {
+    throw new Error("AudioWorklet not supported in this browser.");
+  }
+
+  const code = `
+    class LoopRecorder extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        this.recording = false;
+        this.buffers = [];
+        this.port.onmessage = (e) => {
+          if (e.data === 'start') {
+            this.recording = true;
+            this.buffers = [];
+          } else if (e.data === 'stop') {
+            this.recording = false;
+            this.port.postMessage(this.buffers);
+            this.buffers = [];
+          }
+        };
+      }
+
+      process(inputs) {
+        const input = inputs[0];
+        if (this.recording && input && input.length) {
+          const frame = [];
+          for (let c = 0; c < input.length; c++) {
+            frame[c] = new Float32Array(input[c]);
+          }
+          this.buffers.push(frame);
+        }
+        return true;
+      }
+    }
+    registerProcessor('loop-recorder', LoopRecorder);
+  `;
+
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+
+  return new AudioWorkletNode(ctx, 'loop-recorder');
+}
+
 
 /**************************************
  * Single function to apply all FX routing
@@ -2632,20 +2704,35 @@ async function loadAudio(path) {
  * Audio Looper
  **************************************/
 function startRecording() {
-  ensureAudioContext().then(() => {
+  ensureAudioContext().then(async () => {
     if (looperState !== "idle" || !audioContext) return;
-    bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1; // keep normal for eq to not cut
+    bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1;
     bus2RecGain.gain.value = 1;
     bus3RecGain.gain.value = 0;
     bus4RecGain.gain.value = 1;
 
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(destinationNode.stream);
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-    mediaRecorder.onstop = processInitialLoop;
-    mediaRecorder.start();
+    if (audioContext.audioWorklet) {
+      if (!loopRecorderNode) {
+        loopRecorderNode = await createLoopRecorderNode(audioContext);
+      }
+      recordedFrames = [];
+      loopRecorderNode.port.onmessage = (e) => {
+        loopRecorderNode.port.onmessage = null;
+        recordedFrames = e.data;
+        mainRecorderMix.disconnect(loopRecorderNode);
+        processLoopFromFrames(recordedFrames);
+      };
+      mainRecorderMix.connect(loopRecorderNode);
+      loopRecorderNode.port.postMessage('start');
+    } else {
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(destinationNode.stream);
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.onstop = processLoopFromBlob;
+      mediaRecorder.start();
+    }
 
     looperState = "recording";
     updateLooperButtonColor();
@@ -2655,7 +2742,9 @@ function startRecording() {
 }
 
 function stopRecordingAndPlay() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
+  if (loopRecorderNode) {
+    loopRecorderNode.port.postMessage('stop');
+  } else if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
   }
 }
