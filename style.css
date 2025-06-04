@@ -1,0 +1,8 @@
+/* Style for cue markers on the YouTube progress bar */
+.cue-marker {
+  position: absolute;
+  height: 100%;
+  width: 5px;
+  background-color: red;
+  pointer-events: none;
+}
