@@ -1465,6 +1465,38 @@ function trimSilence(buf, threshold = 0.001) {
   return newBuf;
 }
 
+function alignToZeroCrossings(buf, searchTime = 0.05) {
+  const searchSamples = Math.floor(buf.sampleRate * searchTime);
+  const len = buf.length;
+  const chans = buf.numberOfChannels;
+  const data0 = buf.getChannelData(0);
+
+  let start = 0;
+  for (let i = 1; i < Math.min(searchSamples, len - 1); i++) {
+    if (Math.sign(data0[i]) !== Math.sign(data0[i - 1])) {
+      start = i;
+      break;
+    }
+  }
+
+  let end = len;
+  for (let i = len - 1; i >= Math.max(len - searchSamples, 1); i--) {
+    if (Math.sign(data0[i]) !== Math.sign(data0[i - 1])) {
+      end = i;
+      break;
+    }
+  }
+
+  if (start === 0 && end === len) return buf;
+
+  const newLen = end - start;
+  const newBuf = audioContext.createBuffer(chans, newLen, buf.sampleRate);
+  for (let c = 0; c < chans; c++) {
+    newBuf.getChannelData(c).set(buf.getChannelData(c).subarray(start, end));
+  }
+  return newBuf;
+}
+
 async function processLoopFromBlob() {
   if (looperState !== "recording") return;
   let blob = new Blob(recordedChunks, { type: "audio/webm" });
@@ -1490,6 +1522,7 @@ function processLoopFromFrames(frames) {
 
 function finalizeLoopBuffer(buf) {
   buf = trimSilence(buf);
+  buf = alignToZeroCrossings(buf);
 
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
