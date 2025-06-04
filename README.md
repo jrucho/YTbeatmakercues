@@ -11,3 +11,6 @@ built-in pack can be removed.
 ## Packaging a release
 
 Run ./build_release.sh to create ytbeatmakercues-<version>.zip containing all extension files. Load the archive in Chrome via "Load unpacked" or "Pack extension".
+
+## Blind Mode
+Press Ctrl+Shift+B (or B alone) to toggle blind mode. You can also enable or disable it from the extension's options page. When blind mode is active, all on-screen controls are hidden for screen reader use.
