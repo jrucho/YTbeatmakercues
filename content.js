@@ -3522,6 +3522,25 @@ function randomSample(type) {
   updateSampleDisplay(type);
 }
 
+function deleteCurrentSample(type) {
+  if (!currentSamplePackName) return;
+  const pack = samplePacks.find(p => p.name === currentSamplePackName);
+  if (!pack) return;
+  if (pack.name === "Built-in") { return; }
+  const idx = currentSampleIndex[type];
+  if (idx < 0 || idx >= pack[type].length) return;
+  if (!confirm(`Remove this ${type} sample from pack?`)) return;
+  pack[type].splice(idx, 1);
+  audioBuffers[type].splice(idx, 1);
+  if (currentSampleIndex[type] >= pack[type].length) {
+    currentSampleIndex[type] = pack[type].length - 1;
+  }
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  updateSampleDisplay(type);
+  refreshSamplePackDropdown();
+}
+
 function updateSampleDisplay(type) {
   const displays = document.querySelectorAll(`.sample-display-${type}`);
   displays.forEach(display => {
@@ -4476,6 +4495,14 @@ function addControls() {
     sampleDisplay.style.minWidth = "30px";
     sampleDisplay.textContent = `1/${audioBuffers[type].length}`;
     topRow.appendChild(sampleDisplay);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = `looper-btn sample-del-btn-${type}`;
+    delBtn.innerText = "🗑";
+    delBtn.title = `Delete current ${label} sample`;
+    delBtn.style.flexShrink = "0";
+    delBtn.addEventListener("click", () => deleteCurrentSample(type));
+    topRow.appendChild(delBtn);
 
     container.appendChild(topRow);
 
@@ -5720,6 +5747,7 @@ async function applySamplePackByName(name) {
 function deleteSamplePackByName(name) {
   const idx = samplePacks.findIndex(p => p.name === name);
   if (idx === -1) return;
+  if (name === "Built-in") { alert("Cannot delete built-in pack."); return; }
   if (!confirm(`Delete pack “${name}” permanently?`)) return;
   samplePacks.splice(idx, 1);
   if (currentSamplePackName === name) currentSamplePackName = null;
@@ -5728,46 +5756,78 @@ function deleteSamplePackByName(name) {
   refreshSamplePackDropdown();
 }
 
-function importNewSamplePack() {
-  const name = prompt("Name for the new pack?");
-  if (!name) return;
-  ensureAudioContext().then(() => {
+async function pickSampleFiles(promptText) {
+  return new Promise(resolve => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "audio/*";
     input.multiple = true;
     input.style.display = "none";
     document.body.appendChild(input);
-    input.addEventListener("change", async e => {
-      const files = Array.from(e.target.files);
-      const pack = { name, kick: [], hihat: [], snare: [] };
-      audioBuffers.kick = [];
-      audioBuffers.hihat = [];
-      audioBuffers.snare = [];
-      for (const f of files) {
-        try {
-          const arr = await f.arrayBuffer();
-          const buf = await audioContext.decodeAudioData(arr);
-          const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-          if (/kick/i.test(f.name)) { pack.kick.push(url); audioBuffers.kick.push(buf); }
-          else if (/hat/i.test(f.name)) { pack.hihat.push(url); audioBuffers.hihat.push(buf); }
-          else if (/snare/i.test(f.name)) { pack.snare.push(url); audioBuffers.snare.push(buf); }
-        } catch (err) {
-          console.error("Import error:", err);
-        }
-      }
-      samplePacks.push(pack);
-      currentSamplePackName = name;
-      currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
-      saveSamplePacksToLocalStorage();
-      saveMappingsToLocalStorage();
-      updateSampleDisplay("kick");
-      updateSampleDisplay("hihat");
-      updateSampleDisplay("snare");
-      refreshSamplePackDropdown();
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files || []);
       document.body.removeChild(input);
-    });
+      resolve(files);
+    }, { once: true });
+    alert(promptText);
     input.click();
+  });
+}
+
+function importNewSamplePack() {
+  const name = prompt("Name for the new pack?");
+  if (!name) return;
+  ensureAudioContext().then(async () => {
+    const pack = { name, kick: [], hihat: [], snare: [] };
+
+    const kickFiles  = await pickSampleFiles("Select kick samples for the pack");
+    for (const f of kickFiles) {
+      try {
+        const arr = await f.arrayBuffer();
+        const buf = await audioContext.decodeAudioData(arr);
+        const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+        pack.kick.push(url);
+        audioBuffers.kick.push(buf);
+      } catch (err) {
+        console.error("Import kick error:", err);
+      }
+    }
+
+    const hatFiles = await pickSampleFiles("Select hihat samples for the pack");
+    for (const f of hatFiles) {
+      try {
+        const arr = await f.arrayBuffer();
+        const buf = await audioContext.decodeAudioData(arr);
+        const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+        pack.hihat.push(url);
+        audioBuffers.hihat.push(buf);
+      } catch (err) {
+        console.error("Import hihat error:", err);
+      }
+    }
+
+    const snareFiles = await pickSampleFiles("Select snare samples for the pack");
+    for (const f of snareFiles) {
+      try {
+        const arr = await f.arrayBuffer();
+        const buf = await audioContext.decodeAudioData(arr);
+        const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+        pack.snare.push(url);
+        audioBuffers.snare.push(buf);
+      } catch (err) {
+        console.error("Import snare error:", err);
+      }
+    }
+
+    samplePacks.push(pack);
+    currentSamplePackName = name;
+    currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
+    saveSamplePacksToLocalStorage();
+    saveMappingsToLocalStorage();
+    updateSampleDisplay("kick");
+    updateSampleDisplay("hihat");
+    updateSampleDisplay("snare");
+    refreshSamplePackDropdown();
   });
 }
 
@@ -5837,6 +5897,15 @@ function refreshSamplePackDropdown() {
     packDeleteBtn.disabled = !en;
     packDeleteBtn.style.opacity = en ? "1" : "0.4";
   }
+
+  const builtin = currentSamplePackName === "Built-in";
+  ["kick","hihat","snare"].forEach(type => {
+    const btn = document.querySelector(`.sample-del-btn-${type}`);
+    if (btn) {
+      btn.disabled = builtin;
+      btn.style.opacity = builtin ? "0.4" : "1";
+    }
+  });
 }
 
 /**************************************
