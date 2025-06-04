@@ -5873,21 +5873,47 @@ function refreshPresetDropdown() {
 /* ======================================================
    Sample-pack helpers
    =====================================================*/
-function loadSamplePacksFromLocalStorage() {
-  try {
-    const raw = localStorage.getItem(SAMPLE_PACK_STORAGE_KEY);
-    samplePacks = raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    console.warn("Could not parse stored packs – cleared.", err);
-    samplePacks = [];
-    localStorage.removeItem(SAMPLE_PACK_STORAGE_KEY);
+async function loadSamplePacksFromLocalStorage() {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    return new Promise(resolve => {
+      chrome.storage.local.get([SAMPLE_PACK_STORAGE_KEY], res => {
+        try {
+          const raw = res[SAMPLE_PACK_STORAGE_KEY];
+          samplePacks = raw ? JSON.parse(raw) : [];
+        } catch (err) {
+          console.warn("Could not parse stored packs – cleared.", err);
+          samplePacks = [];
+          chrome.storage.local.remove(SAMPLE_PACK_STORAGE_KEY);
+        }
+        resolve();
+      });
+    });
+  } else {
+    try {
+      const raw = localStorage.getItem(SAMPLE_PACK_STORAGE_KEY);
+      samplePacks = raw ? JSON.parse(raw) : [];
+    } catch (err) {
+      console.warn("Could not parse stored packs – cleared.", err);
+      samplePacks = [];
+      localStorage.removeItem(SAMPLE_PACK_STORAGE_KEY);
+    }
   }
 }
 function saveSamplePacksToLocalStorage() {
-  try {
-    localStorage.setItem(SAMPLE_PACK_STORAGE_KEY, JSON.stringify(samplePacks));
-  } catch (err) {
-    console.error("Failed saving sample packs:", err);
+  const data = {};
+  data[SAMPLE_PACK_STORAGE_KEY] = JSON.stringify(samplePacks);
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set(data, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed saving sample packs:", chrome.runtime.lastError);
+      }
+    });
+  } else {
+    try {
+      localStorage.setItem(SAMPLE_PACK_STORAGE_KEY, data[SAMPLE_PACK_STORAGE_KEY]);
+    } catch (err) {
+      console.error("Failed saving sample packs:", err);
+    }
   }
 }
 
@@ -6341,8 +6367,8 @@ async function initialize() {
     }, { once: true });
     
     await loadMappingsFromLocalStorage();
-        loadMidiPresetsFromLocalStorage();
-        loadSamplePacksFromLocalStorage();
+    loadMidiPresetsFromLocalStorage();
+    await loadSamplePacksFromLocalStorage();
     await ensureAudioContext();
     if (activeSamplePackNames.length) {
       await applySelectedSamplePacks();
