@@ -2584,7 +2584,9 @@ if (videoEl) {
 
 async function loadAudio(path) {
   try {
-    let r = await fetch(chrome.runtime.getURL(path));
+    const isExternal = /^(data:|blob:|https?:)/.test(path);
+    const url = isExternal ? path : chrome.runtime.getURL(path);
+    let r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP error ${r.status}`);
     let b = await r.arrayBuffer();
     return audioContext.decodeAudioData(b);
