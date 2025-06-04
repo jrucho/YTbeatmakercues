@@ -134,9 +134,14 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         cassette: "w",
         randomCues: "-"
       },
-      midiPresets = [],      
+      midiPresets = [],
       presetSelect = null,
       userSamples = [],
+      samplePacks = [],
+      samplePackSelect = null,
+      currentSamplePackName = null,
+      activeSamplePackNames = [],
+      sampleOrigin = { kick: [], hihat: [], snare: [] },
       midiNotes = {
         kick: 37,
         hihat: 38,
@@ -296,9 +301,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       dcBlockB = null,
       activeDeck = "A",       // which deck is currently audible
       crossFadeTime = 0.20,   // 80 ms smoothed constant‑power fade
-	    compMode = "off"
-	
-     
+            compMode = "off";
+
+  const BUILTIN_DEFAULT_COUNT = 10;
+
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(["sampleKeys", "midiNotes"], (res) => {
@@ -2367,6 +2373,18 @@ async function loadDefaultSamples() {
     console.error("Error loading default samples:", e);
     alert("Missing sample files! Please ensure the extension contains the required sample files.");
   }
+
+  if (!samplePacks.some(p => p.name === "Built-in")) {
+    const kicks  = [], hats = [], snares = [];
+    for (let i = 1; i <= 10; i++) {
+      kicks.push(`sounds/kick${i}.wav`);
+      hats.push(`sounds/hihat${i}.wav`);
+      snares.push(`sounds/snare${i}.wav`);
+    }
+    samplePacks.unshift({ name: "Built-in", kick: kicks, hihat: hats, snare: snares });
+    currentSamplePackName = "Built-in";
+    if (!activeSamplePackNames.length) activeSamplePackNames.push("Built-in");
+  }
 }
 
 function importMedia() {
@@ -2566,7 +2584,9 @@ if (videoEl) {
 
 async function loadAudio(path) {
   try {
-    let r = await fetch(chrome.runtime.getURL(path));
+    const isExternal = /^(data:|blob:|https?:)/.test(path);
+    const url = isExternal ? path : chrome.runtime.getURL(path);
+    let r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP error ${r.status}`);
     let b = await r.arrayBuffer();
     return audioContext.decodeAudioData(b);
@@ -2997,40 +3017,43 @@ async function onImportAudioClicked() {
 /**************************************
  * User Sample Import & Persistence
  **************************************/
-async function onImportSampleClicked(which) {
-  ensureAudioContext().then(() => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "audio/*";
-    input.style.display = "none";
-    document.body.appendChild(input);
+async function onImportSampleClicked(type) {
+  await ensureAudioContext();
+  const files = await pickSampleFiles(`Select ${type} samples to add`);
+  if (!files.length) return;
 
-    input.addEventListener("change", async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const arr = await file.arrayBuffer();
-        const decoded = await audioContext.decodeAudioData(arr);
+  const pack = samplePacks.find(p => p.name === currentSamplePackName);
+  const canSave = Boolean(pack);
 
-        pushUndoState();
-        audioBuffers[which].push(decoded);
-        currentSampleIndex[which] = audioBuffers[which].length - 1;
-        updateSampleDisplay(which);
+  pushUndoState();
 
-        const reader = new FileReader();
-        reader.onload = function(ev) {
-          saveUserSampleDataURL(which, ev.target.result);
-        };
-        reader.readAsDataURL(file);
-      } catch (err) {
-        console.error("Error importing sample:", err);
-        alert("Error importing sample!");
+  for (const file of files) {
+    try {
+      const arr = await file.arrayBuffer();
+      const decoded = await audioContext.decodeAudioData(arr);
+      audioBuffers[type].push(decoded);
+      currentSampleIndex[type] = audioBuffers[type].length - 1;
+
+      if (canSave) {
+        const url = await new Promise(r => {
+          const fr = new FileReader();
+          fr.onload = () => r(fr.result);
+          fr.readAsDataURL(file);
+        });
+        pack[type].push(url);
+        sampleOrigin[type].push({ packName: pack.name, index: pack[type].length - 1 });
+      } else {
+        sampleOrigin[type].push(null);
       }
-      document.body.removeChild(input);
-    });
+    } catch (err) {
+      console.error("Error importing sample:", err);
+    }
+  }
 
-    input.click();
-  });
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  updateSampleDisplay(type);
+  refreshSamplePackDropdown();
 }
 function saveUserSampleDataURL(type, dataURL) {
   let key = "ytbm_userSamples_" + type;
@@ -3506,6 +3529,29 @@ function randomSample(type) {
   pushUndoState();
   currentSampleIndex[type] = Math.floor(Math.random() * audioBuffers[type].length);
   updateSampleDisplay(type);
+}
+
+function deleteCurrentSample(type) {
+  const idx = currentSampleIndex[type];
+  const meta = sampleOrigin[type][idx];
+  if (!meta) return;
+  const pack = samplePacks.find(p => p.name === meta.packName);
+  if (!pack) return;
+  if (pack.name === "Built-in" && meta.index < BUILTIN_DEFAULT_COUNT) return;
+  if (!confirm(`Remove this ${type} sample from pack “${pack.name}”?`)) return;
+  pack[type].splice(meta.index, 1);
+  audioBuffers[type].splice(idx, 1);
+  sampleOrigin[type].splice(idx, 1);
+  sampleOrigin[type].forEach(m => {
+    if (m.packName === meta.packName && m.index > meta.index) m.index--;
+  });
+  if (currentSampleIndex[type] >= audioBuffers[type].length) {
+    currentSampleIndex[type] = audioBuffers[type].length - 1;
+  }
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  updateSampleDisplay(type);
+  refreshSamplePackDropdown();
 }
 
 function updateSampleDisplay(type) {
@@ -4335,6 +4381,8 @@ function addControls() {
   cw.className = "looper-content-wrap";
   panelContainer.appendChild(cw);
 
+  buildSamplePackDropdown();
+
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
   let pitchWrap = document.createElement("div");
@@ -4460,6 +4508,14 @@ function addControls() {
     sampleDisplay.style.minWidth = "30px";
     sampleDisplay.textContent = `1/${audioBuffers[type].length}`;
     topRow.appendChild(sampleDisplay);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = `looper-btn sample-del-btn-${type}`;
+    delBtn.innerText = "🗑";
+    delBtn.title = `Delete current ${label} sample`;
+    delBtn.style.flexShrink = "0";
+    delBtn.addEventListener("click", () => deleteCurrentSample(type));
+    topRow.appendChild(delBtn);
 
     container.appendChild(topRow);
 
@@ -5470,6 +5526,7 @@ function updateMidiMapInput(name, val) {
 /* ⚙️  Config */
 const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
 let   currentMidiPresetName   = null;   // which preset is ‘active’
+const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
 
 /* ------------------------------------------------------
    0.  helper – pull values from the MIDI‑mapping window
@@ -5660,6 +5717,199 @@ function refreshPresetDropdown() {
   }
 }
 
+/* ======================================================
+   Sample-pack helpers
+   =====================================================*/
+function loadSamplePacksFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(SAMPLE_PACK_STORAGE_KEY);
+    samplePacks = raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    console.warn("Could not parse stored packs – cleared.", err);
+    samplePacks = [];
+    localStorage.removeItem(SAMPLE_PACK_STORAGE_KEY);
+  }
+}
+function saveSamplePacksToLocalStorage() {
+  try {
+    localStorage.setItem(SAMPLE_PACK_STORAGE_KEY, JSON.stringify(samplePacks));
+  } catch (err) {
+    console.error("Failed saving sample packs:", err);
+  }
+}
+
+async function applySelectedSamplePacks() {
+  await ensureAudioContext();
+  audioBuffers.kick = [];
+  audioBuffers.hihat = [];
+  audioBuffers.snare = [];
+  sampleOrigin.kick = [];
+  sampleOrigin.hihat = [];
+  sampleOrigin.snare = [];
+  for (const name of activeSamplePackNames) {
+    const pack = samplePacks.find(p => p.name === name);
+    if (!pack) continue;
+    for (let i = 0; i < pack.kick.length; i++) {
+      const b = await loadAudio(pack.kick[i]);
+      if (b) { audioBuffers.kick.push(b); sampleOrigin.kick.push({packName: name, index: i}); }
+    }
+    for (let i = 0; i < pack.hihat.length; i++) {
+      const b = await loadAudio(pack.hihat[i]);
+      if (b) { audioBuffers.hihat.push(b); sampleOrigin.hihat.push({packName: name, index: i}); }
+    }
+    for (let i = 0; i < pack.snare.length; i++) {
+      const b = await loadAudio(pack.snare[i]);
+      if (b) { audioBuffers.snare.push(b); sampleOrigin.snare.push({packName: name, index: i}); }
+    }
+  }
+  currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
+  saveMappingsToLocalStorage();
+  updateSampleDisplay("kick");
+  updateSampleDisplay("hihat");
+  updateSampleDisplay("snare");
+  refreshSamplePackDropdown();
+}
+
+async function applySamplePackByName(name) {
+  activeSamplePackNames = [name];
+  currentSamplePackName = name;
+  await applySelectedSamplePacks();
+}
+
+function deleteSamplePackByName(name) {
+  const idx = samplePacks.findIndex(p => p.name === name);
+  if (idx === -1) return;
+  if (name === "Built-in") { alert("Cannot delete built-in pack."); return; }
+  if (!confirm(`Delete pack “${name}” permanently?`)) return;
+  samplePacks.splice(idx, 1);
+  activeSamplePackNames = activeSamplePackNames.filter(n => n !== name);
+  if (currentSamplePackName === name) currentSamplePackName = null;
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  applySelectedSamplePacks();
+}
+
+async function pickSampleFiles(promptText) {
+  return new Promise(resolve => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "audio/*";
+    input.multiple = true;
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files || []);
+      document.body.removeChild(input);
+      resolve(files);
+    }, { once: true });
+    alert(promptText);
+    input.click();
+  });
+}
+
+async function createEmptySamplePack() {
+  const name = prompt("Name for the new pack?");
+  if (!name) return;
+
+  if (samplePacks.some(p => p.name === name)) {
+    alert("A pack with this name already exists.");
+    return;
+  }
+
+  const pack = { name, kick: [], hihat: [], snare: [] };
+  samplePacks.push(pack);
+  currentSamplePackName = name;
+  if (!activeSamplePackNames.includes(name)) {
+    activeSamplePackNames.push(name);
+  }
+
+
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  await applySelectedSamplePacks();
+}
+
+let packDeleteBtn = null;
+let packBar       = null;
+
+function buildSamplePackDropdown() {
+  if (!samplePackSelect) {
+    samplePackSelect = document.createElement("select");
+    samplePackSelect.className = "looper-btn";
+    samplePackSelect.multiple = true;
+    samplePackSelect.size = 4;
+    samplePackSelect.style.flex = "1 1 auto";
+    samplePackSelect.title = "Load / manage sample packs";
+    samplePackSelect.addEventListener("change", async () => {
+      const values = Array.from(samplePackSelect.selectedOptions).map(o => o.value);
+      if (values.includes("__import")) {
+        samplePackSelect.value = "";
+        await createEmptySamplePack();
+        return;
+      }
+      activeSamplePackNames = values;
+      currentSamplePackName = values[0] || null;
+      applySelectedSamplePacks();
+    });
+  }
+
+  if (!packDeleteBtn) {
+    packDeleteBtn = document.createElement("button");
+    packDeleteBtn.className = "looper-btn";
+    packDeleteBtn.textContent = "🗑";
+    packDeleteBtn.style.flex = "0 0 auto";
+    packDeleteBtn.title = "Delete current pack";
+    packDeleteBtn.addEventListener("click", () => {
+      if (currentSamplePackName) deleteSamplePackByName(currentSamplePackName);
+    });
+  }
+
+  if (!packBar) {
+    packBar = document.createElement("div");
+    packBar.style.display = "flex";
+    packBar.style.gap     = "4px";
+    packBar.appendChild(samplePackSelect);
+    packBar.appendChild(packDeleteBtn);
+  }
+
+  if (panelContainer && !packBar.isConnected) {
+    panelContainer.insertBefore(packBar, panelContainer.children[1]);
+  }
+
+  refreshSamplePackDropdown();
+}
+
+function refreshSamplePackDropdown() {
+  if (!samplePackSelect) return;
+  activeSamplePackNames = activeSamplePackNames.filter(n => samplePacks.some(p => p.name === n));
+  if (currentSamplePackName && !samplePacks.some(p => p.name === currentSamplePackName)) {
+    currentSamplePackName = null;
+  }
+  samplePackSelect.innerHTML = "";
+  samplePacks.forEach(p => {
+    const opt = new Option(p.name, p.name, false, activeSamplePackNames.includes(p.name));
+    samplePackSelect.add(opt);
+  });
+  samplePackSelect.add(new Option("➕ Import pack…", "__import"));
+
+  if (packDeleteBtn) {
+    const name = samplePackSelect.value;
+    const en = Boolean(name) && name !== "Built-in";
+    packDeleteBtn.disabled = !en;
+    packDeleteBtn.style.opacity = en ? "1" : "0.4";
+  }
+
+  ["kick","hihat","snare"].forEach(type => {
+    const btn = document.querySelector(`.sample-del-btn-${type}`);
+    if (!btn) return;
+    const idx = currentSampleIndex[type];
+    const meta = sampleOrigin[type][idx];
+    const disable = !meta || (meta.packName === "Built-in" && meta.index < BUILTIN_DEFAULT_COUNT);
+    btn.disabled = disable;
+    btn.style.opacity = disable ? "0.4" : "1";
+  });
+}
+
 /**************************************
  * Mappings to Local Storage
  **************************************/
@@ -5686,6 +5936,14 @@ async function loadMappingsFromLocalStorage() {
       Object.assign(midiNotes, o.midiNotes);
       if (!midiNotes.cues) midiNotes.cues = {};
     }
+    if (o.activeSamplePackNames) {
+      activeSamplePackNames = o.activeSamplePackNames;
+    } else if (o.currentSamplePackName) {
+      activeSamplePackNames = [o.currentSamplePackName];
+    }
+    if (o.currentSamplePackName) {
+      currentSamplePackName = o.currentSamplePackName;
+    }
   } catch (e) {
     console.warn("Error loading local storage mappings:", e);
   }
@@ -5696,7 +5954,9 @@ function saveMappingsToLocalStorage() {
     sampleKeys,
     userSamples: userSamples.map(u => ({ name: u.name, key: u.key })),
     extensionKeys,
-    midiNotes
+    midiNotes,
+    currentSamplePackName,
+    activeSamplePackNames
   };
   localStorage.setItem("ytbm_mappings", JSON.stringify(obj));
 }
@@ -5928,8 +6188,15 @@ async function initialize() {
     }, { once: true });
     
     await loadMappingsFromLocalStorage();
-	loadMidiPresetsFromLocalStorage();
+        loadMidiPresetsFromLocalStorage();
+        loadSamplePacksFromLocalStorage();
     await ensureAudioContext();
+    if (activeSamplePackNames.length) {
+      await applySelectedSamplePacks();
+    } else if (currentSamplePackName) {
+      activeSamplePackNames = [currentSamplePackName];
+      await applySelectedSamplePacks();
+    }
     initializeMIDI();
     addControls();
     buildMinimalUIBar();
