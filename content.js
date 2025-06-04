@@ -5800,59 +5800,61 @@ async function pickSampleFiles(promptText) {
   });
 }
 
-function importNewSamplePack() {
+async function importNewSamplePack() {
   const name = prompt("Name for the new pack?");
   if (!name) return;
-  ensureAudioContext().then(async () => {
-    const pack = { name, kick: [], hihat: [], snare: [] };
 
-    const kickFiles  = await pickSampleFiles("Select kick samples for the pack");
-    for (const f of kickFiles) {
-      try {
-        const arr = await f.arrayBuffer();
-        const buf = await audioContext.decodeAudioData(arr);
-        const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-        pack.kick.push(url);
-        audioBuffers.kick.push(buf);
-      } catch (err) {
-        console.error("Import kick error:", err);
-      }
+  const kickFiles  = await pickSampleFiles("Select kick samples for the pack");
+  const hatFiles   = await pickSampleFiles("Select hihat samples for the pack");
+  const snareFiles = await pickSampleFiles("Select snare samples for the pack");
+
+  await ensureAudioContext();
+
+  const pack = { name, kick: [], hihat: [], snare: [] };
+
+  for (const f of kickFiles) {
+    try {
+      const arr = await f.arrayBuffer();
+      const buf = await audioContext.decodeAudioData(arr);
+      const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+      pack.kick.push(url);
+      audioBuffers.kick.push(buf);
+    } catch (err) {
+      console.error("Import kick error:", err);
     }
+  }
 
-    const hatFiles = await pickSampleFiles("Select hihat samples for the pack");
-    for (const f of hatFiles) {
-      try {
-        const arr = await f.arrayBuffer();
-        const buf = await audioContext.decodeAudioData(arr);
-        const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-        pack.hihat.push(url);
-        audioBuffers.hihat.push(buf);
-      } catch (err) {
-        console.error("Import hihat error:", err);
-      }
+  for (const f of hatFiles) {
+    try {
+      const arr = await f.arrayBuffer();
+      const buf = await audioContext.decodeAudioData(arr);
+      const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+      pack.hihat.push(url);
+      audioBuffers.hihat.push(buf);
+    } catch (err) {
+      console.error("Import hihat error:", err);
     }
+  }
 
-    const snareFiles = await pickSampleFiles("Select snare samples for the pack");
-    for (const f of snareFiles) {
-      try {
-        const arr = await f.arrayBuffer();
-        const buf = await audioContext.decodeAudioData(arr);
-        const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-        pack.snare.push(url);
-        audioBuffers.snare.push(buf);
-      } catch (err) {
-        console.error("Import snare error:", err);
-      }
+  for (const f of snareFiles) {
+    try {
+      const arr = await f.arrayBuffer();
+      const buf = await audioContext.decodeAudioData(arr);
+      const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+      pack.snare.push(url);
+      audioBuffers.snare.push(buf);
+    } catch (err) {
+      console.error("Import snare error:", err);
     }
+  }
 
-    samplePacks.push(pack);
-    currentSamplePackName = name;
-    activeSamplePackNames.push(name);
-    currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
-    saveSamplePacksToLocalStorage();
-    saveMappingsToLocalStorage();
-    await applySelectedSamplePacks();
-  });
+  samplePacks.push(pack);
+  currentSamplePackName = name;
+  activeSamplePackNames.push(name);
+  currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  await applySelectedSamplePacks();
 }
 
 let packDeleteBtn = null;
@@ -5866,11 +5868,11 @@ function buildSamplePackDropdown() {
     samplePackSelect.size = 4;
     samplePackSelect.style.flex = "1 1 auto";
     samplePackSelect.title = "Load / manage sample packs";
-    samplePackSelect.addEventListener("change", () => {
+    samplePackSelect.addEventListener("change", async () => {
       const values = Array.from(samplePackSelect.selectedOptions).map(o => o.value);
       if (values.includes("__import")) {
         samplePackSelect.value = "";
-        importNewSamplePack();
+        await importNewSamplePack();
         return;
       }
       activeSamplePackNames = values;
