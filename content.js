@@ -3014,40 +3014,43 @@ async function onImportAudioClicked() {
 /**************************************
  * User Sample Import & Persistence
  **************************************/
-async function onImportSampleClicked(which) {
-  ensureAudioContext().then(() => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "audio/*";
-    input.style.display = "none";
-    document.body.appendChild(input);
+async function onImportSampleClicked(type) {
+  await ensureAudioContext();
+  const files = await pickSampleFiles(`Select ${type} samples to add`);
+  if (!files.length) return;
 
-    input.addEventListener("change", async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const arr = await file.arrayBuffer();
-        const decoded = await audioContext.decodeAudioData(arr);
+  const pack = samplePacks.find(p => p.name === currentSamplePackName);
+  const canSave = pack && pack.name !== "Built-in";
 
-        pushUndoState();
-        audioBuffers[which].push(decoded);
-        currentSampleIndex[which] = audioBuffers[which].length - 1;
-        updateSampleDisplay(which);
+  pushUndoState();
 
-        const reader = new FileReader();
-        reader.onload = function(ev) {
-          saveUserSampleDataURL(which, ev.target.result);
-        };
-        reader.readAsDataURL(file);
-      } catch (err) {
-        console.error("Error importing sample:", err);
-        alert("Error importing sample!");
+  for (const file of files) {
+    try {
+      const arr = await file.arrayBuffer();
+      const decoded = await audioContext.decodeAudioData(arr);
+      audioBuffers[type].push(decoded);
+      currentSampleIndex[type] = audioBuffers[type].length - 1;
+
+      if (canSave) {
+        const url = await new Promise(r => {
+          const fr = new FileReader();
+          fr.onload = () => r(fr.result);
+          fr.readAsDataURL(file);
+        });
+        pack[type].push(url);
+        sampleOrigin[type].push({ packName: pack.name, index: pack[type].length - 1 });
+      } else {
+        sampleOrigin[type].push(null);
       }
-      document.body.removeChild(input);
-    });
+    } catch (err) {
+      console.error("Error importing sample:", err);
+    }
+  }
 
-    input.click();
-  });
+  saveSamplePacksToLocalStorage();
+  saveMappingsToLocalStorage();
+  updateSampleDisplay(type);
+  refreshSamplePackDropdown();
 }
 function saveUserSampleDataURL(type, dataURL) {
   let key = "ytbm_userSamples_" + type;
@@ -5800,58 +5803,19 @@ async function pickSampleFiles(promptText) {
   });
 }
 
-async function importNewSamplePack() {
+async function createEmptySamplePack() {
   const name = prompt("Name for the new pack?");
   if (!name) return;
 
-  const kickFiles  = await pickSampleFiles("Select kick samples for the pack");
-  const hatFiles   = await pickSampleFiles("Select hihat samples for the pack");
-  const snareFiles = await pickSampleFiles("Select snare samples for the pack");
-
-  await ensureAudioContext();
+  if (samplePacks.some(p => p.name === name)) {
+    alert("A pack with this name already exists.");
+    return;
+  }
 
   const pack = { name, kick: [], hihat: [], snare: [] };
-
-  for (const f of kickFiles) {
-    try {
-      const arr = await f.arrayBuffer();
-      const buf = await audioContext.decodeAudioData(arr);
-      const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-      pack.kick.push(url);
-      audioBuffers.kick.push(buf);
-    } catch (err) {
-      console.error("Import kick error:", err);
-    }
-  }
-
-  for (const f of hatFiles) {
-    try {
-      const arr = await f.arrayBuffer();
-      const buf = await audioContext.decodeAudioData(arr);
-      const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-      pack.hihat.push(url);
-      audioBuffers.hihat.push(buf);
-    } catch (err) {
-      console.error("Import hihat error:", err);
-    }
-  }
-
-  for (const f of snareFiles) {
-    try {
-      const arr = await f.arrayBuffer();
-      const buf = await audioContext.decodeAudioData(arr);
-      const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
-      pack.snare.push(url);
-      audioBuffers.snare.push(buf);
-    } catch (err) {
-      console.error("Import snare error:", err);
-    }
-  }
-
   samplePacks.push(pack);
   currentSamplePackName = name;
   activeSamplePackNames.push(name);
-  currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
   saveSamplePacksToLocalStorage();
   saveMappingsToLocalStorage();
   await applySelectedSamplePacks();
@@ -5872,7 +5836,7 @@ function buildSamplePackDropdown() {
       const values = Array.from(samplePackSelect.selectedOptions).map(o => o.value);
       if (values.includes("__import")) {
         samplePackSelect.value = "";
-        await importNewSamplePack();
+        await createEmptySamplePack();
         return;
       }
       activeSamplePackNames = values;
