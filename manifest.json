@@ -12,7 +12,12 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["content.js"],
+      "js": [
+        { "file": "audio.js", "type": "module" },
+        { "file": "ui.js", "type": "module" },
+        { "file": "midi.js", "type": "module" },
+        "content.js"
+      ],
       "css": ["style.css"]
     }
   ],
