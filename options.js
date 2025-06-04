@@ -12,15 +12,18 @@ document.getElementById("saveSettings").addEventListener("click", () => {
     snare: parseInt(document.getElementById("snareNote").value) || 38
   };
 
-  chrome.storage.local.set({ sampleKeys, midiNotes }, () => {
+  const blindMode = document.getElementById("blindModeCheckbox").checked;
+
+  chrome.storage.local.set({ sampleKeys, midiNotes, blindMode }, () => {
     alert("Settings saved!");
   });
 });
 
 // Load existing settings from Chrome Storage
-chrome.storage.local.get(["sampleKeys", "midiNotes"], (result) => {
+chrome.storage.local.get(["sampleKeys", "midiNotes", "blindMode"], (result) => {
   const sampleKeys = result.sampleKeys || { kick: "é", hihat: "à", snare: "$" };
   const midiNotes = result.midiNotes || { kick: 36, hihat: 42, snare: 38 };
+  const blindMode = result.blindMode || false;
 
   document.getElementById("kickKey").value = sampleKeys.kick;
   document.getElementById("hihatKey").value = sampleKeys.hihat;
@@ -29,4 +32,6 @@ chrome.storage.local.get(["sampleKeys", "midiNotes"], (result) => {
   document.getElementById("kickNote").value = midiNotes.kick;
   document.getElementById("hihatNote").value = midiNotes.hihat;
   document.getElementById("snareNote").value = midiNotes.snare;
+
+  document.getElementById("blindModeCheckbox").checked = blindMode;
 });

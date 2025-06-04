@@ -307,19 +307,27 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   const BUILTIN_DEFAULT_COUNT = 10;
 
+  let blindMode = false;
+
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(["sampleKeys", "midiNotes"], (res) => {
+    chrome.storage.local.get(["sampleKeys", "midiNotes", "blindMode"], (res) => {
       if (res.sampleKeys) Object.assign(sampleKeys, res.sampleKeys);
       if (res.midiNotes)  Object.assign(midiNotes,  res.midiNotes);
-      console.log("Restored prefs", { sampleKeys, midiNotes });
+      if (typeof res.blindMode !== "undefined") blindMode = res.blindMode;
+      console.log("Restored prefs", { sampleKeys, midiNotes, blindMode });
+      applyBlindMode();
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.blindMode) {
+        setBlindMode(changes.blindMode.newValue);
+      }
     });
   }
   // -----------------------------------------------------------------
   let micState = 0;
   let micSourceNode = null;
   let micGainNode = null;
-  let blindMode = false;
   
   // Global variable for the touch modifier mode
   let modTouchActive = false;
@@ -568,9 +576,7 @@ function addDetectBpmButtonToMinimalUI() {
   minimalUIContainer.insertBefore(detectBpmButton, micButton.nextSibling);
 }
 
-function toggleBlindMode() {
-  blindMode = !blindMode;
-  // Inject stylesheet to hide all extension UI when blindMode is on
+function applyBlindMode() {
   const styleId = 'ytbm-blind-mode-style';
   let styleEl = document.getElementById(styleId);
   if (blindMode) {
@@ -588,19 +594,24 @@ function toggleBlindMode() {
 `;
       document.head.appendChild(styleEl);
     }
-    // Optionally hide minimalUIContainer directly, but stylesheet covers it
-    // if (minimalUIContainer) {
-    //   minimalUIContainer.style.display = "none";
-    // }
     console.log("Blind mode is now ON");
   } else {
-    if (styleEl) {
-      styleEl.remove();
-    }
+    if (styleEl) styleEl.remove();
     console.log("Blind mode is now OFF");
-    // Optionally restore the minimal UI automatically when leaving blind mode:
     if (minimalActive) goMinimalUI();
   }
+}
+
+function setBlindMode(val) {
+  blindMode = Boolean(val);
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ blindMode });
+  }
+  applyBlindMode();
+}
+
+function toggleBlindMode() {
+  setBlindMode(!blindMode);
 }
 
 
@@ -964,6 +975,11 @@ function triggerPadCue(padIndex) {
     // On every key press (before other handlers) optionally pulse‑show the bar
     if (unhideOnInput) pulseShowYTControls();
        // ‘b’ now toggles blind mode
+   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "b" && !e.repeat) {
+     e.preventDefault();
+     toggleBlindMode();
+     return;
+   }
    if (e.key.toLowerCase() === "b" && !e.repeat) {
      e.preventDefault();
      toggleBlindMode();
