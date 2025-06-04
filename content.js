@@ -5821,17 +5821,6 @@ async function createEmptySamplePack() {
     activeSamplePackNames.push(name);
   }
 
-  for (const type of ["kick", "hihat", "snare"]) {
-    const files = await pickSampleFiles(`Select ${type} samples for ${name}`);
-    for (const file of files) {
-      const url = await new Promise(r => {
-        const fr = new FileReader();
-        fr.onload = () => r(fr.result);
-        fr.readAsDataURL(file);
-      });
-      pack[type].push(url);
-    }
-  }
 
   saveSamplePacksToLocalStorage();
   saveMappingsToLocalStorage();
