@@ -140,6 +140,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       samplePacks = [],
       samplePackSelect = null,
       currentSamplePackName = null,
+      activeSamplePackNames = [],
+      sampleOrigin = { kick: [], hihat: [], snare: [] },
       midiNotes = {
         kick: 37,
         hihat: 38,
@@ -2380,6 +2382,7 @@ async function loadDefaultSamples() {
     }
     samplePacks.unshift({ name: "Built-in", kick: kicks, hihat: hats, snare: snares });
     currentSamplePackName = "Built-in";
+    if (!activeSamplePackNames.length) activeSamplePackNames.push("Built-in");
   }
 }
 
@@ -3523,17 +3526,20 @@ function randomSample(type) {
 }
 
 function deleteCurrentSample(type) {
-  if (!currentSamplePackName) return;
-  const pack = samplePacks.find(p => p.name === currentSamplePackName);
-  if (!pack) return;
-  if (pack.name === "Built-in") { return; }
   const idx = currentSampleIndex[type];
-  if (idx < 0 || idx >= pack[type].length) return;
-  if (!confirm(`Remove this ${type} sample from pack?`)) return;
-  pack[type].splice(idx, 1);
+  const meta = sampleOrigin[type][idx];
+  if (!meta) return;
+  const pack = samplePacks.find(p => p.name === meta.packName);
+  if (!pack || pack.name === "Built-in") return;
+  if (!confirm(`Remove this ${type} sample from pack “${pack.name}”?`)) return;
+  pack[type].splice(meta.index, 1);
   audioBuffers[type].splice(idx, 1);
-  if (currentSampleIndex[type] >= pack[type].length) {
-    currentSampleIndex[type] = pack[type].length - 1;
+  sampleOrigin[type].splice(idx, 1);
+  sampleOrigin[type].forEach(m => {
+    if (m.packName === meta.packName && m.index > meta.index) m.index--;
+  });
+  if (currentSampleIndex[type] >= audioBuffers[type].length) {
+    currentSampleIndex[type] = audioBuffers[type].length - 1;
   }
   saveSamplePacksToLocalStorage();
   saveMappingsToLocalStorage();
@@ -5725,23 +5731,42 @@ function saveSamplePacksToLocalStorage() {
   }
 }
 
-async function applySamplePackByName(name) {
-  const pack = samplePacks.find(p => p.name === name);
-  if (!pack) { alert(`Pack “${name}” was not found.`); return; }
+async function applySelectedSamplePacks() {
   await ensureAudioContext();
   audioBuffers.kick = [];
   audioBuffers.hihat = [];
   audioBuffers.snare = [];
-  for (const url of pack.kick)  { const b = await loadAudio(url); if (b) audioBuffers.kick.push(b); }
-  for (const url of pack.hihat) { const b = await loadAudio(url); if (b) audioBuffers.hihat.push(b); }
-  for (const url of pack.snare) { const b = await loadAudio(url); if (b) audioBuffers.snare.push(b); }
+  sampleOrigin.kick = [];
+  sampleOrigin.hihat = [];
+  sampleOrigin.snare = [];
+  for (const name of activeSamplePackNames) {
+    const pack = samplePacks.find(p => p.name === name);
+    if (!pack) continue;
+    for (let i = 0; i < pack.kick.length; i++) {
+      const b = await loadAudio(pack.kick[i]);
+      if (b) { audioBuffers.kick.push(b); sampleOrigin.kick.push({packName: name, index: i}); }
+    }
+    for (let i = 0; i < pack.hihat.length; i++) {
+      const b = await loadAudio(pack.hihat[i]);
+      if (b) { audioBuffers.hihat.push(b); sampleOrigin.hihat.push({packName: name, index: i}); }
+    }
+    for (let i = 0; i < pack.snare.length; i++) {
+      const b = await loadAudio(pack.snare[i]);
+      if (b) { audioBuffers.snare.push(b); sampleOrigin.snare.push({packName: name, index: i}); }
+    }
+  }
   currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
-  currentSamplePackName = name;
   saveMappingsToLocalStorage();
   updateSampleDisplay("kick");
   updateSampleDisplay("hihat");
   updateSampleDisplay("snare");
   refreshSamplePackDropdown();
+}
+
+async function applySamplePackByName(name) {
+  activeSamplePackNames = [name];
+  currentSamplePackName = name;
+  await applySelectedSamplePacks();
 }
 
 function deleteSamplePackByName(name) {
@@ -5750,10 +5775,11 @@ function deleteSamplePackByName(name) {
   if (name === "Built-in") { alert("Cannot delete built-in pack."); return; }
   if (!confirm(`Delete pack “${name}” permanently?`)) return;
   samplePacks.splice(idx, 1);
+  activeSamplePackNames = activeSamplePackNames.filter(n => n !== name);
   if (currentSamplePackName === name) currentSamplePackName = null;
   saveSamplePacksToLocalStorage();
   saveMappingsToLocalStorage();
-  refreshSamplePackDropdown();
+  applySelectedSamplePacks();
 }
 
 async function pickSampleFiles(promptText) {
@@ -5821,13 +5847,11 @@ function importNewSamplePack() {
 
     samplePacks.push(pack);
     currentSamplePackName = name;
+    activeSamplePackNames.push(name);
     currentSampleIndex = { kick: 0, hihat: 0, snare: 0 };
     saveSamplePacksToLocalStorage();
     saveMappingsToLocalStorage();
-    updateSampleDisplay("kick");
-    updateSampleDisplay("hihat");
-    updateSampleDisplay("snare");
-    refreshSamplePackDropdown();
+    await applySelectedSamplePacks();
   });
 }
 
@@ -5838,15 +5862,20 @@ function buildSamplePackDropdown() {
   if (!samplePackSelect) {
     samplePackSelect = document.createElement("select");
     samplePackSelect.className = "looper-btn";
+    samplePackSelect.multiple = true;
+    samplePackSelect.size = 4;
     samplePackSelect.style.flex = "1 1 auto";
     samplePackSelect.title = "Load / manage sample packs";
     samplePackSelect.addEventListener("change", () => {
-      const v = samplePackSelect.value;
-      if (v === "__import") {
+      const values = Array.from(samplePackSelect.selectedOptions).map(o => o.value);
+      if (values.includes("__import")) {
+        samplePackSelect.value = "";
         importNewSamplePack();
-      } else if (v) {
-        applySamplePackByName(v);
+        return;
       }
+      activeSamplePackNames = values;
+      currentSamplePackName = values[0] || null;
+      applySelectedSamplePacks();
     });
   }
 
@@ -5878,32 +5907,30 @@ function buildSamplePackDropdown() {
 
 function refreshSamplePackDropdown() {
   if (!samplePackSelect) return;
+  activeSamplePackNames = activeSamplePackNames.filter(n => samplePacks.some(p => p.name === n));
   if (currentSamplePackName && !samplePacks.some(p => p.name === currentSamplePackName)) {
     currentSamplePackName = null;
   }
   samplePackSelect.innerHTML = "";
-  if (!currentSamplePackName) {
-    const ph = new Option("-- Packs --", "", true, true);
-    ph.disabled = true;
-    samplePackSelect.add(ph);
-  }
-  samplePacks.forEach(p =>
-    samplePackSelect.add(new Option(p.name, p.name, false, p.name === currentSamplePackName))
-  );
+  samplePacks.forEach(p => {
+    const opt = new Option(p.name, p.name, false, activeSamplePackNames.includes(p.name));
+    samplePackSelect.add(opt);
+  });
   samplePackSelect.add(new Option("➕ Import pack…", "__import"));
 
   if (packDeleteBtn) {
-    const en = Boolean(currentSamplePackName);
+    const name = samplePackSelect.value;
+    const en = Boolean(name) && name !== "Built-in";
     packDeleteBtn.disabled = !en;
     packDeleteBtn.style.opacity = en ? "1" : "0.4";
   }
 
-  const builtin = currentSamplePackName === "Built-in";
+  const builtinOnly = activeSamplePackNames.length === 1 && activeSamplePackNames[0] === "Built-in";
   ["kick","hihat","snare"].forEach(type => {
     const btn = document.querySelector(`.sample-del-btn-${type}`);
     if (btn) {
-      btn.disabled = builtin;
-      btn.style.opacity = builtin ? "0.4" : "1";
+      btn.disabled = builtinOnly;
+      btn.style.opacity = builtinOnly ? "0.4" : "1";
     }
   });
 }
@@ -5934,6 +5961,11 @@ async function loadMappingsFromLocalStorage() {
       Object.assign(midiNotes, o.midiNotes);
       if (!midiNotes.cues) midiNotes.cues = {};
     }
+    if (o.activeSamplePackNames) {
+      activeSamplePackNames = o.activeSamplePackNames;
+    } else if (o.currentSamplePackName) {
+      activeSamplePackNames = [o.currentSamplePackName];
+    }
     if (o.currentSamplePackName) {
       currentSamplePackName = o.currentSamplePackName;
     }
@@ -5948,7 +5980,8 @@ function saveMappingsToLocalStorage() {
     userSamples: userSamples.map(u => ({ name: u.name, key: u.key })),
     extensionKeys,
     midiNotes,
-    currentSamplePackName
+    currentSamplePackName,
+    activeSamplePackNames
   };
   localStorage.setItem("ytbm_mappings", JSON.stringify(obj));
 }
@@ -6183,7 +6216,12 @@ async function initialize() {
         loadMidiPresetsFromLocalStorage();
         loadSamplePacksFromLocalStorage();
     await ensureAudioContext();
-    if (currentSamplePackName) await applySamplePackByName(currentSamplePackName);
+    if (activeSamplePackNames.length) {
+      await applySelectedSamplePacks();
+    } else if (currentSamplePackName) {
+      activeSamplePackNames = [currentSamplePackName];
+      await applySelectedSamplePacks();
+    }
     initializeMIDI();
     addControls();
     buildMinimalUIBar();
