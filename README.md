@@ -11,3 +11,7 @@ built-in pack can be removed.
 ## Packaging a release
 
 Run ./build_release.sh to create ytbeatmakercues-<version>.zip containing all extension files. Load the archive in Chrome via "Load unpacked" or "Pack extension".
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
