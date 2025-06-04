@@ -18,6 +18,17 @@ if (typeof safeSeekVideo === "undefined") {
     vid.play();
   }
 }
+
+if (typeof escapeHtml === "undefined") {
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+}
 // ----------------------------------------------
 // --- Suggest Cues from Transients Helper ---
 async function suggestCuesFromTransients() {
@@ -5392,56 +5403,56 @@ function buildKeyMapWindow() {
     <h4>Built-in Samples</h4>
     <div class="keymap-row">
       <label>Kick:</label>
-      <input data-sample="kick" value="${sampleKeys.kick}" maxlength="1">
+      <input data-sample="kick" value="${escapeHtml(sampleKeys.kick)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>Hihat:</label>
-      <input data-sample="hihat" value="${sampleKeys.hihat}" maxlength="1">
+      <input data-sample="hihat" value="${escapeHtml(sampleKeys.hihat)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>Snare:</label>
-      <input data-sample="snare" value="${sampleKeys.snare}" maxlength="1">
+      <input data-sample="snare" value="${escapeHtml(sampleKeys.snare)}" maxlength="1">
     </div>
     <h4>Other Keys</h4>
     <div class="keymap-row">
       <label>Looper:</label>
-      <input data-extkey="looper" value="${extensionKeys.looper}" maxlength="1">
+      <input data-extkey="looper" value="${escapeHtml(extensionKeys.looper)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>VideoLooper:</label>
-      <input data-extkey="videoLooper" value="${extensionKeys.videoLooper}" maxlength="1">
+      <input data-extkey="videoLooper" value="${escapeHtml(extensionKeys.videoLooper)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>Compressor:</label>
-      <input data-extkey="compressor" value="${extensionKeys.compressor}" maxlength="1">
+      <input data-extkey="compressor" value="${escapeHtml(extensionKeys.compressor)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>EQ:</label>
-      <input data-extkey="eq" value="${extensionKeys.eq}" maxlength="1">
+      <input data-extkey="eq" value="${escapeHtml(extensionKeys.eq)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>Undo:</label>
-      <input data-extkey="undo" value="${extensionKeys.undo}" maxlength="1">
+      <input data-extkey="undo" value="${escapeHtml(extensionKeys.undo)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>PitchDown:</label>
-      <input data-extkey="pitchDown" value="${extensionKeys.pitchDown}" maxlength="1">
+      <input data-extkey="pitchDown" value="${escapeHtml(extensionKeys.pitchDown)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>PitchUp:</label>
-      <input data-extkey="pitchUp" value="${extensionKeys.pitchUp}" maxlength="1">
+      <input data-extkey="pitchUp" value="${escapeHtml(extensionKeys.pitchUp)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>Reverb:</label>
-      <input data-extkey="reverb" value="${extensionKeys.reverb}" maxlength="1">
+      <input data-extkey="reverb" value="${escapeHtml(extensionKeys.reverb)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>Cassette:</label>
-      <input data-extkey="cassette" value="${extensionKeys.cassette}" maxlength="1">
+      <input data-extkey="cassette" value="${escapeHtml(extensionKeys.cassette)}" maxlength="1">
     </div>
     <div class="keymap-row">
   <label>RandomCues:</label>
-  <input data-extkey="randomCues" value="${extensionKeys.randomCues}" maxlength="1">
+  <input data-extkey="randomCues" value="${escapeHtml(extensionKeys.randomCues)}" maxlength="1">
 </div>
     <h4></h4>
     <div id="user-samples-list"></div>
@@ -5490,7 +5501,15 @@ function populateUserSamplesList() {
     row.style.display = "flex";
     row.style.alignItems = "center";
     row.style.gap = "6px";
-    row.innerHTML = `<label>${us.name}:</label><input value="${us.key}" maxlength="1">`;
+
+    const label = document.createElement("label");
+    label.textContent = us.name + ":";
+    const input = document.createElement("input");
+    input.value = us.key;
+    input.maxLength = 1;
+
+    row.appendChild(label);
+    row.appendChild(input);
     c.appendChild(row);
   });
 }
@@ -5527,38 +5546,38 @@ function buildMIDIMapWindow() {
     <h4>Drum Notes</h4>
     <div class="midimap-row">
       <label>Kick:</label>
-      <input data-midiname="kick" value="${midiNotes.kick}" type="number">
+      <input data-midiname="kick" value="${escapeHtml(String(midiNotes.kick))}" type="number">
       <button data-detect="kick" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Hihat:</label>
-      <input data-midiname="hihat" value="${midiNotes.hihat}" type="number">
+      <input data-midiname="hihat" value="${escapeHtml(String(midiNotes.hihat))}" type="number">
       <button data-detect="hihat" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Snare:</label>
-      <input data-midiname="snare" value="${midiNotes.snare}" type="number">
+      <input data-midiname="snare" value="${escapeHtml(String(midiNotes.snare))}" type="number">
       <button data-detect="snare" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Pitch / Shift</h4>
     <div class="midimap-row">
       <label>Shift Key:</label>
-      <input data-midiname="shift" value="${midiNotes.shift}" type="number">
+      <input data-midiname="shift" value="${escapeHtml(String(midiNotes.shift))}" type="number">
       <button data-detect="shift" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>PitchDown:</label>
-      <input data-midiname="pitchDown" value="${midiNotes.pitchDown}" type="number">
+      <input data-midiname="pitchDown" value="${escapeHtml(String(midiNotes.pitchDown))}" type="number">
       <button data-detect="pitchDown" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>PitchUp:</label>
-      <input data-midiname="pitchUp" value="${midiNotes.pitchUp}" type="number">
+      <input data-midiname="pitchUp" value="${escapeHtml(String(midiNotes.pitchUp))}" type="number">
       <button data-detect="pitchUp" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
   <label>RandomCues:</label>
-  <input data-midiname="randomCues" value="${midiNotes.randomCues}" type="number">
+  <input data-midiname="randomCues" value="${escapeHtml(String(midiNotes.randomCues))}" type="number">
   <button data-detect="randomCues" class="detect-midi-btn">Detect</button>
 </div>
     <h4>Cues (0..9)</h4>
@@ -5568,7 +5587,7 @@ function buildMIDIMapWindow() {
     out += `
       <div class="midimap-row">
         <label>Cue ${k}:</label>
-        <input data-midicue="${k}" value="${midiNotes.cues[k]}" type="number">
+        <input data-midicue="${k}" value="${escapeHtml(String(midiNotes.cues[k]))}" type="number">
         <button data-cuedetect="${k}" class="detect-midi-btn">Detect</button>
       </div>
     `;
@@ -5578,39 +5597,39 @@ function buildMIDIMapWindow() {
     <h4>Looper / Undo / VideoLooper</h4>
     <div class="midimap-row">
       <label>Looper:</label>
-      <input data-midiname="looper" value="${midiNotes.looper}" type="number">
+      <input data-midiname="looper" value="${escapeHtml(String(midiNotes.looper))}" type="number">
       <button data-detect="looper" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Undo:</label>
-      <input data-midiname="undo" value="${midiNotes.undo}" type="number">
+      <input data-midiname="undo" value="${escapeHtml(String(midiNotes.undo))}" type="number">
       <button data-detect="undo" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>VideoLoop:</label>
-      <input data-midiname="videoLooper" value="${midiNotes.videoLooper}" type="number">
+      <input data-midiname="videoLooper" value="${escapeHtml(String(midiNotes.videoLooper))}" type="number">
       <button data-detect="videoLooper" class="detect-midi-btn">Detect</button>
     </div>
     <h4>EQ/Compressor Toggles</h4>
     <div class="midimap-row">
       <label>EQ Toggle:</label>
-      <input data-midiname="eqToggle" value="${midiNotes.eqToggle}" type="number">
+      <input data-midiname="eqToggle" value="${escapeHtml(String(midiNotes.eqToggle))}" type="number">
       <button data-detect="eqToggle" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Comp Toggle:</label>
-      <input data-midiname="compToggle" value="${midiNotes.compToggle}" type="number">
+      <input data-midiname="compToggle" value="${escapeHtml(String(midiNotes.compToggle))}" type="number">
       <button data-detect="compToggle" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Reverb/Cassette Toggles</h4>
     <div class="midimap-row">
       <label>Reverb:</label>
-      <input data-midiname="reverbToggle" value="${midiNotes.reverbToggle}" type="number">
+      <input data-midiname="reverbToggle" value="${escapeHtml(String(midiNotes.reverbToggle))}" type="number">
       <button data-detect="reverbToggle" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Cassette:</label>
-      <input data-midiname="cassetteToggle" value="${midiNotes.cassetteToggle}" type="number">
+      <input data-midiname="cassetteToggle" value="${escapeHtml(String(midiNotes.cassetteToggle))}" type="number">
       <button data-detect="cassetteToggle" class="detect-midi-btn">Detect</button>
     </div>
     <button class="looper-midimap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
