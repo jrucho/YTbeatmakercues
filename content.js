@@ -39,6 +39,16 @@ function shouldRunOnThisPage() {
   }
   return true;
 }
+
+function isSampletteContext() {
+  if (location.hostname.includes('samplette.io')) return true;
+  try {
+    if (document.referrer && document.referrer.includes('samplette.io')) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
 // ----------------------------------------------
 // --- Suggest Cues from Transients Helper ---
 async function suggestCuesFromTransients() {
@@ -6467,7 +6477,9 @@ async function initialize() {
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
     await loadSamplePacksFromLocalStorage();
-    initializeMIDI();
+    if (!isSampletteContext()) {
+      initializeMIDI();
+    }
     addControls();
     buildMinimalUIBar();
     addTouchButtonToMinimalUI();
