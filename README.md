@@ -36,7 +36,7 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🎛️ **Live Effects**  
   Toggle EQ (`E`), Compressor (`C`), Reverb (`Q`), and Cassette (`W`) in real time.
 
-- 🧠 **Minimal & Advanced UI**  
+- 👁️ **Minimal & Advanced UI**  
   Choose between a clean minimal bar or a full panel with all controls.
 
 - 🥁 **Sample Kits**  
@@ -45,7 +45,7 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🎹 **MIDI Support**  
   Use your MIDI controller to trigger actions. Custom mappings available via UI.
 
-- ✍️ **Touch Sequencer**  
+- 👇 **Touch Sequencer**  
   10 pads, 16-step sequencer, tap tempo, and BPM-based triggering.
 
 ## Installation
