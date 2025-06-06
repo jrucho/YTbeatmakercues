@@ -14,7 +14,7 @@ https://www.instagram.com/reel/DKfAljPMP5w/?igsh=MXUzZG05ajg2dzJsMA==
 
 ![Screenshot 2025-06-06 at 19 38 10](https://github.com/user-attachments/assets/fc70d22d-c90a-4b66-9c4a-b66f001cdcc5)
 
-Works on **YouTube** and **Samplette.io**.
+Works on **YouTube**, **Samplette.io**, and **SoundCloud**.
 
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 

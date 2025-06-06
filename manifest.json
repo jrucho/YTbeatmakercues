@@ -3,20 +3,29 @@
   "name": "YouTube Beatmaker Extension",
   "version": "1.2",
   "description": "Mark cue points, play drum sounds, and customize your experience on YouTube.",
-  "permissions": ["storage", "activeTab", "scripting", "unlimitedStorage"],
-  "host_permissions": ["https://www.youtube.com/*", "https://samplette.io/*"],
+  "permissions": ["storage", "activeTab", "scripting", "unlimitedStorage", "midi"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://samplette.io/*",
+    "https://soundcloud.com/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*", "https://samplette.io/*"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://samplette.io/*",
+        "https://soundcloud.com/*"
+      ],
       "js": ["content.js"],
       "css": ["style.css"],
       "all_frames": true
     }
   ],
+  "background": {"service_worker": "background.js"},
   "web_accessible_resources": [{
     "resources": ["sounds/*","sp303-compressor-worklet.js",
       "sp404-compressor-worklet.js"],

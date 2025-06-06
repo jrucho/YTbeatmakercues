@@ -32,10 +32,8 @@ if (typeof escapeHtml === "undefined") {
 // Determine if the extension should run on this page
 function shouldRunOnThisPage() {
   if (location.hostname.includes('samplette.io')) {
-    // skip outer Samplette page (YouTube runs inside an iframe)
-    if (!document.querySelector('video') && !document.querySelector('audio')) {
-      return false;
-    }
+    // Skip Samplette's outer page to avoid duplicate UI
+    if (window === window.top) return false;
   }
   return true;
 }
@@ -162,6 +160,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       samplePackSelect = null,
       currentSamplePackName = null,
       activeSamplePackNames = [],
+      samplePacksApplied = false,
       sampleOrigin = { kick: [], hihat: [], snare: [] },
       midiNotes = {
         kick: 37,
@@ -1390,10 +1389,6 @@ function attachAudioPriming() {
 document.addEventListener('DOMContentLoaded', () => {
   // Ensure minimal view is active immediately
   if (typeof goMinimalUI === "function") goMinimalUI();
-  // Also launch minimal view after audio context is ready
-  ensureAudioContext()
-    .then(() => { if (typeof goMinimalUI === "function") goMinimalUI(); })
-    .catch(console.error);
 
   // If no cue points are loaded, generate random cues
   if (Object.keys(cuePoints).length === 0 && typeof placeRandomCues === "function") {
@@ -2010,6 +2005,14 @@ async function ensureAudioContext() {
     await audioContext.resume().catch(err => console.error("AudioContext resume failed:", err.message));
   }
   if (!deckA) { initTwoDeck(); }
+  if (!samplePacksApplied) {
+    try {
+      await applySelectedSamplePacks();
+    } catch (err) {
+      console.warn('Failed to load sample packs:', err);
+    }
+    samplePacksApplied = true;
+  }
   return audioContext;
 }
 
@@ -2622,8 +2625,22 @@ function safeSeekVideo(_, time) {
 var enableReelsSupport = true;
 
 function getVideoElement() {
-  let media = document.querySelector('video') || document.querySelector('audio');
-
+  function search(root) {
+    if (!root) return null;
+    let v = root.querySelector('video');
+    if (v) return v;
+    let a = root.querySelector('audio');
+    if (a) return a;
+    const nodes = root.querySelectorAll('*');
+    for (const n of nodes) {
+      if (n.shadowRoot) {
+        const found = search(n.shadowRoot);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  let media = search(document);
 
   if (!media && enableReelsSupport) {
     if (window.location.href.includes('/shorts/') || window.location.href.includes('/reels/')) {
@@ -5141,6 +5158,16 @@ async function initializeMIDI() {
     });
   } catch (e) {
     console.warn("MIDI unavailable:", e);
+    try {
+      const port = chrome.runtime.connect({ name: 'midi' });
+      port.onMessage.addListener(msg => {
+        if (msg.type === 'midi' && msg.data) {
+          handleMIDIMessage({ data: new Uint8Array(msg.data) });
+        }
+      });
+    } catch (err) {
+      console.error('Failed to connect to MIDI proxy:', err);
+    }
   }
 }
 
@@ -6433,13 +6460,6 @@ async function initialize() {
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
     await loadSamplePacksFromLocalStorage();
-    await ensureAudioContext();
-    if (activeSamplePackNames.length) {
-      await applySelectedSamplePacks();
-    } else if (currentSamplePackName) {
-      activeSamplePackNames = [currentSamplePackName];
-      await applySelectedSamplePacks();
-    }
     initializeMIDI();
     addControls();
     buildMinimalUIBar();
