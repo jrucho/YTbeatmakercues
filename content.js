@@ -1402,6 +1402,9 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('click', () => {
   ensureAudioContext();
 }, { once: true });
+document.addEventListener('keydown', () => {
+  ensureAudioContext();
+}, { once: true });
 // For cue-marking: when ctrl/cmd + digit is pressed,
 // capture the event in the capture phase, record the cue,
 // and prevent YouTube's native seeking.
@@ -3805,7 +3808,8 @@ function isTypingInTextField(e) {
 /**************************************
  * Keyboard & Sample Triggers
  **************************************/
-function onKeyDown(e) {
+async function onKeyDown(e) {
+  await ensureAudioContext();
   if (isTypingInTextField(e)) {
   return;
 }
