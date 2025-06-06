@@ -1068,40 +1068,54 @@ hideYouTubePopups();
 }
   addTouchSequencerButtonToAdvancedUI();
 
-  // Attach pulse‑show hook to every MIDI input
+  function processMidiData(data) {
+    if (unhideOnInput) pulseShowYTControls();
+    const [status, note, velocity] = data;
+    const command = status & 0xf0;
+    if (command === 0x90 && velocity > 0) {
+      for (const [key, midiNote] of Object.entries(midiNotes.cues)) {
+        if (midiNote === note) {
+          const vid = getVideoElement();
+          if (vid && cuePoints[key] === undefined) {
+            pushUndoState();
+            cuePoints[key] = vid.currentTime;
+            saveCuePointsToURL();
+            updateCueMarkers();
+            refreshCuesButton();
+            return;
+          }
+          break;
+        }
+      }
+    }
+    handleMIDIMessage({ data: new Uint8Array(data) });
+  }
+
+  function connectBackgroundMIDI() {
+    const port = chrome.runtime?.connect({ name: 'midi' });
+    if (!port) return;
+    port.onMessage.addListener(msg => {
+      if (msg.type === 'midi' && msg.data) {
+        processMidiData(msg.data);
+      }
+    });
+  }
+
+  // Attach pulse‑show hook to every MIDI input, falling back to background
   if (navigator.requestMIDIAccess) {
     navigator.requestMIDIAccess().then(access => {
       function hook(port) {
         if (port.type !== 'input') return;
-        const orig = port.onmidimessage;
-        port.onmidimessage = function(ev) {
-          if (unhideOnInput) pulseShowYTControls();
-          const [status, note, velocity] = ev.data;
-          const command = status & 0xf0;
-          // Handle Note On for cue marking
-          if (command === 0x90 && velocity > 0) {
-            for (const [key, midiNote] of Object.entries(midiNotes.cues)) {
-              if (midiNote === note) {
-                const vid = getVideoElement();
-                if (vid && cuePoints[key] === undefined) {
-                  pushUndoState();
-                  cuePoints[key] = vid.currentTime;
-                  saveCuePointsToURL();
-                  updateCueMarkers();
-                  refreshCuesButton();
-                  return; // skip original to avoid playback
-                }
-                break;
-              }
-            }
-          }
-          // Fallback to original handler
-          if (orig) orig.call(this, ev);
-        };
+        port.onmidimessage = ev => processMidiData(Array.from(ev.data));
       }
       access.inputs.forEach(hook);
       access.addEventListener('statechange', e => hook(e.port));
-    }).catch(console.warn);
+    }).catch(err => {
+      console.warn('MIDI blocked, using background', err);
+      connectBackgroundMIDI();
+    });
+  } else {
+    connectBackgroundMIDI();
   }
   
   function updateCompUIButtons(label, color) {
@@ -1378,12 +1392,8 @@ function attachAudioPriming() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Ensure minimal view is active immediately
+  // Ensure minimal view is active immediately; defer AudioContext until user gesture
   if (typeof goMinimalUI === "function") goMinimalUI();
-  // Also launch minimal view after audio context is ready
-  ensureAudioContext()
-    .then(() => { if (typeof goMinimalUI === "function") goMinimalUI(); })
-    .catch(console.error);
 
   // If no cue points are loaded, generate random cues
   if (Object.keys(cuePoints).length === 0 && typeof placeRandomCues === "function") {
@@ -5119,10 +5129,18 @@ async function initializeMIDI() {
   try {
     let access = await navigator.requestMIDIAccess({ sysex: false });
     access.inputs.forEach(inp => {
-      inp.onmidimessage = handleMIDIMessage;
+      inp.onmidimessage = e => handleMIDIMessage(e);
     });
   } catch (e) {
     console.warn("MIDI unavailable:", e);
+    const port = chrome.runtime?.connect({ name: 'midi' });
+    if (port) {
+      port.onMessage.addListener(msg => {
+        if (msg.type === 'midi' && msg.data) {
+          handleMIDIMessage({ data: new Uint8Array(msg.data) });
+        }
+      });
+    }
   }
 }
 
@@ -6397,7 +6415,6 @@ async function initialize() {
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
     await loadSamplePacksFromLocalStorage();
-    await ensureAudioContext();
     if (activeSamplePackNames.length) {
       await applySelectedSamplePacks();
     } else if (currentSamplePackName) {
