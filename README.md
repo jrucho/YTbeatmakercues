@@ -42,9 +42,9 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   Toggle EQ (`E`), Compressor (`C`), Reverb (`Q`), and Cassette (`W`) in real time.
 
 - 👁️ **Minimal & Advanced UI**  
- Choose between a clean minimal bar or a full panel with all controls.
-  On Samplette.io and SoundCloud the minimal bar appears fixed at the bottom of
-  the page and can scroll horizontally if needed.
+Choose between a clean minimal bar or a full panel with all controls.
+On Samplette.io the bar only appears inside the embedded player. On SoundCloud
+the bar is fixed at the bottom and scrolls horizontally if needed.
 
 - 🥁 **Sample Kits**  
   Manage built-in and imported samples (kick, hihat, snare), randomize or load packs on demand.

@@ -2622,11 +2622,26 @@ function safeSeekVideo(_, time) {
 var enableReelsSupport = true;
 
 function getVideoElement() {
-  // First look for a video; if none, try for an audio element (for SoundCloud).
+  // First try the straightforward selectors.
   let media = document.querySelector("video") || document.querySelector("audio");
 
-  // On Samplette.io the YouTube player may be inside an iframe, but this script
-  // also runs inside frames due to manifest "all_frames".
+  // If not found, attempt to search open Shadow DOM trees (used by SoundCloud).
+  if (!media) {
+    const searchShadow = (root) => {
+      if (!root) return null;
+      const direct = root.querySelector && root.querySelector("audio");
+      if (direct) return direct;
+      const nodes = root.querySelectorAll ? root.querySelectorAll("*") : [];
+      for (const el of nodes) {
+        if (el.shadowRoot) {
+          const found = searchShadow(el.shadowRoot);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    media = searchShadow(document);
+  }
 
   if (!media && enableReelsSupport) {
     if (window.location.href.includes("/shorts/") || window.location.href.includes("/reels/")) {
@@ -4548,6 +4563,8 @@ function addControls() {
   panelContainer.style.position = "fixed";
   panelContainer.style.top = "20px";
   panelContainer.style.right = "20px";
+  panelContainer.style.maxHeight = "90vh";
+  panelContainer.style.overflowY = "auto";
   panelContainer.style.display = "none";
   document.body.appendChild(panelContainer);
   restorePanelPosition(panelContainer, "ytbm_panelPos");
@@ -6403,9 +6420,20 @@ function monitorMediaElement() {
   }, 1000);
 }
 
-// Finally, start it once
-detectVideoChanges();
-attachVideoMetadataListener();
+
+
+/**************************************
+ * Page Filtering
+ **************************************/
+function shouldRunOnThisPage() {
+  const host = location.hostname;
+  // On samplette.io the useful player is an embedded YouTube iframe.
+  // Skip running on the top page if no <video> element exists.
+  if (host.includes('samplette.io') && !document.querySelector('video')) {
+    return false;
+  }
+  return true;
+}
 
 /**************************************
  * Initialization
@@ -6463,7 +6491,9 @@ async function initialize() {
   }
 }
 
-initialize();
+if (typeof shouldRunOnThisPage === 'function' ? shouldRunOnThisPage() : true) {
+  initialize();
+}
 })();
 
 // --- MIDI integration for random cues / suggest cues ---
@@ -6499,7 +6529,7 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   style.textContent = `
     .ytbm-minimal-bar {
       display: flex !important;
-      flex-wrap: wrap !important;
+      flex-wrap: nowrap !important;
       overflow-x: auto !important;
       gap: 4px !important;
     }
