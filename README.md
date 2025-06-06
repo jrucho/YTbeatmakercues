@@ -91,6 +91,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 > 🔊 *Tip: Reduce YouTube volume to ~40–50% for best effect with compression modes.*
 
+![YTBeatmakerCues](https://github.com/user-attachments/assets/87c6af2e-2821-4dc5-971f-bfd1c8545b68)
+
 ## Support
 
 💬 DM on Instagram: [@owae.ga](https://instagram.com/owae.ga)  
