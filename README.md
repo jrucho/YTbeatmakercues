@@ -12,7 +12,8 @@ https://www.instagram.com/reel/DKfAljPMP5w/?igsh=MXUzZG05ajg2dzJsMA==
 
 # YouTube Beatmaker Cues
 
-![hippo]([https://media3.giphy.com/media/aUovxH8Vf9qDu/giphy.gif](https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExam5hMXlsNWk4aDR2YWRtNG53cnk0MDlhYTV5cWUycHVndm9rMGhkYSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/D3cD3cqe3mepjLuOm6/giphy.gif))
+<img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExam5hMXlsNWk4aDR2YWRtNG53cnk0MDlhYTV5cWUycHVndm9rMGhkYSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/D3cD3cqe3mepjLuOm6/giphy.gif
+"/>
 
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
