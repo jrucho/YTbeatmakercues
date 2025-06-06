@@ -290,6 +290,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqFilterNode = null,
       eqFilterActive = false,
       eqFilterApplyTarget = "video", // can be "video" or "master"
+      eqFilterTypeDefault = "lowpass",
+      eqFilterFreqDefault = 250,
+      eqFilterGainDefault = 0,
       // REVERB
       reverbNode = null,
       reverbActive = false,
@@ -1608,9 +1611,9 @@ function captureAppState() {
 
     eqFilterActive,
     eqFilterApplyTarget,
-    eqFilterType: eqFilterNode.type,
-    eqFilterFreq: eqFilterNode.frequency.value,
-    eqFilterGain: eqFilterNode.gain.value,
+    eqFilterType: eqFilterNode ? eqFilterNode.type : eqFilterTypeDefault,
+    eqFilterFreq: eqFilterNode ? eqFilterNode.frequency.value : eqFilterFreqDefault,
+    eqFilterGain: eqFilterNode ? eqFilterNode.gain.value : eqFilterGainDefault,
 
     loFiCompActive,
     postCompGainValue: postCompGain.gain.value,
@@ -1637,9 +1640,15 @@ function restoreAppState(st) {
 
   eqFilterActive = st.eqFilterActive;
   eqFilterApplyTarget = st.eqFilterApplyTarget;
-  eqFilterNode.type = st.eqFilterType;
-  eqFilterNode.frequency.value = st.eqFilterFreq;
-  eqFilterNode.gain.value = st.eqFilterGain;
+  if (eqFilterNode) {
+    eqFilterNode.type = st.eqFilterType;
+    eqFilterNode.frequency.value = st.eqFilterFreq;
+    eqFilterNode.gain.value = st.eqFilterGain;
+  } else {
+    eqFilterTypeDefault = st.eqFilterType;
+    eqFilterFreqDefault = st.eqFilterFreq;
+    eqFilterGainDefault = st.eqFilterGain;
+  }
 
   loFiCompActive = st.loFiCompActive;
   postCompGain.gain.value = st.postCompGainValue;
@@ -2155,10 +2164,10 @@ async function setupAudioNodes() {
   bus4Gain.connect(masterGain);
 
   eqFilterNode = audioContext.createBiquadFilter();
-  eqFilterNode.type = "lowpass";
-  eqFilterNode.frequency.value = 250;
+  eqFilterNode.type = eqFilterTypeDefault;
+  eqFilterNode.frequency.value = eqFilterFreqDefault;
   eqFilterNode.Q.value = 2.0;
-  eqFilterNode.gain.value = 0;
+  eqFilterNode.gain.value = eqFilterGainDefault;
 
   // Reverb node
   reverbNode = audioContext.createConvolver();
