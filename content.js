@@ -383,7 +383,7 @@ function pulseShowYTControls() {
     }));
 
     // Dispatch also to progress bar and chrome bar
-    const progress = document.querySelector('.ytp-progress-bar');
+    const progress = getProgressBarElement();
     const chrome = document.querySelector('.ytp-chrome-bottom');
     if (progress) progress.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
     if (chrome) chrome.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
@@ -1047,7 +1047,6 @@ hideYouTubePopups();
     minimalUIContainer.appendChild(touchBtn);
   }
 }
-  addTouchButtonToMinimalUI();
 
   
   function addTouchSequencerButtonToAdvancedUI() {
@@ -1066,7 +1065,6 @@ hideYouTubePopups();
     panelContainer.appendChild(advancedTouchBtn);
   }
 }
-  addTouchSequencerButtonToAdvancedUI();
 
   function processMidiData(data) {
     if (unhideOnInput) pulseShowYTControls();
@@ -1999,6 +1997,7 @@ async function ensureAudioContext() {
     await loadUserSamplesFromStorage();
     let vid = getVideoElement();
     if (vid && !vid._audioConnected) {
+      if (!vid.crossOrigin) vid.crossOrigin = 'anonymous';
       if (!vid._mediaSource) {
         vid._mediaSource = audioContext.createMediaElementSource(vid);
         vid._mediaSource.connect(videoGain);
@@ -2103,6 +2102,7 @@ let videoCheckInterval = setInterval(() => {
   if (audioContext) {
     let vid = getVideoElement();
     if (vid && !vid._audioConnected) {
+      if (!vid.crossOrigin) vid.crossOrigin = 'anonymous';
       if (!vid._mediaSource) {
         vid._mediaSource = audioContext.createMediaElementSource(vid);
         vid._mediaSource.connect(videoGain);
@@ -3551,7 +3551,7 @@ function onDocumentMouseUp(e) {
 }
 
 function handleProgressBarDoubleClickForNewCue() {
-  const bar = document.querySelector(".ytp-progress-bar");
+  const bar = getProgressBarElement();
   if (!bar) return;
   addTrackedListener(bar, "dblclick", e => {
     if (e.metaKey) {
@@ -4224,11 +4224,14 @@ function analyseBPMFromEnergies(energies) {
 // Updated minimal UI container builder
 function buildMinimalUIBar() {
   // Try to get the container where you want to insert the minimal UI.
+  const media = getVideoElement();
+  if (!media) return; // only build UI when a media element exists
+
   let container = document.querySelector(".ytp-right-controls");
-if (!container) {
-  // Attempt a second known element, e.g. the main .ytp-chrome-controls
-  container = document.querySelector(".ytp-chrome-controls");
-}
+  if (!container) {
+    // Attempt a second known element, e.g. the main .ytp-chrome-controls
+    container = document.querySelector(".ytp-chrome-controls");
+  }
 
   // If still not found, fall back to body and place the bar fixed
   if (!container) {
@@ -6391,6 +6394,11 @@ function monitorMediaElement() {
       attachVideoMetadataListener();
       loadCuePointsAtStartup();
       media.addEventListener("timeupdate", updateVideoWithCues);
+      if (!minimalUIContainer) {
+        buildMinimalUIBar();
+        addTouchButtonToMinimalUI();
+        addTouchSequencerButtonToAdvancedUI();
+      }
     }
   }, 1000);
 }
@@ -6425,9 +6433,6 @@ async function initialize() {
     }
     initializeMIDI();
     addControls();
-    buildMinimalUIBar();
-    addTouchButtonToMinimalUI();
-    addTouchSequencerButtonToAdvancedUI();
     attachAudioPriming();
     loadCuePointsAtStartup();
     handleProgressBarDoubleClickForNewCue();
