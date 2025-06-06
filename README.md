@@ -1,4 +1,4 @@
-# Update 1.1
+# Update 1.2 beta
 Mark cue points, play drum sounds, and customize your experience on YouTube,
 Samplette.io, and SoundCloud.
 The extension supports managing multiple sample packs at once. Use the multi-
