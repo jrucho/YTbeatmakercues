@@ -32,8 +32,10 @@ if (typeof escapeHtml === "undefined") {
 // Determine if the extension should run on this page
 function shouldRunOnThisPage() {
   if (location.hostname.includes('samplette.io')) {
-    // Skip Samplette's outer page to avoid duplicate UI
-    if (window === window.top) return false;
+    // Skip Samplette's outer page when no media element exists
+    if (window === window.top && !document.querySelector('video, audio')) {
+      return false;
+    }
   }
   return true;
 }
@@ -2654,7 +2656,12 @@ function getVideoElement() {
 // Updated progress bar lookup function
 function getProgressBarElement() {
   let progressBar = document.querySelector('.ytp-progress-bar');
-  
+
+  // SoundCloud timeline element
+  if (!progressBar) {
+    progressBar = document.querySelector('.playbackTimeline__progressWrapper');
+  }
+
   if (!progressBar && enableReelsSupport) {
     progressBar = document.querySelector('ytd-reel-video-renderer .ytp-progress-bar') ||
                   document.querySelector('ytd-shorts .ytp-progress-bar');
