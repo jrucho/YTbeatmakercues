@@ -21,7 +21,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 
 Manage multiple compressors (Native, Tape Warm, Roland SP404OG) to shape your audio character. Adjust settings effortlessly through a user-friendly interface.
 
-Integrate MIDI controllers with customizable mappings to trigger cues, samples, and effects directly. The extension declares the **midi** permission and runs a background service worker that captures MIDI input on behalf of pages. This bypasses permissions policies on sites like Samplette.io and SoundCloud so your controller always works.
+Integrate MIDI controllers with customizable mappings to trigger cues, samples, and effects directly. A background service worker captures MIDI input on behalf of pages so controllers continue to work even when a site blocks WebMIDI.
 
 Samples and cue points persist between sessions. Easily export loops, manage cues, and maintain workflow efficiency.
 

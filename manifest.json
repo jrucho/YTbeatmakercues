@@ -4,7 +4,7 @@
   "version": "1.2",
   "version_name": "1.2 beta",
   "description": "Mark cue points, play drum sounds, and customize your experience on YouTube.",
-  "permissions": ["storage", "activeTab", "scripting", "unlimitedStorage", "midi"],
+  "permissions": ["storage", "activeTab", "scripting", "unlimitedStorage"],
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://samplette.io/*",
