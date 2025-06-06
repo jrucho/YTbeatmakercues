@@ -126,6 +126,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let cleanupFunctions = [];
   let tapTimes = [];
   let padIndicators = [];
+  const isSampletteEmbed = document.referrer.includes('samplette.io');
+  function shouldRunOnThisPage() {
+    if (window.location.hostname === 'samplette.io' && window === window.top) {
+      return false;
+    }
+    return true;
+  }
   /**************************************
    * Global Variables
    **************************************/
@@ -6173,6 +6180,8 @@ function injectCustomCSS() {
       border-radius: 6px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
       width: 210px;
+      max-height: 70vh;
+      overflow-y: auto;
     }
     .looper-drag-handle {
       background: #222;
@@ -6212,6 +6221,7 @@ function injectCustomCSS() {
       justify-content: flex-end;
       gap: 6px;
       margin-right: 6px;
+      overflow-x: auto;
     }
     .ytbm-minimal-bar .looper-btn {
       background: #333;
@@ -6369,6 +6379,7 @@ attachVideoMetadataListener();
  **************************************/
 async function initialize() {
   try {
+    if (!shouldRunOnThisPage()) return;
     let isAudioPrimed = false;
 
     document.addEventListener('click', function primeAudio() {
@@ -6395,7 +6406,9 @@ async function initialize() {
       activeSamplePackNames = [currentSamplePackName];
       await applySelectedSamplePacks();
     }
-    initializeMIDI();
+    if (!isSampletteEmbed) {
+      initializeMIDI();
+    }
     addControls();
     buildMinimalUIBar();
     addTouchButtonToMinimalUI();
