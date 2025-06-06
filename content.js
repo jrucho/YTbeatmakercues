@@ -31,10 +31,6 @@ if (typeof escapeHtml === "undefined") {
 }
 // Determine if the extension should run on this page
 function shouldRunOnThisPage() {
-  const host = location.hostname;
-  if (host.includes('samplette.io') && window.top === window) {
-    return false; // avoid duplicate toolbar on outer Samplette page
-  }
   return true;
 }
 // ----------------------------------------------
@@ -2622,28 +2618,6 @@ var enableReelsSupport = true;
 function getVideoElement() {
   let media = document.querySelector('video') || document.querySelector('audio');
 
-  // Search inside Samplette iframe if needed
-  if (!media && location.hostname.includes('samplette.io')) {
-    const frame = document.querySelector('iframe');
-    if (frame && frame.contentWindow) {
-      try {
-        media = frame.contentWindow.document.querySelector('video');
-      } catch {}
-    }
-  }
-
-  // Look inside open shadow roots on SoundCloud
-  if (!media && location.hostname.includes('soundcloud.com')) {
-    const stack = Array.from(document.querySelectorAll('*'));
-    while (stack.length && !media) {
-      const el = stack.shift();
-      if (el.shadowRoot) {
-        const found = el.shadowRoot.querySelector('audio');
-        if (found) { media = found; break; }
-        stack.push(...el.shadowRoot.querySelectorAll('*'));
-      }
-    }
-  }
 
   if (!media && enableReelsSupport) {
     if (window.location.href.includes('/shorts/') || window.location.href.includes('/reels/')) {
@@ -5161,16 +5135,6 @@ async function initializeMIDI() {
     });
   } catch (e) {
     console.warn("MIDI unavailable:", e);
-    try {
-      const port = chrome.runtime.connect({ name: 'midi-proxy' });
-      port.onMessage.addListener(msg => {
-        if (msg.type === 'midi' && msg.data) {
-          handleMIDIMessage({ data: new Uint8Array(msg.data) });
-        }
-      });
-    } catch (err) {
-      console.error('Failed to connect to MIDI proxy:', err);
-    }
   }
 }
 

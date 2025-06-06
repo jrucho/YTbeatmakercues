@@ -1,6 +1,5 @@
 # Update 1.2 Beta
-Mark cue points, play drum sounds, and customize your experience on YouTube,
-Samplette.io, and SoundCloud.
+Mark cue points, play drum sounds, and customize your experience on YouTube.
 The extension supports managing multiple sample packs at once. Use the multi-
 select dropdown in the advanced panel to load several packs together or delete
 unused ones. Creating a new pack only asks for a name; you can later import
@@ -15,9 +14,9 @@ https://www.instagram.com/reel/DKfAljPMP5w/?igsh=MXUzZG05ajg2dzJsMA==
 
 ![Screenshot 2025-06-06 at 19 38 10](https://github.com/user-attachments/assets/fc70d22d-c90a-4b66-9c4a-b66f001cdcc5)
 
-Works on **YouTube**, **Samplette.io**, and **SoundCloud**.
+Works on **YouTube**.
 
-Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube, Samplette.io and SoundCloud.
+Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
 
