@@ -6413,12 +6413,16 @@ function monitorMediaElement() {
       }
       el._audioConnected = true;
     }
+    el.addEventListener('timeupdate', updateVideoWithCues);
     attachVideoMetadataListener();
+    setupVideoCueListener();
+    loadCuePointsAtStartup();
   }
   connect(getVideoElement());
   const obs = new MutationObserver(() => {
     const el = getVideoElement();
     if (el && el !== current) {
+      if (current) current.removeEventListener('timeupdate', updateVideoWithCues);
       current = el;
       connect(el);
     }
