@@ -152,6 +152,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       samplePackSelect = null,
       currentSamplePackName = null,
       activeSamplePackNames = [],
+      samplePacksApplied = false,
       sampleOrigin = { kick: [], hihat: [], snare: [] },
       midiNotes = {
         kick: 37,
@@ -2007,6 +2008,14 @@ async function ensureAudioContext() {
   }
   if (audioContext.state === "suspended") {
     await audioContext.resume().catch(err => console.error("AudioContext resume failed:", err.message));
+  }
+  if (!samplePacksApplied) {
+    try {
+      await applySelectedSamplePacks();
+    } catch (err) {
+      console.warn("Failed to load sample packs:", err);
+    }
+    samplePacksApplied = true;
   }
   if (!deckA) { initTwoDeck(); }
   return audioContext;
@@ -5978,7 +5987,7 @@ function saveSamplePacksToLocalStorage() {
 }
 
 async function applySelectedSamplePacks() {
-  await ensureAudioContext();
+  if (!audioContext) await ensureAudioContext();
   audioBuffers.kick = [];
   audioBuffers.hihat = [];
   audioBuffers.snare = [];
@@ -6007,6 +6016,7 @@ async function applySelectedSamplePacks() {
   updateSampleDisplay("hihat");
   updateSampleDisplay("snare");
   refreshSamplePackDropdown();
+  samplePacksApplied = true;
 }
 
 async function applySamplePackByName(name) {
@@ -6453,12 +6463,6 @@ async function initialize() {
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
     await loadSamplePacksFromLocalStorage();
-    if (activeSamplePackNames.length) {
-      await applySelectedSamplePacks();
-    } else if (currentSamplePackName) {
-      activeSamplePackNames = [currentSamplePackName];
-      await applySelectedSamplePacks();
-    }
     initializeMIDI();
     addControls();
     attachAudioPriming();
