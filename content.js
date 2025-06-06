@@ -1,7 +1,7 @@
 // ---- Basic helpers (added by ChatGPT fix) ----
 if (typeof getVideoElement === "undefined") {
   function getVideoElement() {
-    return document.querySelector('video');
+    return document.querySelector('video, audio');
   }
 }
 
@@ -2612,8 +2612,12 @@ function safeSeekVideo(_, time) {
 var enableReelsSupport = true;
 
 function getVideoElement() {
-  // First look for a video; if none, try for an audio.
+  // First look for a video; if none, try for an audio element (for SoundCloud).
   let media = document.querySelector("video") || document.querySelector("audio");
+
+  // On Samplette.io the YouTube player may be inside an iframe, but this script
+  // also runs inside frames due to manifest "all_frames".
+
   if (!media && enableReelsSupport) {
     if (window.location.href.includes("/shorts/") || window.location.href.includes("/reels/")) {
       media = document.querySelector("ytd-reel-video-renderer video") ||
