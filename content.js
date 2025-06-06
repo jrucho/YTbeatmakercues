@@ -4563,6 +4563,8 @@ function addControls() {
   panelContainer.style.position = "fixed";
   panelContainer.style.top = "20px";
   panelContainer.style.right = "20px";
+  panelContainer.style.maxHeight = "90vh";
+  panelContainer.style.overflowY = "auto";
   panelContainer.style.display = "none";
   document.body.appendChild(panelContainer);
   restorePanelPosition(panelContainer, "ytbm_panelPos");
@@ -6228,6 +6230,8 @@ function injectCustomCSS() {
       flex-direction: column;
       padding: 6px;
       gap: 6px;
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
     }
     .looper-btn {
       background: #333;
