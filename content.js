@@ -1630,9 +1630,9 @@ function captureAppState() {
 
     eqFilterActive,
     eqFilterApplyTarget,
-    eqFilterType: eqFilterNode.type,
-    eqFilterFreq: eqFilterNode.frequency.value,
-    eqFilterGain: eqFilterNode.gain.value,
+    eqFilterType: eqFilterNode ? eqFilterNode.type : 'lowpass',
+    eqFilterFreq: eqFilterNode ? eqFilterNode.frequency.value : 250,
+    eqFilterGain: eqFilterNode ? eqFilterNode.gain.value : 0,
 
     loFiCompActive,
     postCompGainValue: postCompGain.gain.value,
@@ -1651,7 +1651,8 @@ function captureAppState() {
   };
 }
 
-function restoreAppState(st) {
+async function restoreAppState(st) {
+  await ensureAudioContext();
   loopBuffer = st.loopBuffer;
   looperState = st.looperState;
   cuePoints = JSON.parse(JSON.stringify(st.cuePoints));
@@ -4981,9 +4982,9 @@ function addControls() {
 /**************************************
  * EQ / Filter Window
  **************************************/
-function showEQWindowToggle() {
+async function showEQWindowToggle() {
   if (!eqWindowContainer) {
-    buildEQWindow();
+    await buildEQWindow();
     eqWindowContainer.style.display = "block";
   } else {
     eqWindowContainer.style.display =
@@ -4991,7 +4992,9 @@ function showEQWindowToggle() {
   }
 }
 
-function buildEQWindow() {
+async function buildEQWindow() {
+  // Ensure audio nodes exist before reading their properties
+  await ensureAudioContext().catch(console.error);
   eqWindowContainer = document.createElement("div");
   eqWindowContainer.className = "looper-midimap-container";
   eqWindowContainer.style.width = "280px";
