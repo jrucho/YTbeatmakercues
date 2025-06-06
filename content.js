@@ -29,6 +29,14 @@ if (typeof escapeHtml === "undefined") {
       .replace(/'/g, "&#39;");
   }
 }
+// Determine if the extension should run on this page
+function shouldRunOnThisPage() {
+  const host = location.hostname;
+  if (host.includes('samplette.io') && window.top === window) {
+    return false; // avoid duplicate toolbar on outer Samplette page
+  }
+  return true;
+}
 // ----------------------------------------------
 // --- Suggest Cues from Transients Helper ---
 async function suggestCuesFromTransients() {
@@ -2612,12 +2620,35 @@ function safeSeekVideo(_, time) {
 var enableReelsSupport = true;
 
 function getVideoElement() {
-  // First look for a video; if none, try for an audio.
-  let media = document.querySelector("video") || document.querySelector("audio");
+  let media = document.querySelector('video') || document.querySelector('audio');
+
+  // Search inside Samplette iframe if needed
+  if (!media && location.hostname.includes('samplette.io')) {
+    const frame = document.querySelector('iframe');
+    if (frame && frame.contentWindow) {
+      try {
+        media = frame.contentWindow.document.querySelector('video');
+      } catch {}
+    }
+  }
+
+  // Look inside open shadow roots on SoundCloud
+  if (!media && location.hostname.includes('soundcloud.com')) {
+    const stack = Array.from(document.querySelectorAll('*'));
+    while (stack.length && !media) {
+      const el = stack.shift();
+      if (el.shadowRoot) {
+        const found = el.shadowRoot.querySelector('audio');
+        if (found) { media = found; break; }
+        stack.push(...el.shadowRoot.querySelectorAll('*'));
+      }
+    }
+  }
+
   if (!media && enableReelsSupport) {
-    if (window.location.href.includes("/shorts/") || window.location.href.includes("/reels/")) {
-      media = document.querySelector("ytd-reel-video-renderer video") ||
-              document.querySelector("ytd-shorts video");
+    if (window.location.href.includes('/shorts/') || window.location.href.includes('/reels/')) {
+      media = document.querySelector('ytd-reel-video-renderer video') ||
+              document.querySelector('ytd-shorts video');
     }
   }
   return media;
@@ -5128,6 +5159,16 @@ async function initializeMIDI() {
     });
   } catch (e) {
     console.warn("MIDI unavailable:", e);
+    try {
+      const port = chrome.runtime.connect({ name: 'midi-proxy' });
+      port.onMessage.addListener(msg => {
+        if (msg.type === 'midi' && msg.data) {
+          handleMIDIMessage({ data: new Uint8Array(msg.data) });
+        }
+      });
+    } catch (err) {
+      console.error('Failed to connect to MIDI proxy:', err);
+    }
   }
 }
 
@@ -6360,6 +6401,31 @@ function onNewVideoLoaded() {
   updatePitch(0); // calls your function that resets slider & playbackRate
 }
 
+function monitorMediaElement() {
+  let current = null;
+  function connect(el) {
+    if (!el || el._audioConnected) return;
+    try { el.crossOrigin = 'anonymous'; } catch {}
+    if (audioContext) {
+      if (!el._mediaSource) {
+        el._mediaSource = audioContext.createMediaElementSource(el);
+        el._mediaSource.connect(videoGain);
+      }
+      el._audioConnected = true;
+    }
+    attachVideoMetadataListener();
+  }
+  connect(getVideoElement());
+  const obs = new MutationObserver(() => {
+    const el = getVideoElement();
+    if (el && el !== current) {
+      current = el;
+      connect(el);
+    }
+  });
+  obs.observe(document, { childList: true, subtree: true });
+}
+
 // Finally, start it once
 detectVideoChanges();
 attachVideoMetadataListener();
@@ -6368,6 +6434,7 @@ attachVideoMetadataListener();
  * Initialization
  **************************************/
 async function initialize() {
+  if (!shouldRunOnThisPage()) return;
   try {
     let isAudioPrimed = false;
 
@@ -6414,6 +6481,8 @@ async function initialize() {
     detectVideoChanges();
     attachVideoMetadataListener();
     console.log("Initialized (AudioContext deferred until first user interaction).");
+
+    monitorMediaElement();
 
     // Insert custom CSS to raise the playhead's z-index above the cue markers.
     const playheadStyle = document.createElement("style");
