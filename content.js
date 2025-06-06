@@ -1103,8 +1103,7 @@ hideYouTubePopups();
     });
   }
 
-  // Always connect via the background service worker to avoid page restrictions
-  connectBackgroundMIDI();
+
   
   function updateCompUIButtons(label, color) {
     if (loFiCompButton) { loFiCompButton.innerText = "Comp: " + label; loFiCompButton.style.backgroundColor = color; }
@@ -5160,13 +5159,24 @@ function dbToLinear(dbVal) {
  * MIDI
  **************************************/
 async function initializeMIDI() {
-  const port = chrome.runtime?.connect({ name: 'midi' });
-  if (port) {
-    port.onMessage.addListener(msg => {
-      if (msg.type === 'midi' && msg.data) {
-        handleMIDIMessage({ data: new Uint8Array(msg.data) });
-      }
-    });
+  let midiAccess = null;
+  if (navigator.requestMIDIAccess) {
+    try {
+      midiAccess = await navigator.requestMIDIAccess();
+    } catch (err) {
+      console.warn('MIDI blocked, using background', err);
+    }
+  }
+
+  if (midiAccess) {
+    const hook = port => {
+      if (port.type !== 'input') return;
+      port.onmidimessage = handleMIDIMessage;
+    };
+    midiAccess.inputs.forEach(hook);
+    midiAccess.addEventListener('statechange', e => hook(e.port));
+  } else {
+    connectBackgroundMIDI();
   }
 }
 
