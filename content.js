@@ -1618,7 +1618,7 @@ function captureAppState() {
     eqFilterGain: eqFilterNode ? eqFilterNode.gain.value : eqFilterGainDefault,
 
     loFiCompActive,
-    postCompGainValue: postCompGain.gain.value,
+    postCompGainValue: postCompGain ? postCompGain.gain.value : loFiCompDefaultValue / 100,
 
     // reverb + cassette
     reverbActive,
@@ -1653,7 +1653,11 @@ function restoreAppState(st) {
   }
 
   loFiCompActive = st.loFiCompActive;
-  postCompGain.gain.value = st.postCompGainValue;
+  if (postCompGain) {
+    postCompGain.gain.value = st.postCompGainValue;
+  } else {
+    loFiCompDefaultValue = Math.round(st.postCompGainValue * 100);
+  }
 
   // reverb / cassette
   reverbActive = st.reverbActive;
