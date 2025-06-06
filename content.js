@@ -4230,16 +4230,24 @@ if (!container) {
   container = document.querySelector(".ytp-chrome-controls");
 }
 
-// If still not found, fall back:
-if (!container) {
-  container = document.body;
-}
+  // If still not found, fall back to body and place the bar fixed
+  if (!container) {
+    container = document.body;
+  }
   
   minimalUIContainer = document.createElement("div");
   minimalUIContainer.className = "ytbm-minimal-bar";
   minimalUIContainer.style.display = "none";
   minimalUIContainer.style.alignItems = "center";
   minimalUIContainer.style.gap = "8px";
+  minimalUIContainer.style.overflowX = "auto";
+  if (container === document.body) {
+    minimalUIContainer.style.position = "fixed";
+    minimalUIContainer.style.bottom = "10px";
+    minimalUIContainer.style.left = "10px";
+    minimalUIContainer.style.right = "10px";
+    minimalUIContainer.style.zIndex = "2147483647";
+  }
   // Now proceed to insert your minimalUIContainer
 container.insertBefore(minimalUIContainer, container.firstChild);
 
@@ -6401,15 +6409,9 @@ async function initialize() {
     document.addEventListener('click', function primeAudio() {
       if (isAudioPrimed) return;
       isAudioPrimed = true;
-
-      if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        setupAudioNodes();
-      }
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-      console.log("Audio primed on first click.");
+      ensureAudioContext().then(() => {
+        console.log("Audio primed on first click.");
+      });
     }, { once: true });
     
     await loadMappingsFromLocalStorage();
