@@ -43,8 +43,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 👁️ **Minimal & Advanced UI**  
 Choose between a clean minimal bar or a full panel with all controls.
-On Samplette.io the bar only appears inside the embedded player. On SoundCloud
-the bar is fixed at the bottom and scrolls horizontally if needed.
+On Samplette.io the bar only appears inside the embedded player and resizes to
+its width. On SoundCloud the bar is fixed at the bottom of the page.
 
 - 🥁 **Sample Kits**  
   Manage built-in and imported samples (kick, hihat, snare), randomize or load packs on demand.

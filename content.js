@@ -1100,22 +1100,8 @@ hideYouTubePopups();
     });
   }
 
-  // Attach pulse‑show hook to every MIDI input, falling back to background
-  if (navigator.requestMIDIAccess) {
-    navigator.requestMIDIAccess().then(access => {
-      function hook(port) {
-        if (port.type !== 'input') return;
-        port.onmidimessage = ev => processMidiData(Array.from(ev.data));
-      }
-      access.inputs.forEach(hook);
-      access.addEventListener('statechange', e => hook(e.port));
-    }).catch(err => {
-      console.warn('MIDI blocked, using background', err);
-      connectBackgroundMIDI();
-    });
-  } else {
-    connectBackgroundMIDI();
-  }
+  // Always connect via the background service worker to avoid page restrictions
+  connectBackgroundMIDI();
   
   function updateCompUIButtons(label, color) {
     if (loFiCompButton) { loFiCompButton.innerText = "Comp: " + label; loFiCompButton.style.backgroundColor = color; }
@@ -4268,6 +4254,8 @@ function buildMinimalUIBar() {
   minimalUIContainer.style.alignItems = "center";
   minimalUIContainer.style.gap = "8px";
   minimalUIContainer.style.overflowX = "auto";
+  minimalUIContainer.style.flexWrap = "wrap";
+  minimalUIContainer.style.width = "100%";
   if (container === document.body) {
     minimalUIContainer.style.position = "fixed";
     minimalUIContainer.style.bottom = "10px";
@@ -5163,21 +5151,13 @@ function dbToLinear(dbVal) {
  * MIDI
  **************************************/
 async function initializeMIDI() {
-  try {
-    let access = await navigator.requestMIDIAccess({ sysex: false });
-    access.inputs.forEach(inp => {
-      inp.onmidimessage = e => handleMIDIMessage(e);
+  const port = chrome.runtime?.connect({ name: 'midi' });
+  if (port) {
+    port.onMessage.addListener(msg => {
+      if (msg.type === 'midi' && msg.data) {
+        handleMIDIMessage({ data: new Uint8Array(msg.data) });
+      }
     });
-  } catch (e) {
-    console.warn("MIDI unavailable:", e);
-    const port = chrome.runtime?.connect({ name: 'midi' });
-    if (port) {
-      port.onMessage.addListener(msg => {
-        if (msg.type === 'midi' && msg.data) {
-          handleMIDIMessage({ data: new Uint8Array(msg.data) });
-        }
-      });
-    }
   }
 }
 
@@ -6533,7 +6513,8 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   style.textContent = `
     .ytbm-minimal-bar {
       display: flex !important;
-      flex-wrap: nowrap !important;
+      flex-wrap: wrap !important;
+      width: 100% !important;
       overflow-x: auto !important;
       gap: 4px !important;
     }
