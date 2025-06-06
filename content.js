@@ -2630,6 +2630,11 @@ function getVideoElement() {
 // Updated progress bar lookup function
 function getProgressBarElement() {
   let progressBar = document.querySelector('.ytp-progress-bar');
+
+  // SoundCloud's progress bar element
+  if (!progressBar) {
+    progressBar = document.querySelector('.playbackTimeline__progressWrapper');
+  }
   
   if (!progressBar && enableReelsSupport) {
     progressBar = document.querySelector('ytd-reel-video-renderer .ytp-progress-bar') ||
@@ -6364,6 +6369,21 @@ function onNewVideoLoaded() {
   updatePitch(0); // calls your function that resets slider & playbackRate
 }
 
+// Watch for media elements dynamically added on sites like SoundCloud.
+let lastMediaElement = null;
+function monitorMediaElement() {
+  setInterval(() => {
+    const media = getVideoElement();
+    if (media && media !== lastMediaElement) {
+      lastMediaElement = media;
+      attachVideoMetadataListener();
+      loadCuePointsAtStartup();
+      media.addEventListener("timeupdate", updateVideoWithCues);
+      observeProgressBar();
+    }
+  }, 1000);
+}
+
 // Finally, start it once
 detectVideoChanges();
 attachVideoMetadataListener();
@@ -6417,6 +6437,7 @@ async function initialize() {
     }, { once: true });
     detectVideoChanges();
     attachVideoMetadataListener();
+    monitorMediaElement();
     console.log("Initialized (AudioContext deferred until first user interaction).");
 
     // Insert custom CSS to raise the playhead's z-index above the cue markers.
