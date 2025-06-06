@@ -3937,8 +3937,9 @@ async function onKeyDown(e) {
     }
   }
 
-  let vid = getVideoElement();
+  const vid = getVideoElement();
   if ((e.ctrlKey || e.metaKey) && k >= "0" && k <= "9") {
+    if (!vid) return; // no media element, ignore
     // Prevent YouTube's default behavior (jumping in the video)
     e.preventDefault();
     e.stopPropagation();
