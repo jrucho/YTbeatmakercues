@@ -3404,20 +3404,6 @@ function saveCuePointsToURL() {
   }
 }
 
-function observeProgressBar() {
-  const progressBar = getProgressBarElement();
-  if (!progressBar) return;
-  
-  const observer = new MutationObserver((mutationsList, observer) => {
-    // When YouTube re‑renders the progress bar, update your cues.
-    updateCueMarkers();
-  });
-  
-  observer.observe(progressBar, { childList: true, subtree: true });
-  
-  // Optionally, disconnect the observer when no longer needed.
-  return observer;
-}
 
 function updateCueMarkers() {
   const bar = getProgressBarElement();
@@ -6379,7 +6365,6 @@ function monitorMediaElement() {
       attachVideoMetadataListener();
       loadCuePointsAtStartup();
       media.addEventListener("timeupdate", updateVideoWithCues);
-      observeProgressBar();
     }
   }, 1000);
 }
