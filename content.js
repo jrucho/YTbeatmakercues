@@ -31,6 +31,12 @@ if (typeof escapeHtml === "undefined") {
 }
 // Determine if the extension should run on this page
 function shouldRunOnThisPage() {
+  if (location.hostname.includes('samplette.io')) {
+    // skip outer Samplette page (YouTube runs inside an iframe)
+    if (!document.querySelector('video') && !document.querySelector('audio')) {
+      return false;
+    }
+  }
   return true;
 }
 // ----------------------------------------------

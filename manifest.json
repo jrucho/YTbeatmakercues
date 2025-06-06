@@ -4,14 +4,14 @@
   "version": "1.2",
   "description": "Mark cue points, play drum sounds, and customize your experience on YouTube.",
   "permissions": ["storage", "activeTab", "scripting", "unlimitedStorage"],
-  "host_permissions": ["https://www.youtube.com/*"],
+  "host_permissions": ["https://www.youtube.com/*", "https://samplette.io/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": ["https://www.youtube.com/*", "https://samplette.io/*"],
       "js": ["content.js"],
       "css": ["style.css"],
       "all_frames": true
