@@ -1076,7 +1076,7 @@ hideYouTubePopups();
   addTouchSequencerButtonToAdvancedUI();
 
   // Attach pulse‑show hook to every MIDI input
-  if (navigator.requestMIDIAccess) {
+  if (!isSampletteEmbed && navigator.requestMIDIAccess) {
     navigator.requestMIDIAccess().then(access => {
       function hook(port) {
         if (port.type !== 'input') return;

@@ -18,6 +18,7 @@
         "https://www.youtube.com/*",
         "https://samplette.io/*"
       ],
+      "all_frames": true,
       "js": ["content.js"],
       "css": ["style.css"]
     }
