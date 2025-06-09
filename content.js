@@ -336,24 +336,26 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   async function startMonitoring() {
     if (monitorMicDeviceId === 'off') return;
-    if (monitorOutputAudio) stopMonitoring();
+    stopMonitoring();
     try {
-      const mc = { audio: true, video: false };
+      const constraints = {
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        },
+        video: false
+      };
       if (monitorMicDeviceId !== 'default') {
-        mc.audio = { deviceId: { exact: monitorMicDeviceId } };
+        constraints.audio.deviceId = { exact: monitorMicDeviceId };
       }
-      const stream = await navigator.mediaDevices.getUserMedia(mc);
-      const audioEl = document.createElement('audio');
-      audioEl.autoplay = true;
-      audioEl.style.display = 'none';
-      if (document.body) document.body.appendChild(audioEl);
-      audioEl.srcObject = stream;
-      if (audioEl.setSinkId) {
-        try { await audioEl.setSinkId(''); } catch {}
-      }
-      await audioEl.play().catch(() => {});
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      monitorContext = new (window.AudioContext || window.webkitAudioContext)({
+        latencyHint: 'interactive'
+      });
+      monitorSource = monitorContext.createMediaStreamSource(stream);
+      monitorSource.connect(monitorContext.destination);
       monitorStream = stream;
-      monitorOutputAudio = audioEl;
       monitoringActive = true;
     } catch (err) {
       console.warn('monitor input error', err);
@@ -367,11 +369,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       monitorStream.getTracks().forEach(t => t.stop());
       monitorStream = null;
     }
-    if (monitorOutputAudio) {
-      monitorOutputAudio.pause();
-      monitorOutputAudio.srcObject = null;
-      monitorOutputAudio.remove();
-      monitorOutputAudio = null;
+    if (monitorSource) {
+      try { monitorSource.disconnect(); } catch {}
+      monitorSource = null;
+    }
+    if (monitorContext) {
+      monitorContext.close().catch(() => {});
+      monitorContext = null;
     }
     monitoringActive = false;
     updateMonitorSelectColor();
@@ -600,7 +604,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let micSourceNode = null;
   let micGainNode = null;
   let monitorStream = null;
-  let monitorOutputAudio = null;
+  let monitorContext = null;
+  let monitorSource = null;
   let monitoringActive = false;
   let blindMode = false;
   
