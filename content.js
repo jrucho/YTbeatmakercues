@@ -190,7 +190,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let externalOutputDest = null;
   let outputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
-  let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'default';
+  let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
@@ -292,15 +292,15 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const inputs = devices.filter(d => d.kind === 'audioinput');
       monitorInputSelect.innerHTML = '';
-      monitorInputSelect.add(new Option('Default input', 'default'));
+      monitorInputSelect.add(new Option('Default monitoring input off', 'off'));
       inputs.forEach(d => {
         const opt = new Option(d.label || 'Device', d.deviceId);
         monitorInputSelect.add(opt);
       });
       let saved = localStorage.getItem('ytbm_monitorInputDeviceId');
       if (!saved) {
-        saved = 'default';
-        localStorage.setItem('ytbm_monitorInputDeviceId', 'default');
+        saved = 'off';
+        localStorage.setItem('ytbm_monitorInputDeviceId', 'off');
       }
       monitorInputSelect.value = saved;
       monitorInputSelect.disabled = inputs.length === 0;
@@ -316,7 +316,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorInputSelect.style.flex = '1 1 auto';
     monitorInputSelect.title = 'Choose monitoring input device';
     monitorInputSelect.addEventListener('change', e => {
-      monitorMicDeviceId = e.target.value || 'default';
+      monitorMicDeviceId = e.target.value || 'off';
       localStorage.setItem('ytbm_monitorInputDeviceId', monitorMicDeviceId);
     });
     parent.appendChild(monitorInputSelect);
@@ -668,8 +668,11 @@ async function toggleMicInput() {
       }
       monitorOutputAudio.play().catch(() => {});
     }
-    micGainNode.connect(monitorOutputDest);
-    if (monitorMicDeviceId && monitorMicDeviceId !== 'default' && monitorMicDeviceId !== micDeviceId) {
+    if (monitorMicDeviceId === 'off') {
+      // monitoring disabled
+    } else if (monitorMicDeviceId === 'default' || monitorMicDeviceId === micDeviceId) {
+      micGainNode.connect(monitorOutputDest);
+    } else if (monitorMicDeviceId) {
       try {
         const mConstraints = {
           audio: { deviceId: { exact: monitorMicDeviceId }, channelCount: 1 },
