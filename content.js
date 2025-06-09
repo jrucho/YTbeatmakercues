@@ -145,20 +145,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   async function setOutputDevice(deviceId) {
     if (!audioContext) return;
     localStorage.setItem('ytbm_outputDeviceId', deviceId);
-    let success = false;
 
-    // Prefer native AudioContext.setSinkId when available for lower latency
-    if (typeof audioContext.setSinkId === 'function') {
-      try {
-        await audioContext.setSinkId(deviceId === 'default' ? '' : deviceId);
-        currentOutputNode = audioContext.destination;
-        success = true;
-      } catch (err) {
-        console.warn('AudioContext.setSinkId failed', err);
-      }
-    }
-
-    // Clean up any existing custom routing
+    // Remove any existing routing first
     if (externalOutputDest) {
       try { externalOutputDest.disconnect(); } catch {}
       externalOutputDest = null;
@@ -166,33 +154,38 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     if (outputAudio) {
       outputAudio.pause();
       outputAudio.srcObject = null;
+      outputAudio.remove();
+      outputAudio = null;
     }
 
     currentOutputNode = audioContext.destination;
+    let success = true;
 
-    if (!success && deviceId && deviceId !== 'default') {
+    if (deviceId && deviceId !== 'default') {
       try {
-        if (!outputAudio) {
-          outputAudio = new Audio();
-          outputAudio.autoplay = true;
-          outputAudio.style.display = 'none';
-          document.body.appendChild(outputAudio);
-        }
+        outputAudio = new Audio();
+        outputAudio.autoplay = true;
+        outputAudio.style.display = 'none';
+        document.body.appendChild(outputAudio);
         externalOutputDest = audioContext.createMediaStreamDestination();
         outputAudio.srcObject = externalOutputDest.stream;
-        await outputAudio.setSinkId(deviceId);
+        if (outputAudio.setSinkId) {
+          await outputAudio.setSinkId(deviceId);
+        }
         await outputAudio.play().catch(() => {});
         currentOutputNode = externalOutputDest;
-        success = true;
       } catch (err) {
         console.warn('Failed to apply output device', err);
+        success = false;
         currentOutputNode = audioContext.destination;
       }
     }
+
     if (!success && outputDeviceSelect) {
       outputDeviceSelect.value = 'default';
       localStorage.setItem('ytbm_outputDeviceId', 'default');
     }
+
     applyAllFXRouting();
   }
 
@@ -207,8 +200,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
-    const supportsSetSink = (audioContext && audioContext.setSinkId) ||
-      (HTMLMediaElement.prototype.setSinkId);
+    const supportsSetSink = (HTMLMediaElement.prototype.setSinkId !== undefined);
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !supportsSetSink) {
       outputDeviceSelect.disabled = true;
       outputDeviceSelect.innerHTML = '<option>Unsupported</option>';

@@ -24,7 +24,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Route audio to any available output device via the **Audio Out** dropdown ("Default output" preselected)
 * Choose your microphone via the **Audio In** dropdown ("Default input" preselected)
 * Pick a dedicated monitoring source in the **Monitor In** dropdown. Selecting a device plays it through your system speakers; choose "Default monitoring input off" to disable it.
-* Lower latency when changing outputs thanks to native `AudioContext.setSinkId` support
+* Output routing adjusts automatically when selecting a new device
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles through Off → Record (green) → Monitor (red) so you can hear your input while capturing loops or video
 
