@@ -6,14 +6,20 @@
 </head>
 <body>
   <h3>Customize Drum Keys</h3>
-  <p>Kick (Keyboard): <input id="kickKey" type="text" maxlength="1" /></p>
-  <p>Hi-Hat (Keyboard): <input id="hihatKey" type="text" maxlength="1" /></p>
-  <p>Snare (Keyboard): <input id="snareKey" type="text" maxlength="1" /></p>
+  <p><label for="kickKey">Kick (Keyboard):</label>
+     <input id="kickKey" name="kickKey" type="text" maxlength="1" /></p>
+  <p><label for="hihatKey">Hi-Hat (Keyboard):</label>
+     <input id="hihatKey" name="hihatKey" type="text" maxlength="1" /></p>
+  <p><label for="snareKey">Snare (Keyboard):</label>
+     <input id="snareKey" name="snareKey" type="text" maxlength="1" /></p>
 
   <h3>Customize MIDI Notes</h3>
-  <p>Kick (MIDI): <input id="kickNote" type="number" /></p>
-  <p>Hi-Hat (MIDI): <input id="hihatNote" type="number" /></p>
-  <p>Snare (MIDI): <input id="snareNote" type="number" /></p>
+  <p><label for="kickNote">Kick (MIDI):</label>
+     <input id="kickNote" name="kickNote" type="number" /></p>
+  <p><label for="hihatNote">Hi-Hat (MIDI):</label>
+     <input id="hihatNote" name="hihatNote" type="number" /></p>
+  <p><label for="snareNote">Snare (MIDI):</label>
+     <input id="snareNote" name="snareNote" type="number" /></p>
 
   <button id="saveSettings">Save Settings</button>
 </body>
