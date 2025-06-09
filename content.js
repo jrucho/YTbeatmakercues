@@ -750,7 +750,6 @@ async function toggleMicInput() {
     if (micGainNode) micGainNode.disconnect();
     micSourceNode = null;
     micGainNode = null;
-    stopMonitoring();
     micState = 0;
   }
 
