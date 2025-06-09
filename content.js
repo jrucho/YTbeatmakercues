@@ -304,6 +304,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       }
       monitorInputSelect.value = saved;
       monitorInputSelect.disabled = inputs.length === 0;
+      monitorMicDeviceId = saved;
+      applyMonitorSelection();
     } catch (err) {
       console.error('Failed to enumerate input devices', err);
     }
@@ -318,11 +320,81 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorInputSelect.addEventListener('change', e => {
       monitorMicDeviceId = e.target.value || 'off';
       localStorage.setItem('ytbm_monitorInputDeviceId', monitorMicDeviceId);
+      applyMonitorSelection();
     });
     parent.appendChild(monitorInputSelect);
     populateMonitorInputSelect();
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', populateMonitorInputSelect);
+    }
+  }
+
+  async function startMonitoring() {
+    if (monitorMicDeviceId === 'off') return;
+    await ensureAudioContext();
+    if (!monitorOutputAudio) {
+      monitorOutputAudio = new Audio();
+      monitorOutputAudio.autoplay = true;
+      monitorOutputAudio.style.display = 'none';
+      document.body.appendChild(monitorOutputAudio);
+      monitorOutputDest = audioContext.createMediaStreamDestination();
+      monitorOutputAudio.srcObject = monitorOutputDest.stream;
+      if (monitorOutputAudio.setSinkId) {
+        try { await monitorOutputAudio.setSinkId(''); } catch {}
+      }
+      monitorOutputAudio.play().catch(() => {});
+    }
+    if (monitorSourceNode) {
+      monitorSourceNode.disconnect();
+    }
+    if (monitorStream) {
+      monitorStream.getTracks().forEach(t => t.stop());
+      monitorStream = null;
+    }
+    try {
+      const mc = { audio: { channelCount: 1 }, video: false };
+      if (monitorMicDeviceId !== 'default') {
+        mc.audio.deviceId = { exact: monitorMicDeviceId };
+      }
+      monitorStream = await navigator.mediaDevices.getUserMedia(mc);
+      monitorSourceNode = audioContext.createMediaStreamSource(monitorStream);
+      monitorSourceNode.connect(monitorOutputDest);
+      monitoringActive = true;
+    } catch (err) {
+      console.warn('monitor input error', err);
+      stopMonitoring();
+    }
+    updateMonitorSelectColor();
+  }
+
+  function stopMonitoring() {
+    if (monitorSourceNode) {
+      monitorSourceNode.disconnect();
+      monitorSourceNode = null;
+    }
+    if (monitorStream) {
+      monitorStream.getTracks().forEach(t => t.stop());
+      monitorStream = null;
+    }
+    if (monitorOutputDest) {
+      try { monitorOutputDest.disconnect(); } catch {}
+      monitorOutputDest = null;
+    }
+    if (monitorOutputAudio) {
+      monitorOutputAudio.pause();
+      monitorOutputAudio.srcObject = null;
+      monitorOutputAudio.remove();
+      monitorOutputAudio = null;
+    }
+    monitoringActive = false;
+    updateMonitorSelectColor();
+  }
+
+  function applyMonitorSelection() {
+    if (monitorMicDeviceId === 'off') {
+      stopMonitoring();
+    } else {
+      startMonitoring();
     }
   }
 
@@ -537,12 +609,14 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     });
   }
   // -----------------------------------------------------------------
-  let micState = 0;
+  let micState = 0; // 0 = off, 1 = recording
   let micSourceNode = null;
   let micGainNode = null;
   let monitorSourceNode = null;
+  let monitorStream = null;
   let monitorOutputDest = null;
   let monitorOutputAudio = null;
+  let monitoringActive = false;
   let blindMode = false;
   
   // Global variable for the touch modifier mode
@@ -622,7 +696,7 @@ async function toggleMicInput() {
   if (!audioContext) await ensureAudioContext();
 
   if (micState === 0) {
-    // STATE 0 → 1: Turn mic on for recording only (no live monitoring)
+    // STATE 0 → 1: Turn mic on for recording only
     try {
       const constraints = {
         audio: {
@@ -641,76 +715,24 @@ async function toggleMicInput() {
       micSourceNode = audioContext.createMediaStreamSource(stream);
       micGainNode = audioContext.createGain();
       micGainNode.gain.value = 1;
-      
+
       // Connect mic signal only to mainRecorderMix (for recording)
       micSourceNode.connect(micGainNode);
       micGainNode.connect(mainRecorderMix);
-      // Do NOT connect to masterGain so you won't hear it live
-
-      micState = 1; // Green state: active but not monitoring
-      updateMonitorSelectColor();
+      micState = 1;
     } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Could not access microphone: " + err.message);
+      console.error('Error accessing microphone:', err);
+      alert('Could not access microphone: ' + err.message);
     }
-  } 
-  else if (micState === 1) {
-    // STATE 1 → 2: Turn on live monitoring to default output only
-    if (!monitorOutputAudio) {
-      monitorOutputAudio = new Audio();
-      monitorOutputAudio.autoplay = true;
-      monitorOutputAudio.style.display = 'none';
-      document.body.appendChild(monitorOutputAudio);
-      monitorOutputDest = audioContext.createMediaStreamDestination();
-      monitorOutputAudio.srcObject = monitorOutputDest.stream;
-      if (monitorOutputAudio.setSinkId) {
-        try { await monitorOutputAudio.setSinkId(''); } catch {}
-      }
-      monitorOutputAudio.play().catch(() => {});
-    }
-    if (monitorMicDeviceId === 'off') {
-      // monitoring disabled
-    } else if (monitorMicDeviceId === 'default' || monitorMicDeviceId === micDeviceId) {
-      micGainNode.connect(monitorOutputDest);
-    } else if (monitorMicDeviceId) {
-      try {
-        const mConstraints = {
-          audio: { deviceId: { exact: monitorMicDeviceId }, channelCount: 1 },
-          video: false
-        };
-        const mStream = await navigator.mediaDevices.getUserMedia(mConstraints);
-        monitorSourceNode = audioContext.createMediaStreamSource(mStream);
-        monitorSourceNode.connect(monitorOutputDest);
-      } catch (err) {
-        console.warn('monitor input error', err);
-      }
-    }
-    micState = 2;
-  }
-  else if (micState === 2) {
-    // STATE 2 → 0: Turn mic completely off
+  } else {
+    // STATE 1 → 0: Turn mic completely off
     if (micSourceNode?.mediaStream) {
-      micSourceNode.mediaStream.getTracks().forEach(track => track.stop());
+      micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
     }
     if (micSourceNode) micSourceNode.disconnect();
     if (micGainNode) micGainNode.disconnect();
-    if (monitorSourceNode?.mediaStream) {
-      monitorSourceNode.mediaStream.getTracks().forEach(track => track.stop());
-    }
-    if (monitorSourceNode) monitorSourceNode.disconnect();
-    if (monitorOutputDest) {
-      try { micGainNode.disconnect(monitorOutputDest); } catch {}
-      try { monitorSourceNode?.disconnect(monitorOutputDest); } catch {}
-      try { monitorOutputDest.disconnect(); } catch {}
-      monitorOutputDest = null;
-    }
-    if (monitorOutputAudio) {
-      monitorOutputAudio.pause();
-      monitorOutputAudio.srcObject = null;
-      monitorOutputAudio.remove();
-      monitorOutputAudio = null;
-    }
-    monitorSourceNode = null;
+    micSourceNode = null;
+    micGainNode = null;
     micState = 0;
   }
 
@@ -722,17 +744,15 @@ function updateMicButtonColor() {
   if (micButton) {
     if (micState === 0) {
       micButton.style.backgroundColor = "#333"; // Off
-    } else if (micState === 1) {
-      micButton.style.backgroundColor = "green"; // Active but not monitoring (recording only)
-    } else if (micState === 2) {
-      micButton.style.backgroundColor = "red"; // Active and monitoring
+    } else {
+      micButton.style.backgroundColor = "green"; // Active
     }
   }
 }
 
 function updateMonitorSelectColor() {
   if (monitorInputSelect) {
-    if (micState === 2) {
+    if (monitoringActive) {
       monitorInputSelect.style.backgroundColor = "green";
     } else {
       monitorInputSelect.style.backgroundColor = "";
@@ -1850,6 +1870,7 @@ function cleanupResources() {
     audioContext.close().catch(console.error);
     audioContext = null;
   }
+  stopMonitoring();
   if (videoPreviewURL) {
     URL.revokeObjectURL(videoPreviewURL);
     videoPreviewURL = null;
@@ -2280,6 +2301,7 @@ async function ensureAudioContext() {
   if (!deckA) { initTwoDeck(); }
   if (!currentOutputNode) currentOutputNode = audioContext.destination;
   await applySavedOutputDevice();
+  applyMonitorSelection();
   return audioContext;
 }
 
