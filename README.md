@@ -23,14 +23,12 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Minimal bar and advanced window become scrollable when space is limited
 * Route audio to any available output device via the **Audio Out** dropdown ("Default output" preselected)
 * Choose your microphone via the **Audio In** dropdown ("Default input" preselected)
-* Pick a dedicated monitoring source in the **Monitor In** dropdown. Selecting a device plays it through your system speakers; choose "Default monitoring input off" to disable it. Monitoring is independent of the mic button.
-* Use the **Mon On/Off** switch next to **Audio Out** to quickly mute or enable monitoring when switching pages.
-* Monitoring stays active across tabs and stops cleanly when you navigate away
+* Use the **Mon On/Off** switch next to **Audio Out** to hear your microphone through the selected output device. Monitoring stays active across tabs and stops cleanly when you navigate away.
 * Output routing adjusts automatically when selecting a new device
 * Lower latency when switching outputs using native sink routing when supported
 * Advanced control buttons now display in two columns for easier access
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
-* Mic button cycles through Off → Record (green) → Monitor (red) so you can hear your input while capturing loops or video
+* Mic button toggles recording on/off; use the **Mon On/Off** switch to monitor the input
 
 Manage multiple compressors (Native, Tape Warm, Roland SP404OG) to shape your audio character. Adjust settings effortlessly through a user-friendly interface.
 

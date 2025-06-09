@@ -378,58 +378,26 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorToggleBtn.textContent = monitorEnabled ? 'Mon On' : 'Mon Off';
   }
 
-  async function startMonitoring() {
-    if (monitorMicDeviceId === 'off') return;
-    stopMonitoring();
-    try {
-      const constraints = {
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        },
-        video: false
-      };
-      if (monitorMicDeviceId !== 'default') {
-        constraints.audio.deviceId = { exact: monitorMicDeviceId };
-      }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      monitorContext = new (window.AudioContext || window.webkitAudioContext)({
-        latencyHint: 'interactive'
-      });
-      monitorSource = monitorContext.createMediaStreamSource(stream);
-      monitorSource.connect(monitorContext.destination);
-      monitorStream = stream;
-      monitoringActive = true;
-    } catch (err) {
-      console.warn('monitor input error', err);
-      stopMonitoring();
-    }
+  function startMonitoring() {
+    if (micState !== 1 || !micGainNode) return;
+    try { micGainNode.connect(bus4Gain); } catch {}
+    monitoringActive = true;
     updateMonitorSelectColor();
   }
 
   function stopMonitoring() {
-    if (monitorStream) {
-      monitorStream.getTracks().forEach(t => t.stop());
-      monitorStream = null;
-    }
-    if (monitorSource) {
-      try { monitorSource.disconnect(); } catch {}
-      monitorSource = null;
-    }
-    if (monitorContext) {
-      monitorContext.close().catch(() => {});
-      monitorContext = null;
+    if (micGainNode) {
+      try { micGainNode.disconnect(bus4Gain); } catch {}
     }
     monitoringActive = false;
     updateMonitorSelectColor();
   }
 
   function applyMonitorSelection() {
-    if (!monitorEnabled || monitorMicDeviceId === 'off') {
-      stopMonitoring();
-    } else {
+    if (monitorEnabled && micState === 1) {
       startMonitoring();
+    } else {
+      stopMonitoring();
     }
   }
 
@@ -647,7 +615,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     });
   }
   // -----------------------------------------------------------------
-  let micState = 0; // 0 = off, 1 = recording only, 2 = recording + monitoring
+  let micState = 0; // 0 = off, 1 = on
   let micSourceNode = null;
   let micGainNode = null;
   let monitorStream = null;
@@ -761,40 +729,36 @@ async function toggleMicInput() {
       console.error('Error accessing microphone:', err);
       alert('Could not access microphone: ' + err.message);
     }
-  } else if (micState === 1) {
-    // STATE 1 → 2: Route mic to output/video
-    if (micGainNode) {
-      micGainNode.connect(bus4Gain);
-    }
-    micState = 2;
   } else {
-    // STATE 2 → 0: Turn mic completely off
+    // Turn mic off
+    if (monitorEnabled) stopMonitoring();
     if (micSourceNode?.mediaStream) {
       micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
     }
-    if (micGainNode && bus4Gain) {
-      try { micGainNode.disconnect(bus4Gain); } catch {}
-    }
     if (micSourceNode) micSourceNode.disconnect();
-    if (micGainNode) micGainNode.disconnect();
+    if (micGainNode) {
+      try { micGainNode.disconnect(); } catch {}
+      micGainNode.disconnect(mainRecorderMix);
+    }
     micSourceNode = null;
     micGainNode = null;
     micState = 0;
   }
+
+  applyMonitorSelection();
 
   updateMicButtonColor();
   updateMonitorSelectColor();
 }
 
 function updateMicButtonColor() {
-  if (micButton) {
-    if (micState === 0) {
-      micButton.style.backgroundColor = "#333"; // Off
-    } else if (micState === 1) {
-      micButton.style.backgroundColor = "green"; // Recording only
-    } else if (micState === 2) {
-      micButton.style.backgroundColor = "red"; // Monitoring
-    }
+  if (!micButton) return;
+  if (micState === 0) {
+    micButton.style.backgroundColor = "#333"; // Off
+  } else if (monitorEnabled) {
+    micButton.style.backgroundColor = "red"; // Monitoring
+  } else {
+    micButton.style.backgroundColor = "green"; // Recording only
   }
 }
 
@@ -4912,8 +4876,6 @@ function addControls() {
   buildMonitorToggle(cw);
 
   buildInputDeviceDropdown(cw);
-
-  buildMonitorInputDropdown(cw);
   updateMonitorSelectColor();
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
