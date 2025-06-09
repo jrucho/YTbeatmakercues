@@ -128,8 +128,16 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let padIndicators = [];
   const isSampletteEmbed = document.referrer.includes('samplette.io');
   function shouldRunOnThisPage() {
-    if (window.location.hostname === 'samplette.io' && window === window.top) {
+    const host = window.location.hostname;
+    if (host === 'samplette.io' && window === window.top) {
+      // Skip the outer Samplette page but run inside the YouTube iframe
       return false;
+    }
+    if (host.includes('youtube.com')) {
+      // Avoid duplicate initialization inside miscellaneous YouTube iframes
+      if (window !== window.top && !isSampletteEmbed) {
+        return false;
+      }
     }
     return true;
   }
