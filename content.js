@@ -5117,7 +5117,8 @@ function addControls() {
 /**************************************
  * EQ / Filter Window
  **************************************/
-function showEQWindowToggle() {
+async function showEQWindowToggle() {
+  await ensureAudioContext();
   if (!eqWindowContainer) {
     buildEQWindow();
     eqWindowContainer.style.display = "block";
@@ -5128,6 +5129,7 @@ function showEQWindowToggle() {
 }
 
 function buildEQWindow() {
+  if (!eqFilterNode) return; // safety check
   eqWindowContainer = document.createElement("div");
   eqWindowContainer.className = "looper-midimap-container";
   eqWindowContainer.style.width = "280px";
