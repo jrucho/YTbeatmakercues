@@ -409,14 +409,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
   }
 
-  function handleVisibilityChange() {
-    if (document.hidden) {
-      if (monitoringActive) stopMonitoring();
-    } else {
-      if (monitorMicDeviceId !== 'off' && !monitoringActive) startMonitoring();
-    }
-  }
-  addTrackedListener(document, 'visibilitychange', handleVisibilityChange);
+  // Monitoring persists across tabs. Clean up only on page unload to
+  // avoid doubling up when navigating between videos.
 
 
   async function applySavedOutputDevice() {
