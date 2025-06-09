@@ -133,7 +133,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // Skip the outer Samplette page but run inside the YouTube iframe
       return false;
     }
-    if (host.includes('youtube.com')) {
+    if (host.includes('youtube.com') || host.includes('youtube-nocookie.com')) {
       // Avoid duplicate initialization inside miscellaneous YouTube iframes
       if (window !== window.top && !isSampletteEmbed) {
         return false;

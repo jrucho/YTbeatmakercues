@@ -6,6 +6,7 @@
   "permissions": ["storage", "activeTab", "scripting", "unlimitedStorage"],
   "host_permissions": [
     "https://www.youtube.com/*",
+    "https://www.youtube-nocookie.com/*",
     "https://samplette.io/*"
   ],
   "action": {
@@ -16,6 +17,7 @@
     {
       "matches": [
         "https://www.youtube.com/*",
+        "https://www.youtube-nocookie.com/*",
         "https://samplette.io/*"
       ],
       "all_frames": true,
