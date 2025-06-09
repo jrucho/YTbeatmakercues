@@ -175,6 +175,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
+  let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || null;
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
@@ -215,6 +216,35 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     populateOutputDeviceSelect().then(applySavedOutputDevice);
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', populateOutputDeviceSelect);
+    }
+  }
+
+  async function chooseInputDevice() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      alert('Input selection unsupported in this browser');
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      if (inputs.length === 0) {
+        alert('No audio input devices found');
+        return;
+      }
+      const currentIdx = inputs.findIndex(d => d.deviceId === micDeviceId);
+      const choice = prompt(
+        'Select audio input device:\n' +
+          inputs.map((d, i) => `${i + 1}: ${d.label || 'Device'}`).join('\n'),
+        currentIdx >= 0 ? String(currentIdx + 1) : '1'
+      );
+      if (choice === null) return;
+      const index = parseInt(choice, 10) - 1;
+      if (index >= 0 && index < inputs.length) {
+        micDeviceId = inputs[index].deviceId;
+        localStorage.setItem('ytbm_inputDeviceId', micDeviceId);
+      }
+    } catch (err) {
+      console.error('Failed to choose input device', err);
     }
   }
 
@@ -510,7 +540,7 @@ async function toggleMicInput() {
   if (micState === 0) {
     // STATE 0 → 1: Turn mic on for recording only (no live monitoring)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -519,7 +549,9 @@ async function toggleMicInput() {
           channelCount: 1
         },
         video: false
-      });
+      };
+      if (micDeviceId) constraints.audio.deviceId = { exact: micDeviceId };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micSourceNode = audioContext.createMediaStreamSource(stream);
       micGainNode = audioContext.createGain();
       micGainNode.gain.value = 1;
@@ -4655,6 +4687,13 @@ function addControls() {
   buildSamplePackDropdown();
 
   buildOutputDeviceDropdown(cw);
+
+  const inputBtn = document.createElement('button');
+  inputBtn.className = 'looper-btn';
+  inputBtn.innerText = 'Audio In';
+  inputBtn.title = 'Select audio input device';
+  inputBtn.addEventListener('click', chooseInputDevice);
+  cw.appendChild(inputBtn);
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
