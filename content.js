@@ -336,34 +336,22 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   async function startMonitoring() {
     if (monitorMicDeviceId === 'off') return;
-    await ensureAudioContext();
-    if (!monitorOutputAudio) {
+    if (monitorOutputAudio) stopMonitoring();
+    try {
+      const mc = { audio: true, video: false };
+      if (monitorMicDeviceId !== 'default') {
+        mc.audio = { deviceId: { exact: monitorMicDeviceId } };
+      }
+      monitorStream = await navigator.mediaDevices.getUserMedia(mc);
       monitorOutputAudio = new Audio();
       monitorOutputAudio.autoplay = true;
       monitorOutputAudio.style.display = 'none';
       document.body.appendChild(monitorOutputAudio);
-      monitorOutputDest = audioContext.createMediaStreamDestination();
-      monitorOutputAudio.srcObject = monitorOutputDest.stream;
+      monitorOutputAudio.srcObject = monitorStream;
       if (monitorOutputAudio.setSinkId) {
         try { await monitorOutputAudio.setSinkId(''); } catch {}
       }
       monitorOutputAudio.play().catch(() => {});
-    }
-    if (monitorSourceNode) {
-      monitorSourceNode.disconnect();
-    }
-    if (monitorStream) {
-      monitorStream.getTracks().forEach(t => t.stop());
-      monitorStream = null;
-    }
-    try {
-      const mc = { audio: { channelCount: 1 }, video: false };
-      if (monitorMicDeviceId !== 'default') {
-        mc.audio.deviceId = { exact: monitorMicDeviceId };
-      }
-      monitorStream = await navigator.mediaDevices.getUserMedia(mc);
-      monitorSourceNode = audioContext.createMediaStreamSource(monitorStream);
-      monitorSourceNode.connect(monitorOutputDest);
       monitoringActive = true;
     } catch (err) {
       console.warn('monitor input error', err);
@@ -373,17 +361,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   function stopMonitoring() {
-    if (monitorSourceNode) {
-      monitorSourceNode.disconnect();
-      monitorSourceNode = null;
-    }
     if (monitorStream) {
       monitorStream.getTracks().forEach(t => t.stop());
       monitorStream = null;
-    }
-    if (monitorOutputDest) {
-      try { monitorOutputDest.disconnect(); } catch {}
-      monitorOutputDest = null;
     }
     if (monitorOutputAudio) {
       monitorOutputAudio.pause();
@@ -617,9 +597,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let micState = 0; // 0 = off, 1 = recording only, 2 = recording + monitoring
   let micSourceNode = null;
   let micGainNode = null;
-  let monitorSourceNode = null;
   let monitorStream = null;
-  let monitorOutputDest = null;
   let monitorOutputAudio = null;
   let monitoringActive = false;
   let blindMode = false;
