@@ -172,6 +172,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   let outputDeviceSelect = null;
+  let inputDeviceSelect = null;
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
@@ -219,32 +220,43 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
   }
 
-  async function chooseInputDevice() {
+  async function populateInputDeviceSelect() {
+    if (!inputDeviceSelect) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-      alert('Input selection unsupported in this browser');
+      inputDeviceSelect.disabled = true;
+      inputDeviceSelect.innerHTML = '<option>Unsupported</option>';
       return;
     }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const inputs = devices.filter(d => d.kind === 'audioinput');
-      if (inputs.length === 0) {
-        alert('No audio input devices found');
-        return;
-      }
-      const currentIdx = inputs.findIndex(d => d.deviceId === micDeviceId);
-      const choice = prompt(
-        'Select audio input device:\n' +
-          inputs.map((d, i) => `${i + 1}: ${d.label || 'Device'}`).join('\n'),
-        currentIdx >= 0 ? String(currentIdx + 1) : '1'
-      );
-      if (choice === null) return;
-      const index = parseInt(choice, 10) - 1;
-      if (index >= 0 && index < inputs.length) {
-        micDeviceId = inputs[index].deviceId;
-        localStorage.setItem('ytbm_inputDeviceId', micDeviceId);
-      }
+      inputDeviceSelect.innerHTML = '';
+      inputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        inputDeviceSelect.add(opt);
+      });
+      const saved = localStorage.getItem('ytbm_inputDeviceId');
+      if (saved) inputDeviceSelect.value = saved;
+      inputDeviceSelect.disabled = inputs.length === 0;
     } catch (err) {
-      console.error('Failed to choose input device', err);
+      console.error('Failed to enumerate input devices', err);
+    }
+  }
+
+  function buildInputDeviceDropdown(parent) {
+    if (inputDeviceSelect || !parent) return;
+    inputDeviceSelect = document.createElement('select');
+    inputDeviceSelect.className = 'looper-btn';
+    inputDeviceSelect.style.flex = '1 1 auto';
+    inputDeviceSelect.title = 'Choose audio input device';
+    inputDeviceSelect.addEventListener('change', e => {
+      micDeviceId = e.target.value || null;
+      localStorage.setItem('ytbm_inputDeviceId', micDeviceId);
+    });
+    parent.appendChild(inputDeviceSelect);
+    populateInputDeviceSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateInputDeviceSelect);
     }
   }
 
@@ -4688,12 +4700,7 @@ function addControls() {
 
   buildOutputDeviceDropdown(cw);
 
-  const inputBtn = document.createElement('button');
-  inputBtn.className = 'looper-btn';
-  inputBtn.innerText = 'Audio In';
-  inputBtn.title = 'Select audio input device';
-  inputBtn.addEventListener('click', chooseInputDevice);
-  cw.appendChild(inputBtn);
+  buildInputDeviceDropdown(cw);
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
