@@ -609,7 +609,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     });
   }
   // -----------------------------------------------------------------
-  let micState = 0; // 0 = off, 1 = recording
+  let micState = 0; // 0 = off, 1 = recording only, 2 = recording + monitoring
   let micSourceNode = null;
   let micGainNode = null;
   let monitorSourceNode = null;
@@ -696,7 +696,7 @@ async function toggleMicInput() {
   if (!audioContext) await ensureAudioContext();
 
   if (micState === 0) {
-    // STATE 0 → 1: Turn mic on for recording only
+    // STATE 0 → 1: Turn mic on for recording only (not audible)
     try {
       const constraints = {
         audio: {
@@ -724,15 +724,26 @@ async function toggleMicInput() {
       console.error('Error accessing microphone:', err);
       alert('Could not access microphone: ' + err.message);
     }
+  } else if (micState === 1) {
+    // STATE 1 → 2: Enable monitoring and route to output/video
+    if (micGainNode) {
+      micGainNode.connect(bus4Gain);
+    }
+    applyMonitorSelection();
+    micState = 2;
   } else {
-    // STATE 1 → 0: Turn mic completely off
+    // STATE 2 → 0: Turn mic completely off
     if (micSourceNode?.mediaStream) {
       micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
+    }
+    if (micGainNode && bus4Gain) {
+      try { micGainNode.disconnect(bus4Gain); } catch {}
     }
     if (micSourceNode) micSourceNode.disconnect();
     if (micGainNode) micGainNode.disconnect();
     micSourceNode = null;
     micGainNode = null;
+    stopMonitoring();
     micState = 0;
   }
 
@@ -744,8 +755,10 @@ function updateMicButtonColor() {
   if (micButton) {
     if (micState === 0) {
       micButton.style.backgroundColor = "#333"; // Off
-    } else {
-      micButton.style.backgroundColor = "green"; // Active
+    } else if (micState === 1) {
+      micButton.style.backgroundColor = "green"; // Recording only
+    } else if (micState === 2) {
+      micButton.style.backgroundColor = "red"; // Monitoring
     }
   }
 }
