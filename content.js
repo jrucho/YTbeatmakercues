@@ -217,22 +217,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let externalOutputDest = null;
   let outputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
+  // Monitoring starts disabled on each page load
   let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
-  let monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
+  let monitorEnabled = false;
 
   async function loadMonitorPrefs() {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       return new Promise(resolve => {
-        chrome.storage.local.get(['ytbm_monitorEnabled', 'ytbm_monitorInputDeviceId'], res => {
-          if (res.ytbm_monitorEnabled !== undefined) {
-            monitorEnabled = !!res.ytbm_monitorEnabled;
-          }
+        chrome.storage.local.get(['ytbm_monitorInputDeviceId'], res => {
           if (res.ytbm_monitorInputDeviceId) {
             monitorMicDeviceId = res.ytbm_monitorInputDeviceId;
           }
-          // fall back to localStorage values if present
-          const lsEn = localStorage.getItem('ytbm_monitorEnabled');
-          if (lsEn !== null) monitorEnabled = lsEn !== 'false';
+          // fall back to localStorage value if present
           const lsDev = localStorage.getItem('ytbm_monitorInputDeviceId');
           if (lsDev) monitorMicDeviceId = lsDev;
           resolve();
@@ -240,7 +236,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       });
     } else {
       monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
-      monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
     }
   }
 
@@ -398,10 +393,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorToggleBtn.title = 'Toggle monitoring on/off';
     monitorToggleBtn.addEventListener('click', () => {
       monitorEnabled = !monitorEnabled;
-      localStorage.setItem('ytbm_monitorEnabled', monitorEnabled ? 'true' : 'false');
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.set({ ytbm_monitorEnabled: monitorEnabled });
-      }
       updateMonitorToggleColor();
       applyMonitorSelection();
     });

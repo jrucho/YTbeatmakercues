@@ -23,7 +23,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Minimal bar and advanced window become scrollable when space is limited
 * Route audio to any available output device via the **Audio Out** dropdown ("Default output" preselected)
 * Choose your microphone via the **Audio In** dropdown ("Default input" preselected)
-* Choose a device from the **Monitor In** dropdown and toggle **Mon On/Off** to hear that source through your computer's default speakers. Monitoring stays active across tabs and stops cleanly when you navigate away.
+* Choose a device from the **Monitor In** dropdown and toggle **Mon On/Off** to hear that source through your computer's default speakers. Monitoring starts off on each page load and stops cleanly when you navigate away.
 * Output routing adjusts automatically when selecting a new device
 * Lower latency when switching outputs using native sink routing when supported
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
