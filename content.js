@@ -220,6 +220,30 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
   let monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
 
+  async function loadMonitorPrefs() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      return new Promise(resolve => {
+        chrome.storage.local.get(['ytbm_monitorEnabled', 'ytbm_monitorInputDeviceId'], res => {
+          if (res.ytbm_monitorEnabled !== undefined) {
+            monitorEnabled = !!res.ytbm_monitorEnabled;
+          }
+          if (res.ytbm_monitorInputDeviceId) {
+            monitorMicDeviceId = res.ytbm_monitorInputDeviceId;
+          }
+          // fall back to localStorage values if present
+          const lsEn = localStorage.getItem('ytbm_monitorEnabled');
+          if (lsEn !== null) monitorEnabled = lsEn !== 'false';
+          const lsDev = localStorage.getItem('ytbm_monitorInputDeviceId');
+          if (lsDev) monitorMicDeviceId = lsDev;
+          resolve();
+        });
+      });
+    } else {
+      monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+      monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
+    }
+  }
+
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
     const supportsSetSink = (HTMLMediaElement.prototype.setSinkId !== undefined);
@@ -324,10 +348,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         const opt = new Option(d.label || 'Device', d.deviceId);
         monitorInputSelect.add(opt);
       });
-      let saved = localStorage.getItem('ytbm_monitorInputDeviceId');
+      let saved;
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        const res = await new Promise(r => chrome.storage.local.get(['ytbm_monitorInputDeviceId'], r));
+        saved = res.ytbm_monitorInputDeviceId;
+      }
       if (!saved) {
-        saved = 'off';
-        localStorage.setItem('ytbm_monitorInputDeviceId', 'off');
+        saved = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+        localStorage.setItem('ytbm_monitorInputDeviceId', saved);
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ ytbm_monitorInputDeviceId: saved });
+        }
       }
       monitorInputSelect.value = saved;
       monitorInputSelect.disabled = inputs.length === 0;
@@ -347,6 +378,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorInputSelect.addEventListener('change', e => {
       monitorMicDeviceId = e.target.value || 'off';
       localStorage.setItem('ytbm_monitorInputDeviceId', monitorMicDeviceId);
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ ytbm_monitorInputDeviceId: monitorMicDeviceId });
+      }
       applyMonitorSelection();
     });
     parent.appendChild(monitorInputSelect);
@@ -365,6 +399,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorToggleBtn.addEventListener('click', () => {
       monitorEnabled = !monitorEnabled;
       localStorage.setItem('ytbm_monitorEnabled', monitorEnabled ? 'true' : 'false');
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ ytbm_monitorEnabled: monitorEnabled });
+      }
       updateMonitorToggleColor();
       applyMonitorSelection();
     });
@@ -6790,6 +6827,7 @@ async function initialize() {
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
     await loadSamplePacksFromLocalStorage();
+    await loadMonitorPrefs();
     await ensureAudioContext();
     if (activeSamplePackNames.length) {
       await applySelectedSamplePacks();
