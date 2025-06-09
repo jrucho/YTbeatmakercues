@@ -147,7 +147,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     if (!audioContext) return;
     localStorage.setItem('ytbm_outputDeviceId', deviceId);
 
-    // Remove any existing routing first
+    // Clean up any previous sink routing
     if (externalOutputDest) {
       try { externalOutputDest.disconnect(); } catch {}
       externalOutputDest = null;
@@ -162,23 +162,40 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     currentOutputNode = audioContext.destination;
     let success = true;
 
+    const canUseCtxSink = typeof audioContext.setSinkId === 'function';
+
     if (deviceId && deviceId !== 'default') {
-      try {
-        outputAudio = new Audio();
-        outputAudio.autoplay = true;
-        outputAudio.style.display = 'none';
-        document.body.appendChild(outputAudio);
-        externalOutputDest = audioContext.createMediaStreamDestination();
-        outputAudio.srcObject = externalOutputDest.stream;
-        if (outputAudio.setSinkId) {
-          await outputAudio.setSinkId(deviceId);
+      if (canUseCtxSink) {
+        try {
+          await audioContext.setSinkId(deviceId);
+        } catch (err) {
+          console.warn('Failed to set AudioContext sinkId', err);
+          success = false;
         }
-        await outputAudio.play().catch(() => {});
-        currentOutputNode = externalOutputDest;
+      }
+      if (!canUseCtxSink || !success) {
+        success = true;
+        try {
+          outputAudio = new Audio();
+          outputAudio.autoplay = true;
+          outputAudio.style.display = 'none';
+          document.body.appendChild(outputAudio);
+          externalOutputDest = audioContext.createMediaStreamDestination();
+          outputAudio.srcObject = externalOutputDest.stream;
+          if (outputAudio.setSinkId) await outputAudio.setSinkId(deviceId);
+          await outputAudio.play().catch(() => {});
+          currentOutputNode = externalOutputDest;
+        } catch (err) {
+          console.warn('Failed to apply output device', err);
+          success = false;
+          currentOutputNode = audioContext.destination;
+        }
+      }
+    } else if (canUseCtxSink) {
+      try {
+        await audioContext.setSinkId('');
       } catch (err) {
-        console.warn('Failed to apply output device', err);
-        success = false;
-        currentOutputNode = audioContext.destination;
+        console.warn('Failed to reset AudioContext sinkId', err);
       }
     }
 
