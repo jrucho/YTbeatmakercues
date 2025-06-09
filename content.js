@@ -133,6 +133,41 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
     return true;
   }
+
+  async function chooseOutputDevice() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.selectAudioOutput) {
+      alert('Output selection unsupported in this browser');
+      return;
+    }
+    try {
+      const device = await navigator.mediaDevices.selectAudioOutput();
+      if (!device || !device.deviceId) return;
+      localStorage.setItem('ytbm_outputDeviceId', device.deviceId);
+      if (audioContext && audioContext.setSinkId) {
+        await audioContext.setSinkId(device.deviceId);
+      } else {
+        const vid = getVideoElement();
+        if (vid && vid.setSinkId) await vid.setSinkId(device.deviceId);
+      }
+    } catch (err) {
+      console.error('Failed to set output device', err);
+    }
+  }
+
+  async function applySavedOutputDevice() {
+    const id = localStorage.getItem('ytbm_outputDeviceId');
+    if (!id) return;
+    try {
+      if (audioContext && audioContext.setSinkId) {
+        await audioContext.setSinkId(id);
+      } else {
+        const vid = getVideoElement();
+        if (vid && vid.setSinkId) await vid.setSinkId(id);
+      }
+    } catch (err) {
+      console.warn('Failed to apply saved output device', err);
+    }
+  }
   /**************************************
    * Global Variables
    **************************************/
@@ -2007,6 +2042,7 @@ async function ensureAudioContext() {
     await audioContext.resume().catch(err => console.error("AudioContext resume failed:", err.message));
   }
   if (!deckA) { initTwoDeck(); }
+  await applySavedOutputDevice();
   return audioContext;
 }
 
@@ -2063,6 +2099,12 @@ async function jumpToCue(targetTime) {
   const silentVid  = (activeDeck === "A") ? deckB : deckA;
   const activeGain = (activeDeck === "A") ? gainA : gainB;
   const silentGain = (activeDeck === "A") ? gainB : gainA;
+
+  if (!activeVid || !silentVid || !activeGain || !silentGain) {
+    const vid = getVideoElement();
+    if (vid) vid.currentTime = targetTime;
+    return;
+  }
 
   /* 1 – prepare the silent deck */
   const now = audioContext.currentTime;
@@ -4553,6 +4595,12 @@ function addControls() {
   panelContainer.appendChild(cw);
 
   buildSamplePackDropdown();
+
+  const outputBtn = document.createElement('button');
+  outputBtn.className = 'looper-btn';
+  outputBtn.innerText = 'Audio Out';
+  outputBtn.addEventListener('click', chooseOutputDevice);
+  cw.appendChild(outputBtn);
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
