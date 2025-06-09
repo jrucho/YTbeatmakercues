@@ -149,34 +149,55 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
   }
 
-  async function chooseOutputDevice() {
+  let outputDeviceSelect = null;
+
+  async function populateOutputDeviceSelect() {
+    if (!outputDeviceSelect) return;
     const supportsSetSink = (audioContext && audioContext.setSinkId) ||
       (HTMLMediaElement.prototype.setSinkId);
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !supportsSetSink) {
-      alert('Output selection unsupported in this browser');
+      outputDeviceSelect.disabled = true;
+      outputDeviceSelect.innerHTML = '<option>Unsupported</option>';
       return;
     }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const outputs = devices.filter(d => d.kind === 'audiooutput');
-      if (!outputs.length) {
-        alert('No audio output devices found');
-        return;
+      outputDeviceSelect.innerHTML = '';
+      outputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        outputDeviceSelect.add(opt);
+      });
+      const saved = localStorage.getItem('ytbm_outputDeviceId');
+      if (saved) {
+        outputDeviceSelect.value = saved;
       }
-      const msg = outputs.map((d, i) => `${i + 1}: ${d.label || 'Device ' + (i + 1)}`).join('\n');
-      const choice = prompt(`Select output device:\n${msg}`, '1');
-      const idx = parseInt(choice, 10) - 1;
-      if (isNaN(idx) || idx < 0 || idx >= outputs.length) return;
-      await setOutputDevice(outputs[idx].deviceId);
+      outputDeviceSelect.disabled = outputs.length === 0;
     } catch (err) {
-      console.error('Failed to set output device', err);
+      console.error('Failed to enumerate output devices', err);
     }
   }
+
+  function buildOutputDeviceDropdown(parent) {
+    if (outputDeviceSelect || !parent) return;
+    outputDeviceSelect = document.createElement('select');
+    outputDeviceSelect.className = 'looper-btn';
+    outputDeviceSelect.style.flex = '1 1 auto';
+    outputDeviceSelect.title = 'Choose audio output device';
+    outputDeviceSelect.addEventListener('change', e => setOutputDevice(e.target.value));
+    parent.appendChild(outputDeviceSelect);
+    populateOutputDeviceSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateOutputDeviceSelect);
+    }
+  }
+
 
   async function applySavedOutputDevice() {
     const id = localStorage.getItem('ytbm_outputDeviceId');
     if (!id) return;
     await setOutputDevice(id);
+    if (outputDeviceSelect) outputDeviceSelect.value = id;
   }
   /**************************************
    * Global Variables
@@ -4606,11 +4627,7 @@ function addControls() {
 
   buildSamplePackDropdown();
 
-  const outputBtn = document.createElement('button');
-  outputBtn.className = 'looper-btn';
-  outputBtn.innerText = 'Audio Out';
-  outputBtn.addEventListener('click', chooseOutputDevice);
-  cw.appendChild(outputBtn);
+  buildOutputDeviceDropdown(cw);
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
