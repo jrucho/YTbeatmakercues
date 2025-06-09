@@ -409,6 +409,15 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
   }
 
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      if (monitoringActive) stopMonitoring();
+    } else {
+      if (monitorMicDeviceId !== 'off' && !monitoringActive) startMonitoring();
+    }
+  }
+  addTrackedListener(document, 'visibilitychange', handleVisibilityChange);
+
 
   async function applySavedOutputDevice() {
     let id = localStorage.getItem('ytbm_outputDeviceId');
