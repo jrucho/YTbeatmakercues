@@ -185,10 +185,12 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   let outputDeviceSelect = null;
   let inputDeviceSelect = null;
+  let monitorInputSelect = null;
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
+  let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'default';
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
@@ -276,6 +278,51 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     populateInputDeviceSelect();
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', populateInputDeviceSelect);
+    }
+  }
+
+  async function populateMonitorInputSelect() {
+    if (!monitorInputSelect) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      monitorInputSelect.disabled = true;
+      monitorInputSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      monitorInputSelect.innerHTML = '';
+      monitorInputSelect.add(new Option('Default input', 'default'));
+      inputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        monitorInputSelect.add(opt);
+      });
+      let saved = localStorage.getItem('ytbm_monitorInputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_monitorInputDeviceId', 'default');
+      }
+      monitorInputSelect.value = saved;
+      monitorInputSelect.disabled = inputs.length === 0;
+    } catch (err) {
+      console.error('Failed to enumerate input devices', err);
+    }
+  }
+
+  function buildMonitorInputDropdown(parent) {
+    if (monitorInputSelect || !parent) return;
+    monitorInputSelect = document.createElement('select');
+    monitorInputSelect.className = 'looper-btn';
+    monitorInputSelect.style.flex = '1 1 auto';
+    monitorInputSelect.title = 'Choose monitoring input device';
+    monitorInputSelect.addEventListener('change', e => {
+      monitorMicDeviceId = e.target.value || 'default';
+      localStorage.setItem('ytbm_monitorInputDeviceId', monitorMicDeviceId);
+    });
+    parent.appendChild(monitorInputSelect);
+    populateMonitorInputSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateMonitorInputSelect);
     }
   }
 
@@ -493,6 +540,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let micState = 0;
   let micSourceNode = null;
   let micGainNode = null;
+  let monitorSourceNode = null;
   let blindMode = false;
   
   // Global variable for the touch modifier mode
@@ -596,8 +644,9 @@ async function toggleMicInput() {
       micSourceNode.connect(micGainNode);
       micGainNode.connect(mainRecorderMix);
       // Do NOT connect to masterGain so you won't hear it live
-      
+
       micState = 1; // Green state: active but not monitoring
+      updateMonitorSelectColor();
     } catch (err) {
       console.error("Error accessing microphone:", err);
       alert("Could not access microphone: " + err.message);
@@ -606,6 +655,19 @@ async function toggleMicInput() {
   else if (micState === 1) {
     // STATE 1 → 2: Turn on live monitoring
     micGainNode.connect(masterGain);
+    if (monitorMicDeviceId && monitorMicDeviceId !== 'default' && monitorMicDeviceId !== micDeviceId) {
+      try {
+        const mConstraints = {
+          audio: { deviceId: { exact: monitorMicDeviceId }, channelCount: 1 },
+          video: false
+        };
+        const mStream = await navigator.mediaDevices.getUserMedia(mConstraints);
+        monitorSourceNode = audioContext.createMediaStreamSource(mStream);
+        monitorSourceNode.connect(masterGain);
+      } catch (err) {
+        console.warn('monitor input error', err);
+      }
+    }
     micState = 2;
   }
   else if (micState === 2) {
@@ -615,10 +677,16 @@ async function toggleMicInput() {
     }
     if (micSourceNode) micSourceNode.disconnect();
     if (micGainNode) micGainNode.disconnect();
+    if (monitorSourceNode?.mediaStream) {
+      monitorSourceNode.mediaStream.getTracks().forEach(track => track.stop());
+    }
+    if (monitorSourceNode) monitorSourceNode.disconnect();
+    monitorSourceNode = null;
     micState = 0;
   }
 
   updateMicButtonColor();
+  updateMonitorSelectColor();
 }
 
 function updateMicButtonColor() {
@@ -629,6 +697,16 @@ function updateMicButtonColor() {
       micButton.style.backgroundColor = "green"; // Active but not monitoring (recording only)
     } else if (micState === 2) {
       micButton.style.backgroundColor = "red"; // Active and monitoring
+    }
+  }
+}
+
+function updateMonitorSelectColor() {
+  if (monitorInputSelect) {
+    if (micState === 2) {
+      monitorInputSelect.style.backgroundColor = "green";
+    } else {
+      monitorInputSelect.style.backgroundColor = "";
     }
   }
 }
@@ -4729,6 +4807,9 @@ function addControls() {
   buildOutputDeviceDropdown(cw);
 
   buildInputDeviceDropdown(cw);
+
+  buildMonitorInputDropdown(cw);
+  updateMonitorSelectColor();
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
