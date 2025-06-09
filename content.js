@@ -135,21 +135,46 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   async function setOutputDevice(deviceId) {
+    if (!audioContext) return;
     localStorage.setItem('ytbm_outputDeviceId', deviceId);
-    try {
-      if (audioContext && audioContext.setSinkId) {
-        await audioContext.setSinkId(deviceId);
-      }
-      const vid = getVideoElement();
-      if (vid && vid.setSinkId) {
-        await vid.setSinkId(deviceId);
-      }
-    } catch (err) {
-      console.warn('Failed to apply output device', err);
+
+    // Clean up any existing custom routing
+    if (externalOutputDest) {
+      try { externalOutputDest.disconnect(); } catch {}
+      externalOutputDest = null;
     }
+    if (outputAudio) {
+      outputAudio.pause();
+      outputAudio.srcObject = null;
+    }
+
+    currentOutputNode = audioContext.destination;
+
+    if (deviceId && deviceId !== 'default') {
+      try {
+        if (!outputAudio) {
+          outputAudio = new Audio();
+          outputAudio.autoplay = true;
+          outputAudio.style.display = 'none';
+          document.body.appendChild(outputAudio);
+        }
+        externalOutputDest = audioContext.createMediaStreamDestination();
+        outputAudio.srcObject = externalOutputDest.stream;
+        await outputAudio.setSinkId(deviceId);
+        await outputAudio.play().catch(() => {});
+        currentOutputNode = externalOutputDest;
+      } catch (err) {
+        console.warn('Failed to apply output device', err);
+        currentOutputNode = audioContext.destination;
+      }
+    }
+    applyAllFXRouting();
   }
 
   let outputDeviceSelect = null;
+  let currentOutputNode = null;
+  let externalOutputDest = null;
+  let outputAudio = null;
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
@@ -164,6 +189,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const outputs = devices.filter(d => d.kind === 'audiooutput');
       outputDeviceSelect.innerHTML = '';
+      outputDeviceSelect.add(new Option('Default', 'default'));
       outputs.forEach(d => {
         const opt = new Option(d.label || 'Device', d.deviceId);
         outputDeviceSelect.add(opt);
@@ -186,7 +212,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     outputDeviceSelect.title = 'Choose audio output device';
     outputDeviceSelect.addEventListener('change', e => setOutputDevice(e.target.value));
     parent.appendChild(outputDeviceSelect);
-    populateOutputDeviceSelect();
+    populateOutputDeviceSelect().then(applySavedOutputDevice);
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', populateOutputDeviceSelect);
     }
@@ -195,7 +221,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   async function applySavedOutputDevice() {
     const id = localStorage.getItem('ytbm_outputDeviceId');
-    if (!id) return;
+    if (!id || id === 'default') return;
     await setOutputDevice(id);
     if (outputDeviceSelect) outputDeviceSelect.value = id;
   }
@@ -2073,6 +2099,7 @@ async function ensureAudioContext() {
     await audioContext.resume().catch(err => console.error("AudioContext resume failed:", err.message));
   }
   if (!deckA) { initTwoDeck(); }
+  if (!currentOutputNode) currentOutputNode = audioContext.destination;
   await applySavedOutputDevice();
   return audioContext;
 }
@@ -2532,17 +2559,17 @@ function applyAllFXRouting() {
     // bus1..3 => masterGain => loFiComp => postComp => destination
     masterGain.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
-    postCompGain.connect(audioContext.destination);
+    postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
 
     // bus4 => directly to output (skips compressor)
-    bus4Gain.connect(audioContext.destination);
+    bus4Gain.connect(currentOutputNode || audioContext.destination);
     bus4Gain.connect(videoDestination);
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
     masterGain.connect(overallOutputGain);
-    overallOutputGain.connect(audioContext.destination);
+    overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
 
