@@ -212,11 +212,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let outputDeviceSelect = null;
   let inputDeviceSelect = null;
   let monitorInputSelect = null;
+  let monitorToggleBtn = null;
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
   let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+  let monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
@@ -354,6 +356,28 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
   }
 
+  function buildMonitorToggle(parent) {
+    if (monitorToggleBtn || !parent) return;
+    monitorToggleBtn = document.createElement('button');
+    monitorToggleBtn.className = 'looper-btn';
+    monitorToggleBtn.style.flex = '0 0 auto';
+    monitorToggleBtn.title = 'Toggle monitoring on/off';
+    monitorToggleBtn.addEventListener('click', () => {
+      monitorEnabled = !monitorEnabled;
+      localStorage.setItem('ytbm_monitorEnabled', monitorEnabled ? 'true' : 'false');
+      updateMonitorToggleColor();
+      applyMonitorSelection();
+    });
+    parent.appendChild(monitorToggleBtn);
+    updateMonitorToggleColor();
+  }
+
+  function updateMonitorToggleColor() {
+    if (!monitorToggleBtn) return;
+    monitorToggleBtn.style.backgroundColor = monitorEnabled ? 'green' : '';
+    monitorToggleBtn.textContent = monitorEnabled ? 'Mon On' : 'Mon Off';
+  }
+
   async function startMonitoring() {
     if (monitorMicDeviceId === 'off') return;
     stopMonitoring();
@@ -402,7 +426,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   function applyMonitorSelection() {
-    if (monitorMicDeviceId === 'off') {
+    if (!monitorEnabled || monitorMicDeviceId === 'off') {
       stopMonitoring();
     } else {
       startMonitoring();
@@ -782,6 +806,7 @@ function updateMonitorSelectColor() {
       monitorInputSelect.style.backgroundColor = "";
     }
   }
+  updateMonitorToggleColor();
 }
 
 // Add the mic button to the minimal UI
@@ -4884,6 +4909,7 @@ function addControls() {
   buildSamplePackDropdown();
 
   buildOutputDeviceDropdown(cw);
+  buildMonitorToggle(cw);
 
   buildInputDeviceDropdown(cw);
 
