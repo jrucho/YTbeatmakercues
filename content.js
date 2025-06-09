@@ -138,6 +138,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     if (!audioContext) return;
     localStorage.setItem('ytbm_outputDeviceId', deviceId);
 
+    // Prefer native AudioContext.setSinkId when available for lower latency
+    if (typeof audioContext.setSinkId === 'function') {
+      try {
+        await audioContext.setSinkId(deviceId === 'default' ? '' : deviceId);
+        currentOutputNode = audioContext.destination;
+        applyAllFXRouting();
+        return;
+      } catch (err) {
+        console.warn('AudioContext.setSinkId failed', err);
+      }
+    }
+
     // Clean up any existing custom routing
     if (externalOutputDest) {
       try { externalOutputDest.disconnect(); } catch {}
@@ -1255,7 +1267,9 @@ hideYouTubePopups();
         };
       }
       access.inputs.forEach(hook);
-      access.addEventListener('statechange', e => hook(e.port));
+      access.addEventListener('statechange', e => {
+        if (e.port) hook(e.port);
+      });
     }).catch(console.warn);
   }
   
