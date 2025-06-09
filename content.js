@@ -216,7 +216,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
-  let monitorOutputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
   let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
   let monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
@@ -385,8 +384,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     try {
       const constraints = {
         audio: {
+          latency: 0,
           echoCancellation: false,
           noiseSuppression: false,
+          autoGainControl: false,
           channelCount: 1
         },
         video: false
@@ -395,13 +396,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         constraints.audio.deviceId = { exact: monitorMicDeviceId };
       }
       monitorStream = await navigator.mediaDevices.getUserMedia(constraints);
-      monitorOutputAudio = new Audio();
-      monitorOutputAudio.autoplay = true;
-      monitorOutputAudio.playsInline = true;
-      monitorOutputAudio.style.display = 'none';
-      document.body.appendChild(monitorOutputAudio);
-      monitorOutputAudio.srcObject = monitorStream;
-      await monitorOutputAudio.play().catch(() => {});
+      // Use a separate low-latency context so monitoring bypasses extension routing
+      monitorContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 0 });
+      const src = monitorContext.createMediaStreamSource(monitorStream);
+      src.connect(monitorContext.destination);
       monitoringActive = true;
     } catch (err) {
       console.error('monitor input error', err);
@@ -410,11 +408,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   function stopMonitoring() {
-    if (monitorOutputAudio) {
-      monitorOutputAudio.pause();
-      monitorOutputAudio.srcObject = null;
-      monitorOutputAudio.remove();
-      monitorOutputAudio = null;
+    if (monitorContext) {
+      monitorContext.close().catch(() => {});
+      monitorContext = null;
     }
     if (monitorStream) {
       monitorStream.getTracks().forEach(t => t.stop());
@@ -650,6 +646,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let micSourceNode = null;
   let micGainNode = null;
   let monitorStream = null;
+  let monitorContext = null; // dedicated low-latency context for input monitoring
   let monitoringActive = false;
   let blindMode = false;
   
@@ -730,10 +727,11 @@ async function toggleMicInput() {
   if (!audioContext) await ensureAudioContext();
 
   if (micState === 0) {
-    // STATE 0 → 1: Turn mic on for recording only (no monitoring)
+    // grey → green: enable mic for loop recording only
     try {
       const constraints = {
         audio: {
+          latency: 0,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
@@ -750,21 +748,22 @@ async function toggleMicInput() {
       micGainNode = audioContext.createGain();
       micGainNode.gain.value = 1;
       micSourceNode.connect(micGainNode);
+      // route only to recorder mix at this stage
       micGainNode.connect(mainRecorderMix);
-      micState = 1; // green
+      micState = 1;
     } catch (err) {
       console.error('Error accessing microphone:', err);
       alert('Could not access microphone: ' + err.message);
     }
   } else if (micState === 1) {
-    // STATE 1 → 2: also monitor through bus4Gain
+    // green → red: also send mic to monitoring bus
     if (micGainNode) {
       micGainNode.connect(bus4Gain);
     }
-    micState = 2; // red
+    micState = 2;
   } else {
-    // STATE 2 → 0: turn off
-    if (monitorEnabled) stopMonitoring();
+    // red → grey: shutdown mic and monitoring
+    stopMonitoring();
     if (micSourceNode?.mediaStream) {
       micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
     }
@@ -2326,9 +2325,9 @@ function updateMinimalExportColor(btn) {
 async function ensureAudioContext() {
   let created = false;
   if (!audioContext) {
-    // Pass a latencyHint of "interactive" and match sampleRate to mic constraints
+    // Create the main AudioContext with minimal latency for responsive pads
     audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      latencyHint: "interactive",
+      latencyHint: 0, // lowest possible latency
       sampleRate: 48000
     });
     setupAudioNodes();
