@@ -126,6 +126,280 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let cleanupFunctions = [];
   let tapTimes = [];
   let padIndicators = [];
+  const ref = document.referrer;
+  const isSampletteEmbed = window !== window.top && (ref === '' || ref.includes('samplette.io'));
+  function shouldRunOnThisPage() {
+    const host = window.location.hostname;
+    if (host === 'samplette.io' && window === window.top) {
+      // Skip the outer Samplette page but run inside the YouTube iframe
+      return false;
+    }
+    if (host.includes('youtube.com') || host.includes('youtube-nocookie.com')) {
+      // Avoid duplicate initialization inside miscellaneous YouTube iframes
+      if (window !== window.top && !isSampletteEmbed) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function setOutputDevice(deviceId) {
+    if (!audioContext) return;
+    localStorage.setItem('ytbm_outputDeviceId', deviceId);
+
+    // Remove any existing routing first
+    if (externalOutputDest) {
+      try { externalOutputDest.disconnect(); } catch {}
+      externalOutputDest = null;
+    }
+    if (outputAudio) {
+      outputAudio.pause();
+      outputAudio.srcObject = null;
+      outputAudio.remove();
+      outputAudio = null;
+    }
+
+    currentOutputNode = audioContext.destination;
+    let success = true;
+
+    if (deviceId && deviceId !== 'default') {
+      try {
+        outputAudio = new Audio();
+        outputAudio.autoplay = true;
+        outputAudio.style.display = 'none';
+        document.body.appendChild(outputAudio);
+        externalOutputDest = audioContext.createMediaStreamDestination();
+        outputAudio.srcObject = externalOutputDest.stream;
+        if (outputAudio.setSinkId) {
+          await outputAudio.setSinkId(deviceId);
+        }
+        await outputAudio.play().catch(() => {});
+        currentOutputNode = externalOutputDest;
+      } catch (err) {
+        console.warn('Failed to apply output device', err);
+        success = false;
+        currentOutputNode = audioContext.destination;
+      }
+    }
+
+    if (!success && outputDeviceSelect) {
+      outputDeviceSelect.value = 'default';
+      localStorage.setItem('ytbm_outputDeviceId', 'default');
+    }
+
+    applyAllFXRouting();
+  }
+
+  let outputDeviceSelect = null;
+  let inputDeviceSelect = null;
+  let monitorInputSelect = null;
+  let currentOutputNode = null;
+  let externalOutputDest = null;
+  let outputAudio = null;
+  let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
+  let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+
+  async function populateOutputDeviceSelect() {
+    if (!outputDeviceSelect) return;
+    const supportsSetSink = (HTMLMediaElement.prototype.setSinkId !== undefined);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !supportsSetSink) {
+      outputDeviceSelect.disabled = true;
+      outputDeviceSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      outputDeviceSelect.innerHTML = '';
+      outputDeviceSelect.add(new Option('Default output', 'default'));
+      outputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        outputDeviceSelect.add(opt);
+      });
+      let saved = localStorage.getItem('ytbm_outputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_outputDeviceId', 'default');
+      }
+      outputDeviceSelect.value = saved;
+      outputDeviceSelect.disabled = outputs.length === 0;
+    } catch (err) {
+      console.error('Failed to enumerate output devices', err);
+    }
+  }
+
+  function buildOutputDeviceDropdown(parent) {
+    if (outputDeviceSelect || !parent) return;
+    outputDeviceSelect = document.createElement('select');
+    outputDeviceSelect.className = 'looper-btn';
+    outputDeviceSelect.style.flex = '1 1 auto';
+    outputDeviceSelect.title = 'Choose audio output device';
+    outputDeviceSelect.addEventListener('change', e => setOutputDevice(e.target.value));
+    parent.appendChild(outputDeviceSelect);
+    populateOutputDeviceSelect().then(applySavedOutputDevice);
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateOutputDeviceSelect);
+    }
+  }
+
+  async function populateInputDeviceSelect() {
+    if (!inputDeviceSelect) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      inputDeviceSelect.disabled = true;
+      inputDeviceSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      inputDeviceSelect.innerHTML = '';
+      inputDeviceSelect.add(new Option('Default input', 'default'));
+      inputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        inputDeviceSelect.add(opt);
+      });
+      let saved = localStorage.getItem('ytbm_inputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_inputDeviceId', 'default');
+      }
+      inputDeviceSelect.value = saved;
+      inputDeviceSelect.disabled = inputs.length === 0;
+    } catch (err) {
+      console.error('Failed to enumerate input devices', err);
+    }
+  }
+
+  function buildInputDeviceDropdown(parent) {
+    if (inputDeviceSelect || !parent) return;
+    inputDeviceSelect = document.createElement('select');
+    inputDeviceSelect.className = 'looper-btn';
+    inputDeviceSelect.style.flex = '1 1 auto';
+    inputDeviceSelect.title = 'Choose audio input device';
+    inputDeviceSelect.addEventListener('change', e => {
+      micDeviceId = e.target.value || 'default';
+      localStorage.setItem('ytbm_inputDeviceId', micDeviceId);
+    });
+    parent.appendChild(inputDeviceSelect);
+    populateInputDeviceSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateInputDeviceSelect);
+    }
+  }
+
+  async function populateMonitorInputSelect() {
+    if (!monitorInputSelect) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      monitorInputSelect.disabled = true;
+      monitorInputSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      monitorInputSelect.innerHTML = '';
+      monitorInputSelect.add(new Option('Default monitoring input off', 'off'));
+      inputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        monitorInputSelect.add(opt);
+      });
+      let saved = localStorage.getItem('ytbm_monitorInputDeviceId');
+      if (!saved) {
+        saved = 'off';
+        localStorage.setItem('ytbm_monitorInputDeviceId', 'off');
+      }
+      monitorInputSelect.value = saved;
+      monitorInputSelect.disabled = inputs.length === 0;
+      monitorMicDeviceId = saved;
+      applyMonitorSelection();
+    } catch (err) {
+      console.error('Failed to enumerate input devices', err);
+    }
+  }
+
+  function buildMonitorInputDropdown(parent) {
+    if (monitorInputSelect || !parent) return;
+    monitorInputSelect = document.createElement('select');
+    monitorInputSelect.className = 'looper-btn';
+    monitorInputSelect.style.flex = '1 1 auto';
+    monitorInputSelect.title = 'Choose monitoring input device';
+    monitorInputSelect.addEventListener('change', e => {
+      monitorMicDeviceId = e.target.value || 'off';
+      localStorage.setItem('ytbm_monitorInputDeviceId', monitorMicDeviceId);
+      applyMonitorSelection();
+    });
+    parent.appendChild(monitorInputSelect);
+    populateMonitorInputSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateMonitorInputSelect);
+    }
+  }
+
+  async function startMonitoring() {
+    if (monitorMicDeviceId === 'off') return;
+    stopMonitoring();
+    try {
+      const constraints = {
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        },
+        video: false
+      };
+      if (monitorMicDeviceId !== 'default') {
+        constraints.audio.deviceId = { exact: monitorMicDeviceId };
+      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      monitorContext = new (window.AudioContext || window.webkitAudioContext)({
+        latencyHint: 'interactive'
+      });
+      monitorSource = monitorContext.createMediaStreamSource(stream);
+      monitorSource.connect(monitorContext.destination);
+      monitorStream = stream;
+      monitoringActive = true;
+    } catch (err) {
+      console.warn('monitor input error', err);
+      stopMonitoring();
+    }
+    updateMonitorSelectColor();
+  }
+
+  function stopMonitoring() {
+    if (monitorStream) {
+      monitorStream.getTracks().forEach(t => t.stop());
+      monitorStream = null;
+    }
+    if (monitorSource) {
+      try { monitorSource.disconnect(); } catch {}
+      monitorSource = null;
+    }
+    if (monitorContext) {
+      monitorContext.close().catch(() => {});
+      monitorContext = null;
+    }
+    monitoringActive = false;
+    updateMonitorSelectColor();
+  }
+
+  function applyMonitorSelection() {
+    if (monitorMicDeviceId === 'off') {
+      stopMonitoring();
+    } else {
+      startMonitoring();
+    }
+  }
+
+
+  async function applySavedOutputDevice() {
+    let id = localStorage.getItem('ytbm_outputDeviceId');
+    if (!id) {
+      id = 'default';
+      localStorage.setItem('ytbm_outputDeviceId', 'default');
+    }
+    await setOutputDevice(id);
+    if (outputDeviceSelect) outputDeviceSelect.value = id;
+  }
   /**************************************
    * Global Variables
    **************************************/
@@ -327,9 +601,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     });
   }
   // -----------------------------------------------------------------
-  let micState = 0;
+  let micState = 0; // 0 = off, 1 = recording only, 2 = recording + monitoring
   let micSourceNode = null;
   let micGainNode = null;
+  let monitorStream = null;
+  let monitorContext = null;
+  let monitorSource = null;
+  let monitoringActive = false;
   let blindMode = false;
   
   // Global variable for the touch modifier mode
@@ -409,9 +687,9 @@ async function toggleMicInput() {
   if (!audioContext) await ensureAudioContext();
 
   if (micState === 0) {
-    // STATE 0 → 1: Turn mic on for recording only (no live monitoring)
+    // STATE 0 → 1: Turn mic on for recording only (not audible)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -420,38 +698,47 @@ async function toggleMicInput() {
           channelCount: 1
         },
         video: false
-      });
+      };
+      if (micDeviceId && micDeviceId !== 'default') {
+        constraints.audio.deviceId = { exact: micDeviceId };
+      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micSourceNode = audioContext.createMediaStreamSource(stream);
       micGainNode = audioContext.createGain();
       micGainNode.gain.value = 1;
-      
+
       // Connect mic signal only to mainRecorderMix (for recording)
       micSourceNode.connect(micGainNode);
       micGainNode.connect(mainRecorderMix);
-      // Do NOT connect to masterGain so you won't hear it live
-      
-      micState = 1; // Green state: active but not monitoring
+      micState = 1;
     } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Could not access microphone: " + err.message);
+      console.error('Error accessing microphone:', err);
+      alert('Could not access microphone: ' + err.message);
     }
-  } 
-  else if (micState === 1) {
-    // STATE 1 → 2: Turn on live monitoring
-    micGainNode.connect(masterGain);
+  } else if (micState === 1) {
+    // STATE 1 → 2: Route mic to output/video
+    if (micGainNode) {
+      micGainNode.connect(bus4Gain);
+    }
     micState = 2;
-  }
-  else if (micState === 2) {
+  } else {
     // STATE 2 → 0: Turn mic completely off
     if (micSourceNode?.mediaStream) {
-      micSourceNode.mediaStream.getTracks().forEach(track => track.stop());
+      micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
+    }
+    if (micGainNode && bus4Gain) {
+      try { micGainNode.disconnect(bus4Gain); } catch {}
     }
     if (micSourceNode) micSourceNode.disconnect();
     if (micGainNode) micGainNode.disconnect();
+    micSourceNode = null;
+    micGainNode = null;
+    stopMonitoring();
     micState = 0;
   }
 
   updateMicButtonColor();
+  updateMonitorSelectColor();
 }
 
 function updateMicButtonColor() {
@@ -459,9 +746,19 @@ function updateMicButtonColor() {
     if (micState === 0) {
       micButton.style.backgroundColor = "#333"; // Off
     } else if (micState === 1) {
-      micButton.style.backgroundColor = "green"; // Active but not monitoring (recording only)
+      micButton.style.backgroundColor = "green"; // Recording only
     } else if (micState === 2) {
-      micButton.style.backgroundColor = "red"; // Active and monitoring
+      micButton.style.backgroundColor = "red"; // Monitoring
+    }
+  }
+}
+
+function updateMonitorSelectColor() {
+  if (monitorInputSelect) {
+    if (monitoringActive) {
+      monitorInputSelect.style.backgroundColor = "green";
+    } else {
+      monitorInputSelect.style.backgroundColor = "";
     }
   }
 }
@@ -1069,10 +1366,10 @@ hideYouTubePopups();
   addTouchSequencerButtonToAdvancedUI();
 
   // Attach pulse‑show hook to every MIDI input
-  if (navigator.requestMIDIAccess) {
+  if (shouldRunOnThisPage() && !isSampletteEmbed && navigator.requestMIDIAccess) {
     navigator.requestMIDIAccess().then(access => {
       function hook(port) {
-        if (port.type !== 'input') return;
+        if (!port || port.type !== 'input') return;
         const orig = port.onmidimessage;
         port.onmidimessage = function(ev) {
           if (unhideOnInput) pulseShowYTControls();
@@ -1100,7 +1397,9 @@ hideYouTubePopups();
         };
       }
       access.inputs.forEach(hook);
-      access.addEventListener('statechange', e => hook(e.port));
+      access.addEventListener('statechange', e => {
+        if (e.port) hook(e.port);
+      });
     }).catch(console.warn);
   }
   
@@ -1574,6 +1873,7 @@ function cleanupResources() {
     audioContext.close().catch(console.error);
     audioContext = null;
   }
+  stopMonitoring();
   if (videoPreviewURL) {
     URL.revokeObjectURL(videoPreviewURL);
     videoPreviewURL = null;
@@ -1613,9 +1913,9 @@ function captureAppState() {
 
     eqFilterActive,
     eqFilterApplyTarget,
-    eqFilterType: eqFilterNode.type,
-    eqFilterFreq: eqFilterNode.frequency.value,
-    eqFilterGain: eqFilterNode.gain.value,
+    eqFilterType: eqFilterNode ? eqFilterNode.type : 'lowpass',
+    eqFilterFreq: eqFilterNode ? eqFilterNode.frequency.value : 250,
+    eqFilterGain: eqFilterNode ? eqFilterNode.gain.value : 0,
 
     loFiCompActive,
     postCompGainValue: postCompGain.gain.value,
@@ -1642,9 +1942,11 @@ function restoreAppState(st) {
 
   eqFilterActive = st.eqFilterActive;
   eqFilterApplyTarget = st.eqFilterApplyTarget;
-  eqFilterNode.type = st.eqFilterType;
-  eqFilterNode.frequency.value = st.eqFilterFreq;
-  eqFilterNode.gain.value = st.eqFilterGain;
+  if (eqFilterNode) {
+    eqFilterNode.type = st.eqFilterType;
+    eqFilterNode.frequency.value = st.eqFilterFreq;
+    eqFilterNode.gain.value = st.eqFilterGain;
+  }
 
   loFiCompActive = st.loFiCompActive;
   postCompGain.gain.value = st.postCompGainValue;
@@ -1978,6 +2280,7 @@ function updateMinimalExportColor(btn) {
  * Deferred AudioContext & Node Setup
  **************************************/
 async function ensureAudioContext() {
+  let created = false;
   if (!audioContext) {
     // Pass a latencyHint of "interactive" and match sampleRate to mic constraints
     audioContext = new (window.AudioContext || window.webkitAudioContext)({
@@ -1995,11 +2298,17 @@ async function ensureAudioContext() {
       }
       vid._audioConnected = true;
     }
+    created = true;
   }
   if (audioContext.state === "suspended") {
     await audioContext.resume().catch(err => console.error("AudioContext resume failed:", err.message));
   }
   if (!deckA) { initTwoDeck(); }
+  if (!currentOutputNode) currentOutputNode = audioContext.destination;
+  await applySavedOutputDevice();
+  if (created) {
+    applyMonitorSelection();
+  }
   return audioContext;
 }
 
@@ -2056,6 +2365,12 @@ async function jumpToCue(targetTime) {
   const silentVid  = (activeDeck === "A") ? deckB : deckA;
   const activeGain = (activeDeck === "A") ? gainA : gainB;
   const silentGain = (activeDeck === "A") ? gainB : gainA;
+
+  if (!activeVid || !silentVid || !activeGain || !silentGain) {
+    const vid = getVideoElement();
+    if (vid) vid.currentTime = targetTime;
+    return;
+  }
 
   /* 1 – prepare the silent deck */
   const now = audioContext.currentTime;
@@ -2452,17 +2767,17 @@ function applyAllFXRouting() {
     // bus1..3 => masterGain => loFiComp => postComp => destination
     masterGain.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
-    postCompGain.connect(audioContext.destination);
+    postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
 
     // bus4 => directly to output (skips compressor)
-    bus4Gain.connect(audioContext.destination);
+    bus4Gain.connect(currentOutputNode || audioContext.destination);
     bus4Gain.connect(videoDestination);
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
     masterGain.connect(overallOutputGain);
-    overallOutputGain.connect(audioContext.destination);
+    overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
 
@@ -4547,6 +4862,13 @@ function addControls() {
 
   buildSamplePackDropdown();
 
+  buildOutputDeviceDropdown(cw);
+
+  buildInputDeviceDropdown(cw);
+
+  buildMonitorInputDropdown(cw);
+  updateMonitorSelectColor();
+
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
   let pitchWrap = document.createElement("div");
@@ -4934,7 +5256,8 @@ function addControls() {
 /**************************************
  * EQ / Filter Window
  **************************************/
-function showEQWindowToggle() {
+async function showEQWindowToggle() {
+  await ensureAudioContext();
   if (!eqWindowContainer) {
     buildEQWindow();
     eqWindowContainer.style.display = "block";
@@ -4945,6 +5268,7 @@ function showEQWindowToggle() {
 }
 
 function buildEQWindow() {
+  if (!eqFilterNode) return; // safety check
   eqWindowContainer = document.createElement("div");
   eqWindowContainer.className = "looper-midimap-container";
   eqWindowContainer.style.width = "280px";
@@ -5002,27 +5326,29 @@ function buildEQWindow() {
   let filterTargetSelect = eqWindowContainer.querySelector("#eqFilterTarget");
   let filterActiveCheck = eqWindowContainer.querySelector("#eqFilterActive");
 
-  filterTypeSelect.value = eqFilterNode.type;
-  filterFreqSlider.value = eqFilterNode.frequency.value;
-  filterFreqVal.innerText = eqFilterNode.frequency.value + " Hz";
-  filterGainSlider.value = eqFilterNode.gain.value;
-  filterGainVal.innerText = eqFilterNode.gain.value + " dB";
+  if (eqFilterNode) {
+    filterTypeSelect.value = eqFilterNode.type;
+    filterFreqSlider.value = eqFilterNode.frequency.value;
+    filterFreqVal.innerText = eqFilterNode.frequency.value + " Hz";
+    filterGainSlider.value = eqFilterNode.gain.value;
+    filterGainVal.innerText = eqFilterNode.gain.value + " dB";
+  }
   filterTargetSelect.value = eqFilterApplyTarget;
   filterActiveCheck.checked = eqFilterActive;
 
   filterTypeSelect.addEventListener("change", () => {
     pushUndoState();
-    eqFilterNode.type = filterTypeSelect.value;
+    if (eqFilterNode) eqFilterNode.type = filterTypeSelect.value;
   });
   filterFreqSlider.addEventListener("input", () => {
-    eqFilterNode.frequency.value = parseFloat(filterFreqSlider.value);
+    if (eqFilterNode) eqFilterNode.frequency.value = parseFloat(filterFreqSlider.value);
     filterFreqVal.innerText = filterFreqSlider.value + " Hz";
   });
   filterFreqSlider.addEventListener("change", () => {
     pushUndoState();
   });
   filterGainSlider.addEventListener("input", () => {
-    eqFilterNode.gain.value = parseFloat(filterGainSlider.value);
+    if (eqFilterNode) eqFilterNode.gain.value = parseFloat(filterGainSlider.value);
     filterGainVal.innerText = filterGainSlider.value + " dB";
   });
   filterGainSlider.addEventListener("change", () => {
@@ -6173,6 +6499,8 @@ function injectCustomCSS() {
       border-radius: 6px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
       width: 210px;
+      max-height: 70vh;
+      overflow-y: auto;
     }
     .looper-drag-handle {
       background: #222;
@@ -6212,6 +6540,7 @@ function injectCustomCSS() {
       justify-content: flex-end;
       gap: 6px;
       margin-right: 6px;
+      overflow-x: auto;
     }
     .ytbm-minimal-bar .looper-btn {
       background: #333;
@@ -6369,6 +6698,7 @@ attachVideoMetadataListener();
  **************************************/
 async function initialize() {
   try {
+    if (!shouldRunOnThisPage()) return;
     let isAudioPrimed = false;
 
     document.addEventListener('click', function primeAudio() {
@@ -6395,7 +6725,9 @@ async function initialize() {
       activeSamplePackNames = [currentSamplePackName];
       await applySelectedSamplePacks();
     }
-    initializeMIDI();
+    if (!isSampletteEmbed) {
+      initializeMIDI();
+    }
     addControls();
     buildMinimalUIBar();
     addTouchButtonToMinimalUI();
