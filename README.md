@@ -31,6 +31,8 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 
+https://www.instagram.com/reel/DKsfsPPMOxg/?igsh=NzkzdDVhajFrZWk1
+
 Manage multiple compressors (Native, Tape Warm, Roland SP404OG) to shape your audio character. Adjust settings effortlessly through a user-friendly interface.
 
 Integrate MIDI controllers with customizable mappings to trigger cues, samples, and effects directly.
