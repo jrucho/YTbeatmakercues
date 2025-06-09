@@ -126,6 +126,351 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let cleanupFunctions = [];
   let tapTimes = [];
   let padIndicators = [];
+  const ref = document.referrer;
+  const isSampletteEmbed = window !== window.top && (ref === '' || ref.includes('samplette.io'));
+  function shouldRunOnThisPage() {
+    const host = window.location.hostname;
+    if (host === 'samplette.io' && window === window.top) {
+      // Skip the outer Samplette page but run inside the YouTube iframe
+      return false;
+    }
+    if (host.includes('youtube.com') || host.includes('youtube-nocookie.com')) {
+      // Avoid duplicate initialization inside miscellaneous YouTube iframes
+      if (window !== window.top && !isSampletteEmbed) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function setOutputDevice(deviceId) {
+    if (!audioContext) return;
+    localStorage.setItem('ytbm_outputDeviceId', deviceId);
+
+    // Clean up any previous sink routing
+    if (externalOutputDest) {
+      try { externalOutputDest.disconnect(); } catch {}
+      externalOutputDest = null;
+    }
+    if (outputAudio) {
+      outputAudio.pause();
+      outputAudio.srcObject = null;
+      outputAudio.remove();
+      outputAudio = null;
+    }
+
+    currentOutputNode = audioContext.destination;
+    let success = true;
+
+    const canUseCtxSink = typeof audioContext.setSinkId === 'function';
+
+    if (deviceId && deviceId !== 'default') {
+      if (canUseCtxSink) {
+        try {
+          await audioContext.setSinkId(deviceId);
+        } catch (err) {
+          console.warn('Failed to set AudioContext sinkId', err);
+          success = false;
+        }
+      }
+      if (!canUseCtxSink || !success) {
+        success = true;
+        try {
+          outputAudio = new Audio();
+          outputAudio.autoplay = true;
+          outputAudio.playsInline = true;
+          outputAudio.preload = 'auto';
+          outputAudio.style.display = 'none';
+          document.body.appendChild(outputAudio);
+          externalOutputDest = audioContext.createMediaStreamDestination();
+          outputAudio.srcObject = externalOutputDest.stream;
+          if (outputAudio.setSinkId) await outputAudio.setSinkId(deviceId);
+          await outputAudio.play().catch(() => {});
+          currentOutputNode = externalOutputDest;
+        } catch (err) {
+          console.warn('Failed to apply output device', err);
+          success = false;
+          currentOutputNode = audioContext.destination;
+        }
+      }
+    } else if (canUseCtxSink) {
+      try {
+        await audioContext.setSinkId('');
+      } catch (err) {
+        console.warn('Failed to reset AudioContext sinkId', err);
+      }
+    }
+
+    if (!success && outputDeviceSelect) {
+      outputDeviceSelect.value = 'default';
+      localStorage.setItem('ytbm_outputDeviceId', 'default');
+    }
+
+    applyAllFXRouting();
+  }
+
+  let outputDeviceSelect = null;
+  let inputDeviceSelect = null;
+  let monitorInputSelect = null;
+  let monitorToggleBtn = null;
+  let currentOutputNode = null;
+  let externalOutputDest = null;
+  let outputAudio = null;
+  let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
+  // Monitoring starts disabled on each page load
+  let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+  let monitorEnabled = false;
+
+  async function loadMonitorPrefs() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      return new Promise(resolve => {
+        chrome.storage.local.get(['ytbm_monitorInputDeviceId'], res => {
+          if (res.ytbm_monitorInputDeviceId) {
+            monitorMicDeviceId = res.ytbm_monitorInputDeviceId;
+          }
+          // fall back to localStorage value if present
+          const lsDev = localStorage.getItem('ytbm_monitorInputDeviceId');
+          if (lsDev) monitorMicDeviceId = lsDev;
+          resolve();
+        });
+      });
+    } else {
+      monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+    }
+  }
+
+  async function populateOutputDeviceSelect() {
+    if (!outputDeviceSelect) return;
+    const supportsSetSink = (HTMLMediaElement.prototype.setSinkId !== undefined);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !supportsSetSink) {
+      outputDeviceSelect.disabled = true;
+      outputDeviceSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      outputDeviceSelect.innerHTML = '';
+      outputDeviceSelect.add(new Option('Default output', 'default'));
+      outputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        outputDeviceSelect.add(opt);
+      });
+      let saved = localStorage.getItem('ytbm_outputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_outputDeviceId', 'default');
+      }
+      outputDeviceSelect.value = saved;
+      outputDeviceSelect.disabled = outputs.length === 0;
+    } catch (err) {
+      console.error('Failed to enumerate output devices', err);
+    }
+  }
+
+  function buildOutputDeviceDropdown(parent) {
+    if (outputDeviceSelect || !parent) return;
+    outputDeviceSelect = document.createElement('select');
+    outputDeviceSelect.className = 'looper-btn';
+    outputDeviceSelect.style.flex = '1 1 auto';
+    outputDeviceSelect.title = 'Choose audio output device';
+    outputDeviceSelect.addEventListener('change', e => setOutputDevice(e.target.value));
+    parent.appendChild(outputDeviceSelect);
+    populateOutputDeviceSelect().then(applySavedOutputDevice);
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateOutputDeviceSelect);
+    }
+  }
+
+  async function populateInputDeviceSelect() {
+    if (!inputDeviceSelect) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      inputDeviceSelect.disabled = true;
+      inputDeviceSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      inputDeviceSelect.innerHTML = '';
+      inputDeviceSelect.add(new Option('Default input', 'default'));
+      inputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        inputDeviceSelect.add(opt);
+      });
+      let saved = localStorage.getItem('ytbm_inputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_inputDeviceId', 'default');
+      }
+      inputDeviceSelect.value = saved;
+      inputDeviceSelect.disabled = inputs.length === 0;
+    } catch (err) {
+      console.error('Failed to enumerate input devices', err);
+    }
+  }
+
+  function buildInputDeviceDropdown(parent) {
+    if (inputDeviceSelect || !parent) return;
+    inputDeviceSelect = document.createElement('select');
+    inputDeviceSelect.className = 'looper-btn';
+    inputDeviceSelect.style.flex = '1 1 auto';
+    inputDeviceSelect.title = 'Choose audio input device';
+    inputDeviceSelect.addEventListener('change', e => {
+      micDeviceId = e.target.value || 'default';
+      localStorage.setItem('ytbm_inputDeviceId', micDeviceId);
+    });
+    parent.appendChild(inputDeviceSelect);
+    populateInputDeviceSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateInputDeviceSelect);
+    }
+  }
+
+  async function populateMonitorInputSelect() {
+    if (!monitorInputSelect) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      monitorInputSelect.disabled = true;
+      monitorInputSelect.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      monitorInputSelect.innerHTML = '';
+      monitorInputSelect.add(new Option('Default monitoring input off', 'off'));
+      inputs.forEach(d => {
+        const opt = new Option(d.label || 'Device', d.deviceId);
+        monitorInputSelect.add(opt);
+      });
+      let saved;
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        const res = await new Promise(r => chrome.storage.local.get(['ytbm_monitorInputDeviceId'], r));
+        saved = res.ytbm_monitorInputDeviceId;
+      }
+      if (!saved) {
+        saved = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
+        localStorage.setItem('ytbm_monitorInputDeviceId', saved);
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ ytbm_monitorInputDeviceId: saved });
+        }
+      }
+      monitorInputSelect.value = saved;
+      monitorInputSelect.disabled = inputs.length === 0;
+      monitorMicDeviceId = saved;
+      applyMonitorSelection();
+    } catch (err) {
+      console.error('Failed to enumerate input devices', err);
+    }
+  }
+
+  function buildMonitorInputDropdown(parent) {
+    if (monitorInputSelect || !parent) return;
+    monitorInputSelect = document.createElement('select');
+    monitorInputSelect.className = 'looper-btn';
+    monitorInputSelect.style.flex = '1 1 auto';
+    monitorInputSelect.title = 'Choose monitoring input device';
+    monitorInputSelect.addEventListener('change', e => {
+      monitorMicDeviceId = e.target.value || 'off';
+      localStorage.setItem('ytbm_monitorInputDeviceId', monitorMicDeviceId);
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ ytbm_monitorInputDeviceId: monitorMicDeviceId });
+      }
+      applyMonitorSelection();
+    });
+    parent.appendChild(monitorInputSelect);
+    populateMonitorInputSelect();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', populateMonitorInputSelect);
+    }
+  }
+
+  function buildMonitorToggle(parent) {
+    if (monitorToggleBtn || !parent) return;
+    monitorToggleBtn = document.createElement('button');
+    monitorToggleBtn.className = 'looper-btn';
+    monitorToggleBtn.style.flex = '0 0 auto';
+    monitorToggleBtn.title = 'Toggle monitoring on/off';
+    monitorToggleBtn.addEventListener('click', () => {
+      monitorEnabled = !monitorEnabled;
+      updateMonitorToggleColor();
+      applyMonitorSelection();
+    });
+    parent.appendChild(monitorToggleBtn);
+    updateMonitorToggleColor();
+  }
+
+  function updateMonitorToggleColor() {
+    if (!monitorToggleBtn) return;
+    monitorToggleBtn.style.backgroundColor = monitorEnabled ? 'green' : '';
+    monitorToggleBtn.textContent = monitorEnabled ? 'Mon On' : 'Mon Off';
+  }
+
+  async function startMonitoring() {
+    if (!monitorEnabled || monitoringActive) return;
+    if (!monitorMicDeviceId || monitorMicDeviceId === 'off') return;
+    try {
+      const constraints = {
+        audio: {
+          latency: 0,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1
+        },
+        video: false
+      };
+      if (monitorMicDeviceId !== 'default') {
+        constraints.audio.deviceId = { exact: monitorMicDeviceId };
+      }
+      monitorStream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Use a separate low-latency context so monitoring bypasses extension routing
+      monitorContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 0 });
+      const src = monitorContext.createMediaStreamSource(monitorStream);
+      src.connect(monitorContext.destination);
+      monitoringActive = true;
+      console.log('Monitoring started');
+    } catch (err) {
+      console.error('monitor input error', err);
+    }
+    updateMonitorSelectColor();
+  }
+
+  function stopMonitoring() {
+    if (monitorContext) {
+      monitorContext.close().catch(() => {});
+      monitorContext = null;
+    }
+    if (monitorStream) {
+      monitorStream.getTracks().forEach(t => t.stop());
+      monitorStream = null;
+    }
+    monitoringActive = false;
+    console.log('Monitoring stopped');
+    updateMonitorSelectColor();
+  }
+
+  function applyMonitorSelection() {
+    if (monitorEnabled && monitorMicDeviceId !== 'off') {
+      startMonitoring();
+    } else {
+      stopMonitoring();
+    }
+  }
+
+  // Monitoring persists across tabs. Clean up only on page unload to
+  // avoid doubling up when navigating between videos.
+
+
+  async function applySavedOutputDevice() {
+    let id = localStorage.getItem('ytbm_outputDeviceId');
+    if (!id) {
+      id = 'default';
+      localStorage.setItem('ytbm_outputDeviceId', 'default');
+    }
+    await setOutputDevice(id);
+    if (outputDeviceSelect) outputDeviceSelect.value = id;
+  }
   /**************************************
    * Global Variables
    **************************************/
@@ -327,9 +672,12 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     });
   }
   // -----------------------------------------------------------------
-  let micState = 0;
+  let micState = 0; // 0=off, 1=record, 2=monitor+record
   let micSourceNode = null;
   let micGainNode = null;
+  let monitorStream = null;
+  let monitorContext = null; // dedicated low-latency context for input monitoring
+  let monitoringActive = false;
   let blindMode = false;
   
   // Global variable for the touch modifier mode
@@ -404,66 +752,93 @@ function stopPulseShowYTControls() {
 
 document.addEventListener("mousemove", stopPulseShowYTControls);
 
-// ===== Function to Toggle Microphone Input =====
-async function toggleMicInput() {
+// ===== Mic Mode Handling =====
+async function setMicMode(mode) {
   if (!audioContext) await ensureAudioContext();
+  console.log('setMicMode', micState, '->', mode);
 
-  if (micState === 0) {
-    // STATE 0 → 1: Turn mic on for recording only (no live monitoring)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          sampleRate: 48000,
-          channelCount: 1
-        },
-        video: false
-      });
-      micSourceNode = audioContext.createMediaStreamSource(stream);
-      micGainNode = audioContext.createGain();
-      micGainNode.gain.value = 1;
-      
-      // Connect mic signal only to mainRecorderMix (for recording)
-      micSourceNode.connect(micGainNode);
-      micGainNode.connect(mainRecorderMix);
-      // Do NOT connect to masterGain so you won't hear it live
-      
-      micState = 1; // Green state: active but not monitoring
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Could not access microphone: " + err.message);
-    }
-  } 
-  else if (micState === 1) {
-    // STATE 1 → 2: Turn on live monitoring
-    micGainNode.connect(masterGain);
-    micState = 2;
+  // Clean up previous state
+  if (micGainNode) {
+    try { micGainNode.disconnect(); } catch {}
+    try { micGainNode.disconnect(mainRecorderMix); } catch {}
+    try { micGainNode.disconnect(bus4Gain); } catch {}
   }
-  else if (micState === 2) {
-    // STATE 2 → 0: Turn mic completely off
+
+  if (mode === 0) {
+    stopMonitoring();
     if (micSourceNode?.mediaStream) {
-      micSourceNode.mediaStream.getTracks().forEach(track => track.stop());
+      micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
     }
     if (micSourceNode) micSourceNode.disconnect();
-    if (micGainNode) micGainNode.disconnect();
-    micState = 0;
+    micSourceNode = null;
+    micGainNode = null;
+  } else {
+    if (!micSourceNode) {
+      try {
+        const constraints = {
+          audio: {
+            latency: 0,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 48000,
+            channelCount: 1
+          },
+          video: false
+        };
+        if (micDeviceId && micDeviceId !== 'default') {
+          constraints.audio.deviceId = { exact: micDeviceId };
+        }
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        micSourceNode = audioContext.createMediaStreamSource(stream);
+        micGainNode = audioContext.createGain();
+        micGainNode.gain.value = 1;
+        micSourceNode.connect(micGainNode);
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        alert('Could not access microphone: ' + err.message);
+        mode = 0;
+      }
+    }
+    if (micGainNode) {
+      micGainNode.connect(mainRecorderMix);
+      if (mode === 2) {
+        micGainNode.connect(bus4Gain);
+      }
+    }
   }
 
+  micState = mode;
+  applyMonitorSelection();
   updateMicButtonColor();
+  updateMonitorSelectColor();
+}
+
+async function toggleMicInput() {
+  const next = micState === 0 ? 1 : (micState === 1 ? 2 : 0);
+  await setMicMode(next);
 }
 
 function updateMicButtonColor() {
-  if (micButton) {
-    if (micState === 0) {
-      micButton.style.backgroundColor = "#333"; // Off
-    } else if (micState === 1) {
-      micButton.style.backgroundColor = "green"; // Active but not monitoring (recording only)
-    } else if (micState === 2) {
-      micButton.style.backgroundColor = "red"; // Active and monitoring
+  if (!micButton) return;
+  if (micState === 0) {
+    micButton.style.backgroundColor = "#333"; // Off
+  } else if (micState === 1) {
+    micButton.style.backgroundColor = "green"; // Recording only
+  } else if (micState === 2) {
+    micButton.style.backgroundColor = "red"; // Monitoring
+  }
+}
+
+function updateMonitorSelectColor() {
+  if (monitorInputSelect) {
+    if (monitoringActive) {
+      monitorInputSelect.style.backgroundColor = "green";
+    } else {
+      monitorInputSelect.style.backgroundColor = "";
     }
   }
+  updateMonitorToggleColor();
 }
 
 // Add the mic button to the minimal UI
@@ -1069,10 +1444,10 @@ hideYouTubePopups();
   addTouchSequencerButtonToAdvancedUI();
 
   // Attach pulse‑show hook to every MIDI input
-  if (navigator.requestMIDIAccess) {
+  if (shouldRunOnThisPage() && !isSampletteEmbed && navigator.requestMIDIAccess) {
     navigator.requestMIDIAccess().then(access => {
       function hook(port) {
-        if (port.type !== 'input') return;
+        if (!port || port.type !== 'input') return;
         const orig = port.onmidimessage;
         port.onmidimessage = function(ev) {
           if (unhideOnInput) pulseShowYTControls();
@@ -1100,7 +1475,9 @@ hideYouTubePopups();
         };
       }
       access.inputs.forEach(hook);
-      access.addEventListener('statechange', e => hook(e.port));
+      access.addEventListener('statechange', e => {
+        if (e.port) hook(e.port);
+      });
     }).catch(console.warn);
   }
   
@@ -1574,6 +1951,7 @@ function cleanupResources() {
     audioContext.close().catch(console.error);
     audioContext = null;
   }
+  stopMonitoring();
   if (videoPreviewURL) {
     URL.revokeObjectURL(videoPreviewURL);
     videoPreviewURL = null;
@@ -1613,9 +1991,9 @@ function captureAppState() {
 
     eqFilterActive,
     eqFilterApplyTarget,
-    eqFilterType: eqFilterNode.type,
-    eqFilterFreq: eqFilterNode.frequency.value,
-    eqFilterGain: eqFilterNode.gain.value,
+    eqFilterType: eqFilterNode ? eqFilterNode.type : 'lowpass',
+    eqFilterFreq: eqFilterNode ? eqFilterNode.frequency.value : 250,
+    eqFilterGain: eqFilterNode ? eqFilterNode.gain.value : 0,
 
     loFiCompActive,
     postCompGainValue: postCompGain.gain.value,
@@ -1642,9 +2020,11 @@ function restoreAppState(st) {
 
   eqFilterActive = st.eqFilterActive;
   eqFilterApplyTarget = st.eqFilterApplyTarget;
-  eqFilterNode.type = st.eqFilterType;
-  eqFilterNode.frequency.value = st.eqFilterFreq;
-  eqFilterNode.gain.value = st.eqFilterGain;
+  if (eqFilterNode) {
+    eqFilterNode.type = st.eqFilterType;
+    eqFilterNode.frequency.value = st.eqFilterFreq;
+    eqFilterNode.gain.value = st.eqFilterGain;
+  }
 
   loFiCompActive = st.loFiCompActive;
   postCompGain.gain.value = st.postCompGainValue;
@@ -1978,10 +2358,11 @@ function updateMinimalExportColor(btn) {
  * Deferred AudioContext & Node Setup
  **************************************/
 async function ensureAudioContext() {
+  let created = false;
   if (!audioContext) {
-    // Pass a latencyHint of "interactive" and match sampleRate to mic constraints
+    // Create the main AudioContext with minimal latency for responsive pads
     audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      latencyHint: "interactive",
+      latencyHint: 0, // lowest possible latency
       sampleRate: 48000
     });
     setupAudioNodes();
@@ -1995,11 +2376,17 @@ async function ensureAudioContext() {
       }
       vid._audioConnected = true;
     }
+    created = true;
   }
   if (audioContext.state === "suspended") {
     await audioContext.resume().catch(err => console.error("AudioContext resume failed:", err.message));
   }
   if (!deckA) { initTwoDeck(); }
+  if (!currentOutputNode) currentOutputNode = audioContext.destination;
+  await applySavedOutputDevice();
+  if (created) {
+    applyMonitorSelection();
+  }
   return audioContext;
 }
 
@@ -2056,6 +2443,12 @@ async function jumpToCue(targetTime) {
   const silentVid  = (activeDeck === "A") ? deckB : deckA;
   const activeGain = (activeDeck === "A") ? gainA : gainB;
   const silentGain = (activeDeck === "A") ? gainB : gainA;
+
+  if (!activeVid || !silentVid || !activeGain || !silentGain) {
+    const vid = getVideoElement();
+    if (vid) vid.currentTime = targetTime;
+    return;
+  }
 
   /* 1 – prepare the silent deck */
   const now = audioContext.currentTime;
@@ -2452,17 +2845,17 @@ function applyAllFXRouting() {
     // bus1..3 => masterGain => loFiComp => postComp => destination
     masterGain.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
-    postCompGain.connect(audioContext.destination);
+    postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
 
     // bus4 => directly to output (skips compressor)
-    bus4Gain.connect(audioContext.destination);
+    bus4Gain.connect(currentOutputNode || audioContext.destination);
     bus4Gain.connect(videoDestination);
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
     masterGain.connect(overallOutputGain);
-    overallOutputGain.connect(audioContext.destination);
+    overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
 
@@ -4547,6 +4940,13 @@ function addControls() {
 
   buildSamplePackDropdown();
 
+  buildOutputDeviceDropdown(cw);
+  buildMonitorInputDropdown(cw);
+  buildMonitorToggle(cw);
+
+  buildInputDeviceDropdown(cw);
+  updateMonitorSelectColor();
+
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
   let pitchWrap = document.createElement("div");
@@ -4733,21 +5133,30 @@ function addControls() {
   snareFader = snareControls.fader;
   snareDBLabel = snareControls.dbLabel;
 
+  const actionWrap = document.createElement('div');
+  actionWrap.style.display = 'flex';
+  actionWrap.style.flexWrap = 'wrap';
+  actionWrap.style.gap = '4px';
+  cw.appendChild(actionWrap);
+
   const randomAllBtn = document.createElement("button");
   randomAllBtn.className = "looper-btn";
   randomAllBtn.innerText = "Rand All";
+  randomAllBtn.style.flex = '1 1 calc(50% - 4px)';
   randomAllBtn.addEventListener("click", randomizeAllSamples);
-  cw.appendChild(randomAllBtn);
+  actionWrap.appendChild(randomAllBtn);
 
   exportButton = document.createElement("button");
   exportButton.className = "looper-btn";
   exportButton.innerText = "Export";
   exportButton.addEventListener("click", exportLoop);
-  cw.appendChild(exportButton);
+  exportButton.style.flex = '1 1 calc(50% - 4px)';
+  actionWrap.appendChild(exportButton);
 
   undoButton = document.createElement("button");
   undoButton.className = "looper-btn";
   undoButton.innerText = "Undo/Redo";
+  undoButton.style.flex = '1 1 calc(50% - 4px)';
   undoButton.addEventListener("click", (e) => {
   if (e.detail === 1) {
     // Single click: undo
@@ -4758,47 +5167,53 @@ function addControls() {
   }
 });
 
-  cw.appendChild(undoButton);
+  actionWrap.appendChild(undoButton);
   
   let importMediaAdvBtn = document.createElement("button");
   importMediaAdvBtn.className = "looper-btn";
   importMediaAdvBtn.innerText = "Import Media";
+  importMediaAdvBtn.style.flex = '1 1 calc(50% - 4px)';
   importMediaAdvBtn.title = "Import a local video or audio file (Cmd+I)";
   importMediaAdvBtn.addEventListener("click", importMedia);
-  cw.appendChild(importMediaAdvBtn);
+  actionWrap.appendChild(importMediaAdvBtn);
 
   importAudioButton = document.createElement("button");
   importAudioButton.className = "looper-btn";
   importAudioButton.innerText = "ImportLoop";
+  importAudioButton.style.flex = '1 1 calc(50% - 4px)';
   importAudioButton.title = "Import an audio file as loop";
   importAudioButton.addEventListener("click", onImportAudioClicked);
-  cw.appendChild(importAudioButton);
+  actionWrap.appendChild(importAudioButton);
 
   cuesButton = document.createElement("button");
   cuesButton.className = "looper-btn";
   cuesButton.innerText = "AddCue";
+  cuesButton.style.flex = '1 1 calc(50% - 4px)';
   cuesButton.addEventListener("click", addCueAtCurrentVideoTime);
-  cw.appendChild(cuesButton);
+  actionWrap.appendChild(cuesButton);
 
   randomCuesButton = document.createElement("button");
   randomCuesButton.className = "looper-btn";
   randomCuesButton.innerText = "RndCues";
+  randomCuesButton.style.flex = '1 1 calc(50% - 4px)';
   randomCuesButton.addEventListener("click", randomizeCuesInOneClick);
-  cw.appendChild(randomCuesButton);
+  actionWrap.appendChild(randomCuesButton);
 
   const copyCuesButton = document.createElement("button");
   copyCuesButton.className = "looper-btn";
   copyCuesButton.innerText = "Copy Cues";
+  copyCuesButton.style.flex = '1 1 calc(50% - 4px)';
   copyCuesButton.title = "Copy YouTube link with cues embedded";
   copyCuesButton.addEventListener("click", copyCueLink);
-  cw.appendChild(copyCuesButton);
+  actionWrap.appendChild(copyCuesButton);
 
   const pasteCuesButton = document.createElement("button");
   pasteCuesButton.className = "looper-btn";
   pasteCuesButton.innerText = "Paste Cues";
+  pasteCuesButton.style.flex = '1 1 calc(50% - 4px)';
   pasteCuesButton.title = "Paste a YouTube link with cues to update them";
   pasteCuesButton.addEventListener("click", pasteCuesFromLink);
-  cw.appendChild(pasteCuesButton);
+  actionWrap.appendChild(pasteCuesButton);
 /*
   videoAudioToggleButton = document.createElement("button");
   videoAudioToggleButton.className = "looper-btn";
@@ -4823,53 +5238,60 @@ function addControls() {
   manualButton = document.createElement("button");
   manualButton.className = "looper-btn";
   manualButton.innerText = "Manual";
+  manualButton.style.flex = '1 1 calc(50% - 4px)';
   manualButton.addEventListener("click", showManualWindowToggle);
-  cw.appendChild(manualButton);
+  actionWrap.appendChild(manualButton);
 
   keyMapButton = document.createElement("button");
   keyMapButton.className = "looper-btn";
   keyMapButton.innerText = "KeyMap";
+  keyMapButton.style.flex = '1 1 calc(50% - 4px)';
   keyMapButton.addEventListener("click", showKeyMapWindowToggle);
-  cw.appendChild(keyMapButton);
+  actionWrap.appendChild(keyMapButton);
 
   midiMapButton = document.createElement("button");
   midiMapButton.className = "looper-btn";
   midiMapButton.innerText = "MIDIMap";
+  midiMapButton.style.flex = '1 1 calc(50% - 4px)';
   midiMapButton.addEventListener("click", showMIDIMapWindowToggle);
-  cw.appendChild(midiMapButton);
+  actionWrap.appendChild(midiMapButton);
 
   // Reverb + Cassette
   reverbButton = document.createElement("button");
   reverbButton.className = "looper-btn";
   reverbButton.innerText = "Reverb:Off";
+  reverbButton.style.flex = '1 1 calc(50% - 4px)';
   reverbButton.addEventListener("click", () => {
     toggleReverb();
     reverbButton.innerText = "Reverb:" + (reverbActive ? "On" : "Off");
     updateReverbButtonColor();
   });
-  cw.appendChild(reverbButton);
+  actionWrap.appendChild(reverbButton);
 
   cassetteButton = document.createElement("button");
   cassetteButton.className = "looper-btn";
   cassetteButton.innerText = "Cassette:Off";
+  cassetteButton.style.flex = '1 1 calc(50% - 4px)';
   cassetteButton.addEventListener("click", () => {
     toggleCassette();
     cassetteButton.innerText = "Cassette:" + (cassetteActive ? "On" : "Off");
     updateCassetteButtonColor();
   });
-  cw.appendChild(cassetteButton);
+  actionWrap.appendChild(cassetteButton);
 
   eqButton = document.createElement("button");
   eqButton.className = "looper-btn";
   eqButton.innerText = "EQ/Filter";
+  eqButton.style.flex = '1 1 calc(50% - 4px)';
   eqButton.addEventListener("click", () => {
     showEQWindowToggle();
   });
-  cw.appendChild(eqButton);
+  actionWrap.appendChild(eqButton);
 
   loFiCompButton = document.createElement("button");
   loFiCompButton.className = "looper-btn";
   loFiCompButton.innerText = "LoFiComp:Off";
+  loFiCompButton.style.flex = '1 1 calc(50% - 4px)';
   loFiCompButton.style.background = "#444";
   loFiCompButton.addEventListener("click", async () => {
     await ensureAudioContext();
@@ -4877,7 +5299,7 @@ function addControls() {
     toggleCompressor();
     loFiCompButton.innerText = "LoFiComp:" + (loFiCompActive ? "On" : "Off");
   });
-  cw.appendChild(loFiCompButton);
+  actionWrap.appendChild(loFiCompButton);
 
   let compFaderRow = document.createElement("div");
   compFaderRow.style.display = "flex";
@@ -4934,7 +5356,8 @@ function addControls() {
 /**************************************
  * EQ / Filter Window
  **************************************/
-function showEQWindowToggle() {
+async function showEQWindowToggle() {
+  await ensureAudioContext();
   if (!eqWindowContainer) {
     buildEQWindow();
     eqWindowContainer.style.display = "block";
@@ -4945,6 +5368,7 @@ function showEQWindowToggle() {
 }
 
 function buildEQWindow() {
+  if (!eqFilterNode) return; // safety check
   eqWindowContainer = document.createElement("div");
   eqWindowContainer.className = "looper-midimap-container";
   eqWindowContainer.style.width = "280px";
@@ -5002,27 +5426,29 @@ function buildEQWindow() {
   let filterTargetSelect = eqWindowContainer.querySelector("#eqFilterTarget");
   let filterActiveCheck = eqWindowContainer.querySelector("#eqFilterActive");
 
-  filterTypeSelect.value = eqFilterNode.type;
-  filterFreqSlider.value = eqFilterNode.frequency.value;
-  filterFreqVal.innerText = eqFilterNode.frequency.value + " Hz";
-  filterGainSlider.value = eqFilterNode.gain.value;
-  filterGainVal.innerText = eqFilterNode.gain.value + " dB";
+  if (eqFilterNode) {
+    filterTypeSelect.value = eqFilterNode.type;
+    filterFreqSlider.value = eqFilterNode.frequency.value;
+    filterFreqVal.innerText = eqFilterNode.frequency.value + " Hz";
+    filterGainSlider.value = eqFilterNode.gain.value;
+    filterGainVal.innerText = eqFilterNode.gain.value + " dB";
+  }
   filterTargetSelect.value = eqFilterApplyTarget;
   filterActiveCheck.checked = eqFilterActive;
 
   filterTypeSelect.addEventListener("change", () => {
     pushUndoState();
-    eqFilterNode.type = filterTypeSelect.value;
+    if (eqFilterNode) eqFilterNode.type = filterTypeSelect.value;
   });
   filterFreqSlider.addEventListener("input", () => {
-    eqFilterNode.frequency.value = parseFloat(filterFreqSlider.value);
+    if (eqFilterNode) eqFilterNode.frequency.value = parseFloat(filterFreqSlider.value);
     filterFreqVal.innerText = filterFreqSlider.value + " Hz";
   });
   filterFreqSlider.addEventListener("change", () => {
     pushUndoState();
   });
   filterGainSlider.addEventListener("input", () => {
-    eqFilterNode.gain.value = parseFloat(filterGainSlider.value);
+    if (eqFilterNode) eqFilterNode.gain.value = parseFloat(filterGainSlider.value);
     filterGainVal.innerText = filterGainSlider.value + " dB";
   });
   filterGainSlider.addEventListener("change", () => {
@@ -6173,6 +6599,8 @@ function injectCustomCSS() {
       border-radius: 6px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
       width: 210px;
+      max-height: 70vh;
+      overflow-y: auto;
     }
     .looper-drag-handle {
       background: #222;
@@ -6212,6 +6640,7 @@ function injectCustomCSS() {
       justify-content: flex-end;
       gap: 6px;
       margin-right: 6px;
+      overflow-x: auto;
     }
     .ytbm-minimal-bar .looper-btn {
       background: #333;
@@ -6369,6 +6798,7 @@ attachVideoMetadataListener();
  **************************************/
 async function initialize() {
   try {
+    if (!shouldRunOnThisPage()) return;
     let isAudioPrimed = false;
 
     document.addEventListener('click', function primeAudio() {
@@ -6388,6 +6818,7 @@ async function initialize() {
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
     await loadSamplePacksFromLocalStorage();
+    await loadMonitorPrefs();
     await ensureAudioContext();
     if (activeSamplePackNames.length) {
       await applySelectedSamplePacks();
@@ -6395,7 +6826,9 @@ async function initialize() {
       activeSamplePackNames = [currentSamplePackName];
       await applySelectedSamplePacks();
     }
-    initializeMIDI();
+    if (!isSampletteEmbed) {
+      initializeMIDI();
+    }
     addControls();
     buildMinimalUIBar();
     addTouchButtonToMinimalUI();
