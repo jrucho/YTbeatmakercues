@@ -342,16 +342,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       if (monitorMicDeviceId !== 'default') {
         mc.audio = { deviceId: { exact: monitorMicDeviceId } };
       }
-      monitorStream = await navigator.mediaDevices.getUserMedia(mc);
-      monitorOutputAudio = new Audio();
-      monitorOutputAudio.autoplay = true;
-      monitorOutputAudio.style.display = 'none';
-      document.body.appendChild(monitorOutputAudio);
-      monitorOutputAudio.srcObject = monitorStream;
-      if (monitorOutputAudio.setSinkId) {
-        try { await monitorOutputAudio.setSinkId(''); } catch {}
+      const stream = await navigator.mediaDevices.getUserMedia(mc);
+      const audioEl = document.createElement('audio');
+      audioEl.autoplay = true;
+      audioEl.style.display = 'none';
+      if (document.body) document.body.appendChild(audioEl);
+      audioEl.srcObject = stream;
+      if (audioEl.setSinkId) {
+        try { await audioEl.setSinkId(''); } catch {}
       }
-      monitorOutputAudio.play().catch(() => {});
+      await audioEl.play().catch(() => {});
+      monitorStream = stream;
+      monitorOutputAudio = audioEl;
       monitoringActive = true;
     } catch (err) {
       console.warn('monitor input error', err);
