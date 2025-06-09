@@ -216,6 +216,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
+  let monitorOutputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
   let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
   let monitorEnabled = (localStorage.getItem('ytbm_monitorEnabled') ?? 'true') !== 'false';
@@ -381,7 +382,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   async function startMonitoring() {
     if (!monitorEnabled || monitoringActive) return;
     if (!monitorMicDeviceId || monitorMicDeviceId === 'off') return;
-    await ensureAudioContext();
     try {
       const constraints = {
         audio: {
@@ -395,8 +395,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         constraints.audio.deviceId = { exact: monitorMicDeviceId };
       }
       monitorStream = await navigator.mediaDevices.getUserMedia(constraints);
-      monitorSource = audioContext.createMediaStreamSource(monitorStream);
-      monitorSource.connect(bus4Gain);
+      monitorOutputAudio = new Audio();
+      monitorOutputAudio.autoplay = true;
+      monitorOutputAudio.playsInline = true;
+      monitorOutputAudio.style.display = 'none';
+      document.body.appendChild(monitorOutputAudio);
+      monitorOutputAudio.srcObject = monitorStream;
+      await monitorOutputAudio.play().catch(() => {});
       monitoringActive = true;
     } catch (err) {
       console.error('monitor input error', err);
@@ -405,9 +410,11 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   function stopMonitoring() {
-    if (monitorSource) {
-      try { monitorSource.disconnect(); } catch {}
-      monitorSource = null;
+    if (monitorOutputAudio) {
+      monitorOutputAudio.pause();
+      monitorOutputAudio.srcObject = null;
+      monitorOutputAudio.remove();
+      monitorOutputAudio = null;
     }
     if (monitorStream) {
       monitorStream.getTracks().forEach(t => t.stop());
@@ -639,12 +646,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     });
   }
   // -----------------------------------------------------------------
-  let micState = 0; // 0 = off, 1 = on
+  let micState = 0; // 0=off, 1=record, 2=monitor+record
   let micSourceNode = null;
   let micGainNode = null;
   let monitorStream = null;
-  let monitorContext = null;
-  let monitorSource = null;
   let monitoringActive = false;
   let blindMode = false;
   
@@ -725,7 +730,7 @@ async function toggleMicInput() {
   if (!audioContext) await ensureAudioContext();
 
   if (micState === 0) {
-    // STATE 0 → 1: Turn mic on for recording only (not audible)
+    // STATE 0 → 1: Turn mic on for recording only (no monitoring)
     try {
       const constraints = {
         audio: {
@@ -744,17 +749,21 @@ async function toggleMicInput() {
       micSourceNode = audioContext.createMediaStreamSource(stream);
       micGainNode = audioContext.createGain();
       micGainNode.gain.value = 1;
-
-      // Connect mic signal only to mainRecorderMix (for recording)
       micSourceNode.connect(micGainNode);
       micGainNode.connect(mainRecorderMix);
-      micState = 1;
+      micState = 1; // green
     } catch (err) {
       console.error('Error accessing microphone:', err);
       alert('Could not access microphone: ' + err.message);
     }
+  } else if (micState === 1) {
+    // STATE 1 → 2: also monitor through bus4Gain
+    if (micGainNode) {
+      micGainNode.connect(bus4Gain);
+    }
+    micState = 2; // red
   } else {
-    // Turn mic off
+    // STATE 2 → 0: turn off
     if (monitorEnabled) stopMonitoring();
     if (micSourceNode?.mediaStream) {
       micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
@@ -763,6 +772,7 @@ async function toggleMicInput() {
     if (micGainNode) {
       try { micGainNode.disconnect(); } catch {}
       micGainNode.disconnect(mainRecorderMix);
+      try { micGainNode.disconnect(bus4Gain); } catch {}
     }
     micSourceNode = null;
     micGainNode = null;
@@ -779,10 +789,10 @@ function updateMicButtonColor() {
   if (!micButton) return;
   if (micState === 0) {
     micButton.style.backgroundColor = "#333"; // Off
-  } else if (monitorEnabled) {
-    micButton.style.backgroundColor = "red"; // Monitoring
-  } else {
+  } else if (micState === 1) {
     micButton.style.backgroundColor = "green"; // Recording only
+  } else if (micState === 2) {
+    micButton.style.backgroundColor = "red"; // Monitoring
   }
 }
 
