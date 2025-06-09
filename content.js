@@ -715,11 +715,10 @@ async function toggleMicInput() {
       alert('Could not access microphone: ' + err.message);
     }
   } else if (micState === 1) {
-    // STATE 1 → 2: Enable monitoring and route to output/video
+    // STATE 1 → 2: Route mic to output/video
     if (micGainNode) {
       micGainNode.connect(bus4Gain);
     }
-    applyMonitorSelection();
     micState = 2;
   } else {
     // STATE 2 → 0: Turn mic completely off
