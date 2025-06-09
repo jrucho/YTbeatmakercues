@@ -1079,7 +1079,7 @@ hideYouTubePopups();
   if (!isSampletteEmbed && navigator.requestMIDIAccess) {
     navigator.requestMIDIAccess().then(access => {
       function hook(port) {
-        if (port.type !== 'input') return;
+        if (!port || port.type !== 'input') return;
         const orig = port.onmidimessage;
         port.onmidimessage = function(ev) {
           if (unhideOnInput) pulseShowYTControls();
