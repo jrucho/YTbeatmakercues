@@ -401,6 +401,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       const src = monitorContext.createMediaStreamSource(monitorStream);
       src.connect(monitorContext.destination);
       monitoringActive = true;
+      console.log('Monitoring started');
     } catch (err) {
       console.error('monitor input error', err);
     }
@@ -417,6 +418,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       monitorStream = null;
     }
     monitoringActive = false;
+    console.log('Monitoring stopped');
     updateMonitorSelectColor();
   }
 
@@ -722,66 +724,71 @@ function stopPulseShowYTControls() {
 
 document.addEventListener("mousemove", stopPulseShowYTControls);
 
-// ===== Function to Toggle Microphone Input =====
-async function toggleMicInput() {
+// ===== Mic Mode Handling =====
+async function setMicMode(mode) {
   if (!audioContext) await ensureAudioContext();
+  console.log('setMicMode', micState, '->', mode);
 
-  if (micState === 0) {
-    // grey → green: enable mic for loop recording only
-    try {
-      const constraints = {
-        audio: {
-          latency: 0,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          sampleRate: 48000,
-          channelCount: 1
-        },
-        video: false
-      };
-      if (micDeviceId && micDeviceId !== 'default') {
-        constraints.audio.deviceId = { exact: micDeviceId };
-      }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      micSourceNode = audioContext.createMediaStreamSource(stream);
-      micGainNode = audioContext.createGain();
-      micGainNode.gain.value = 1;
-      micSourceNode.connect(micGainNode);
-      // route only to recorder mix at this stage
-      micGainNode.connect(mainRecorderMix);
-      micState = 1;
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      alert('Could not access microphone: ' + err.message);
-    }
-  } else if (micState === 1) {
-    // green → red: also send mic to monitoring bus
-    if (micGainNode) {
-      micGainNode.connect(bus4Gain);
-    }
-    micState = 2;
-  } else {
-    // red → grey: shutdown mic and monitoring
+  // Clean up previous state
+  if (micGainNode) {
+    try { micGainNode.disconnect(); } catch {}
+    try { micGainNode.disconnect(mainRecorderMix); } catch {}
+    try { micGainNode.disconnect(bus4Gain); } catch {}
+  }
+
+  if (mode === 0) {
     stopMonitoring();
     if (micSourceNode?.mediaStream) {
       micSourceNode.mediaStream.getTracks().forEach(t => t.stop());
     }
     if (micSourceNode) micSourceNode.disconnect();
-    if (micGainNode) {
-      try { micGainNode.disconnect(); } catch {}
-      micGainNode.disconnect(mainRecorderMix);
-      try { micGainNode.disconnect(bus4Gain); } catch {}
-    }
     micSourceNode = null;
     micGainNode = null;
-    micState = 0;
+  } else {
+    if (!micSourceNode) {
+      try {
+        const constraints = {
+          audio: {
+            latency: 0,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 48000,
+            channelCount: 1
+          },
+          video: false
+        };
+        if (micDeviceId && micDeviceId !== 'default') {
+          constraints.audio.deviceId = { exact: micDeviceId };
+        }
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        micSourceNode = audioContext.createMediaStreamSource(stream);
+        micGainNode = audioContext.createGain();
+        micGainNode.gain.value = 1;
+        micSourceNode.connect(micGainNode);
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        alert('Could not access microphone: ' + err.message);
+        mode = 0;
+      }
+    }
+    if (micGainNode) {
+      micGainNode.connect(mainRecorderMix);
+      if (mode === 2) {
+        micGainNode.connect(bus4Gain);
+      }
+    }
   }
 
+  micState = mode;
   applyMonitorSelection();
-
   updateMicButtonColor();
   updateMonitorSelectColor();
+}
+
+async function toggleMicInput() {
+  const next = micState === 0 ? 1 : (micState === 1 ? 2 : 0);
+  await setMicMode(next);
 }
 
 function updateMicButtonColor() {
