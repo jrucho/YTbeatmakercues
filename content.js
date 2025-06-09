@@ -378,23 +378,47 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     monitorToggleBtn.textContent = monitorEnabled ? 'Mon On' : 'Mon Off';
   }
 
-  function startMonitoring() {
-    if (micState !== 1 || !micGainNode) return;
-    try { micGainNode.connect(bus4Gain); } catch {}
-    monitoringActive = true;
+  async function startMonitoring() {
+    if (!monitorEnabled || monitoringActive) return;
+    if (!monitorMicDeviceId || monitorMicDeviceId === 'off') return;
+    await ensureAudioContext();
+    try {
+      const constraints = {
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          channelCount: 1
+        },
+        video: false
+      };
+      if (monitorMicDeviceId !== 'default') {
+        constraints.audio.deviceId = { exact: monitorMicDeviceId };
+      }
+      monitorStream = await navigator.mediaDevices.getUserMedia(constraints);
+      monitorSource = audioContext.createMediaStreamSource(monitorStream);
+      monitorSource.connect(bus4Gain);
+      monitoringActive = true;
+    } catch (err) {
+      console.error('monitor input error', err);
+    }
     updateMonitorSelectColor();
   }
 
   function stopMonitoring() {
-    if (micGainNode) {
-      try { micGainNode.disconnect(bus4Gain); } catch {}
+    if (monitorSource) {
+      try { monitorSource.disconnect(); } catch {}
+      monitorSource = null;
+    }
+    if (monitorStream) {
+      monitorStream.getTracks().forEach(t => t.stop());
+      monitorStream = null;
     }
     monitoringActive = false;
     updateMonitorSelectColor();
   }
 
   function applyMonitorSelection() {
-    if (monitorEnabled && micState === 1) {
+    if (monitorEnabled && monitorMicDeviceId !== 'off') {
       startMonitoring();
     } else {
       stopMonitoring();
@@ -4873,6 +4897,7 @@ function addControls() {
   buildSamplePackDropdown();
 
   buildOutputDeviceDropdown(cw);
+  buildMonitorInputDropdown(cw);
   buildMonitorToggle(cw);
 
   buildInputDeviceDropdown(cw);
