@@ -1,4 +1,4 @@
-# Update 1.1
+# Update 1.2 Beta
 Mark cue points, play drum sounds, and customize your experience on YouTube.
 The extension supports managing multiple sample packs at once. Use the multi-
 select dropdown in the advanced panel to load several packs together or delete
@@ -17,6 +17,16 @@ https://www.instagram.com/reel/DKfAljPMP5w/?igsh=MXUzZG05ajg2dzJsMA==
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+
+## New in 1.2 Beta
+* Works inside the YouTube iframe on [Samplette.io](https://samplette.io) and other `youtube-nocookie.com` embeds. The toolbar becomes scrollable and MIDI features are disabled there.
+* Minimal bar and advanced window become scrollable when space is limited
+* Route audio to any available output device via the **Audio Out** dropdown ("Default output" preselected)
+* Choose your microphone via the **Audio In** dropdown ("Default input" preselected)
+* Pick a dedicated monitoring source in the **Monitor In** dropdown. Selecting a device plays it through your system speakers; choose "Default monitoring input off" to disable it. Monitoring is independent of the mic button.
+* Output routing adjusts automatically when selecting a new device
+* Avoids duplicate initialization in YouTube iframes to prevent freezes
+* Mic button cycles through Off → Record (green) → Monitor (red) so you can hear your input while capturing loops or video
 
 Manage multiple compressors (Native, Tape Warm, Roland SP404OG) to shape your audio character. Adjust settings effortlessly through a user-friendly interface.
 
