@@ -19,9 +19,8 @@ Mark cue points, loop audio/video, apply live effects, and customize your beatma
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
 
 ## New in 1.2 Beta
-* Works inside the embedded YouTube player on [Samplette.io](https://samplette.io) and other `youtube-nocookie.com` embeds
+* Works inside the YouTube iframe on [Samplette.io](https://samplette.io) and other `youtube-nocookie.com` embeds. The toolbar becomes scrollable and MIDI features are disabled there.
 * Minimal bar and advanced window become scrollable when space is limited
-* MIDI control is disabled on Samplette to avoid permission prompts
 * Route audio to any available output device via the **Audio Out** dropdown ("Default output" preselected)
 * Choose your microphone via the **Audio In** dropdown ("Default input" preselected)
 * Pick a dedicated monitoring source in the **Monitor In** dropdown. Selecting a device plays it through your system speakers; choose "Default monitoring input off" to disable it.

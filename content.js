@@ -145,14 +145,14 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   async function setOutputDevice(deviceId) {
     if (!audioContext) return;
     localStorage.setItem('ytbm_outputDeviceId', deviceId);
+    let success = false;
 
     // Prefer native AudioContext.setSinkId when available for lower latency
     if (typeof audioContext.setSinkId === 'function') {
       try {
         await audioContext.setSinkId(deviceId === 'default' ? '' : deviceId);
         currentOutputNode = audioContext.destination;
-        applyAllFXRouting();
-        return;
+        success = true;
       } catch (err) {
         console.warn('AudioContext.setSinkId failed', err);
       }
@@ -170,7 +170,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
     currentOutputNode = audioContext.destination;
 
-    if (deviceId && deviceId !== 'default') {
+    if (!success && deviceId && deviceId !== 'default') {
       try {
         if (!outputAudio) {
           outputAudio = new Audio();
@@ -183,10 +183,15 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         await outputAudio.setSinkId(deviceId);
         await outputAudio.play().catch(() => {});
         currentOutputNode = externalOutputDest;
+        success = true;
       } catch (err) {
         console.warn('Failed to apply output device', err);
         currentOutputNode = audioContext.destination;
       }
+    }
+    if (!success && outputDeviceSelect) {
+      outputDeviceSelect.value = 'default';
+      localStorage.setItem('ytbm_outputDeviceId', 'default');
     }
     applyAllFXRouting();
   }
@@ -5340,27 +5345,29 @@ function buildEQWindow() {
   let filterTargetSelect = eqWindowContainer.querySelector("#eqFilterTarget");
   let filterActiveCheck = eqWindowContainer.querySelector("#eqFilterActive");
 
-  filterTypeSelect.value = eqFilterNode.type;
-  filterFreqSlider.value = eqFilterNode.frequency.value;
-  filterFreqVal.innerText = eqFilterNode.frequency.value + " Hz";
-  filterGainSlider.value = eqFilterNode.gain.value;
-  filterGainVal.innerText = eqFilterNode.gain.value + " dB";
+  if (eqFilterNode) {
+    filterTypeSelect.value = eqFilterNode.type;
+    filterFreqSlider.value = eqFilterNode.frequency.value;
+    filterFreqVal.innerText = eqFilterNode.frequency.value + " Hz";
+    filterGainSlider.value = eqFilterNode.gain.value;
+    filterGainVal.innerText = eqFilterNode.gain.value + " dB";
+  }
   filterTargetSelect.value = eqFilterApplyTarget;
   filterActiveCheck.checked = eqFilterActive;
 
   filterTypeSelect.addEventListener("change", () => {
     pushUndoState();
-    eqFilterNode.type = filterTypeSelect.value;
+    if (eqFilterNode) eqFilterNode.type = filterTypeSelect.value;
   });
   filterFreqSlider.addEventListener("input", () => {
-    eqFilterNode.frequency.value = parseFloat(filterFreqSlider.value);
+    if (eqFilterNode) eqFilterNode.frequency.value = parseFloat(filterFreqSlider.value);
     filterFreqVal.innerText = filterFreqSlider.value + " Hz";
   });
   filterFreqSlider.addEventListener("change", () => {
     pushUndoState();
   });
   filterGainSlider.addEventListener("input", () => {
-    eqFilterNode.gain.value = parseFloat(filterGainSlider.value);
+    if (eqFilterNode) eqFilterNode.gain.value = parseFloat(filterGainSlider.value);
     filterGainVal.innerText = filterGainSlider.value + " dB";
   });
   filterGainSlider.addEventListener("change", () => {
