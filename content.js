@@ -134,21 +134,40 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     return true;
   }
 
+  async function setOutputDevice(deviceId) {
+    localStorage.setItem('ytbm_outputDeviceId', deviceId);
+    try {
+      if (audioContext && audioContext.setSinkId) {
+        await audioContext.setSinkId(deviceId);
+      }
+      const vid = getVideoElement();
+      if (vid && vid.setSinkId) {
+        await vid.setSinkId(deviceId);
+      }
+    } catch (err) {
+      console.warn('Failed to apply output device', err);
+    }
+  }
+
   async function chooseOutputDevice() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.selectAudioOutput) {
+    const supportsSetSink = (audioContext && audioContext.setSinkId) ||
+      (HTMLMediaElement.prototype.setSinkId);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !supportsSetSink) {
       alert('Output selection unsupported in this browser');
       return;
     }
     try {
-      const device = await navigator.mediaDevices.selectAudioOutput();
-      if (!device || !device.deviceId) return;
-      localStorage.setItem('ytbm_outputDeviceId', device.deviceId);
-      if (audioContext && audioContext.setSinkId) {
-        await audioContext.setSinkId(device.deviceId);
-      } else {
-        const vid = getVideoElement();
-        if (vid && vid.setSinkId) await vid.setSinkId(device.deviceId);
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      if (!outputs.length) {
+        alert('No audio output devices found');
+        return;
       }
+      const msg = outputs.map((d, i) => `${i + 1}: ${d.label || 'Device ' + (i + 1)}`).join('\n');
+      const choice = prompt(`Select output device:\n${msg}`, '1');
+      const idx = parseInt(choice, 10) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= outputs.length) return;
+      await setOutputDevice(outputs[idx].deviceId);
     } catch (err) {
       console.error('Failed to set output device', err);
     }
@@ -157,16 +176,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   async function applySavedOutputDevice() {
     const id = localStorage.getItem('ytbm_outputDeviceId');
     if (!id) return;
-    try {
-      if (audioContext && audioContext.setSinkId) {
-        await audioContext.setSinkId(id);
-      } else {
-        const vid = getVideoElement();
-        if (vid && vid.setSinkId) await vid.setSinkId(id);
-      }
-    } catch (err) {
-      console.warn('Failed to apply saved output device', err);
-    }
+    await setOutputDevice(id);
   }
   /**************************************
    * Global Variables

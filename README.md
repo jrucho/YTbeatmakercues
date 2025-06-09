@@ -22,6 +22,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Works inside the embedded YouTube player on [Samplette.io](https://samplette.io)
 * Minimal bar and advanced window become scrollable when space is limited
 * MIDI control is disabled on Samplette to avoid permission prompts
+* Route audio to any available output device via the **Audio Out** button
 
 Manage multiple compressors (Native, Tape Warm, Roland SP404OG) to shape your audio character. Adjust settings effortlessly through a user-friendly interface.
 
