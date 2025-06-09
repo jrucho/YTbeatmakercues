@@ -178,6 +178,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         try {
           outputAudio = new Audio();
           outputAudio.autoplay = true;
+          outputAudio.playsInline = true;
+          outputAudio.preload = 'auto';
           outputAudio.style.display = 'none';
           document.body.appendChild(outputAudio);
           externalOutputDest = audioContext.createMediaStreamDestination();
@@ -5071,21 +5073,30 @@ function addControls() {
   snareFader = snareControls.fader;
   snareDBLabel = snareControls.dbLabel;
 
+  const actionWrap = document.createElement('div');
+  actionWrap.style.display = 'flex';
+  actionWrap.style.flexWrap = 'wrap';
+  actionWrap.style.gap = '4px';
+  cw.appendChild(actionWrap);
+
   const randomAllBtn = document.createElement("button");
   randomAllBtn.className = "looper-btn";
   randomAllBtn.innerText = "Rand All";
+  randomAllBtn.style.flex = '1 1 calc(50% - 4px)';
   randomAllBtn.addEventListener("click", randomizeAllSamples);
-  cw.appendChild(randomAllBtn);
+  actionWrap.appendChild(randomAllBtn);
 
   exportButton = document.createElement("button");
   exportButton.className = "looper-btn";
   exportButton.innerText = "Export";
   exportButton.addEventListener("click", exportLoop);
-  cw.appendChild(exportButton);
+  exportButton.style.flex = '1 1 calc(50% - 4px)';
+  actionWrap.appendChild(exportButton);
 
   undoButton = document.createElement("button");
   undoButton.className = "looper-btn";
   undoButton.innerText = "Undo/Redo";
+  undoButton.style.flex = '1 1 calc(50% - 4px)';
   undoButton.addEventListener("click", (e) => {
   if (e.detail === 1) {
     // Single click: undo
@@ -5096,47 +5107,53 @@ function addControls() {
   }
 });
 
-  cw.appendChild(undoButton);
+  actionWrap.appendChild(undoButton);
   
   let importMediaAdvBtn = document.createElement("button");
   importMediaAdvBtn.className = "looper-btn";
   importMediaAdvBtn.innerText = "Import Media";
+  importMediaAdvBtn.style.flex = '1 1 calc(50% - 4px)';
   importMediaAdvBtn.title = "Import a local video or audio file (Cmd+I)";
   importMediaAdvBtn.addEventListener("click", importMedia);
-  cw.appendChild(importMediaAdvBtn);
+  actionWrap.appendChild(importMediaAdvBtn);
 
   importAudioButton = document.createElement("button");
   importAudioButton.className = "looper-btn";
   importAudioButton.innerText = "ImportLoop";
+  importAudioButton.style.flex = '1 1 calc(50% - 4px)';
   importAudioButton.title = "Import an audio file as loop";
   importAudioButton.addEventListener("click", onImportAudioClicked);
-  cw.appendChild(importAudioButton);
+  actionWrap.appendChild(importAudioButton);
 
   cuesButton = document.createElement("button");
   cuesButton.className = "looper-btn";
   cuesButton.innerText = "AddCue";
+  cuesButton.style.flex = '1 1 calc(50% - 4px)';
   cuesButton.addEventListener("click", addCueAtCurrentVideoTime);
-  cw.appendChild(cuesButton);
+  actionWrap.appendChild(cuesButton);
 
   randomCuesButton = document.createElement("button");
   randomCuesButton.className = "looper-btn";
   randomCuesButton.innerText = "RndCues";
+  randomCuesButton.style.flex = '1 1 calc(50% - 4px)';
   randomCuesButton.addEventListener("click", randomizeCuesInOneClick);
-  cw.appendChild(randomCuesButton);
+  actionWrap.appendChild(randomCuesButton);
 
   const copyCuesButton = document.createElement("button");
   copyCuesButton.className = "looper-btn";
   copyCuesButton.innerText = "Copy Cues";
+  copyCuesButton.style.flex = '1 1 calc(50% - 4px)';
   copyCuesButton.title = "Copy YouTube link with cues embedded";
   copyCuesButton.addEventListener("click", copyCueLink);
-  cw.appendChild(copyCuesButton);
+  actionWrap.appendChild(copyCuesButton);
 
   const pasteCuesButton = document.createElement("button");
   pasteCuesButton.className = "looper-btn";
   pasteCuesButton.innerText = "Paste Cues";
+  pasteCuesButton.style.flex = '1 1 calc(50% - 4px)';
   pasteCuesButton.title = "Paste a YouTube link with cues to update them";
   pasteCuesButton.addEventListener("click", pasteCuesFromLink);
-  cw.appendChild(pasteCuesButton);
+  actionWrap.appendChild(pasteCuesButton);
 /*
   videoAudioToggleButton = document.createElement("button");
   videoAudioToggleButton.className = "looper-btn";
@@ -5161,53 +5178,60 @@ function addControls() {
   manualButton = document.createElement("button");
   manualButton.className = "looper-btn";
   manualButton.innerText = "Manual";
+  manualButton.style.flex = '1 1 calc(50% - 4px)';
   manualButton.addEventListener("click", showManualWindowToggle);
-  cw.appendChild(manualButton);
+  actionWrap.appendChild(manualButton);
 
   keyMapButton = document.createElement("button");
   keyMapButton.className = "looper-btn";
   keyMapButton.innerText = "KeyMap";
+  keyMapButton.style.flex = '1 1 calc(50% - 4px)';
   keyMapButton.addEventListener("click", showKeyMapWindowToggle);
-  cw.appendChild(keyMapButton);
+  actionWrap.appendChild(keyMapButton);
 
   midiMapButton = document.createElement("button");
   midiMapButton.className = "looper-btn";
   midiMapButton.innerText = "MIDIMap";
+  midiMapButton.style.flex = '1 1 calc(50% - 4px)';
   midiMapButton.addEventListener("click", showMIDIMapWindowToggle);
-  cw.appendChild(midiMapButton);
+  actionWrap.appendChild(midiMapButton);
 
   // Reverb + Cassette
   reverbButton = document.createElement("button");
   reverbButton.className = "looper-btn";
   reverbButton.innerText = "Reverb:Off";
+  reverbButton.style.flex = '1 1 calc(50% - 4px)';
   reverbButton.addEventListener("click", () => {
     toggleReverb();
     reverbButton.innerText = "Reverb:" + (reverbActive ? "On" : "Off");
     updateReverbButtonColor();
   });
-  cw.appendChild(reverbButton);
+  actionWrap.appendChild(reverbButton);
 
   cassetteButton = document.createElement("button");
   cassetteButton.className = "looper-btn";
   cassetteButton.innerText = "Cassette:Off";
+  cassetteButton.style.flex = '1 1 calc(50% - 4px)';
   cassetteButton.addEventListener("click", () => {
     toggleCassette();
     cassetteButton.innerText = "Cassette:" + (cassetteActive ? "On" : "Off");
     updateCassetteButtonColor();
   });
-  cw.appendChild(cassetteButton);
+  actionWrap.appendChild(cassetteButton);
 
   eqButton = document.createElement("button");
   eqButton.className = "looper-btn";
   eqButton.innerText = "EQ/Filter";
+  eqButton.style.flex = '1 1 calc(50% - 4px)';
   eqButton.addEventListener("click", () => {
     showEQWindowToggle();
   });
-  cw.appendChild(eqButton);
+  actionWrap.appendChild(eqButton);
 
   loFiCompButton = document.createElement("button");
   loFiCompButton.className = "looper-btn";
   loFiCompButton.innerText = "LoFiComp:Off";
+  loFiCompButton.style.flex = '1 1 calc(50% - 4px)';
   loFiCompButton.style.background = "#444";
   loFiCompButton.addEventListener("click", async () => {
     await ensureAudioContext();
@@ -5215,7 +5239,7 @@ function addControls() {
     toggleCompressor();
     loFiCompButton.innerText = "LoFiComp:" + (loFiCompActive ? "On" : "Off");
   });
-  cw.appendChild(loFiCompButton);
+  actionWrap.appendChild(loFiCompButton);
 
   let compFaderRow = document.createElement("div");
   compFaderRow.style.display = "flex";
