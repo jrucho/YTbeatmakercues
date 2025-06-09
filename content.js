@@ -1782,9 +1782,9 @@ function captureAppState() {
 
     eqFilterActive,
     eqFilterApplyTarget,
-    eqFilterType: eqFilterNode.type,
-    eqFilterFreq: eqFilterNode.frequency.value,
-    eqFilterGain: eqFilterNode.gain.value,
+    eqFilterType: eqFilterNode ? eqFilterNode.type : 'lowpass',
+    eqFilterFreq: eqFilterNode ? eqFilterNode.frequency.value : 250,
+    eqFilterGain: eqFilterNode ? eqFilterNode.gain.value : 0,
 
     loFiCompActive,
     postCompGainValue: postCompGain.gain.value,
@@ -1811,9 +1811,11 @@ function restoreAppState(st) {
 
   eqFilterActive = st.eqFilterActive;
   eqFilterApplyTarget = st.eqFilterApplyTarget;
-  eqFilterNode.type = st.eqFilterType;
-  eqFilterNode.frequency.value = st.eqFilterFreq;
-  eqFilterNode.gain.value = st.eqFilterGain;
+  if (eqFilterNode) {
+    eqFilterNode.type = st.eqFilterType;
+    eqFilterNode.frequency.value = st.eqFilterFreq;
+    eqFilterNode.gain.value = st.eqFilterGain;
+  }
 
   loFiCompActive = st.loFiCompActive;
   postCompGain.gain.value = st.postCompGainValue;
