@@ -176,7 +176,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
-  let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || null;
+  let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
 
   async function populateOutputDeviceSelect() {
     if (!outputDeviceSelect) return;
@@ -191,15 +191,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const outputs = devices.filter(d => d.kind === 'audiooutput');
       outputDeviceSelect.innerHTML = '';
-      outputDeviceSelect.add(new Option('Default', 'default'));
+      outputDeviceSelect.add(new Option('Default output', 'default'));
       outputs.forEach(d => {
         const opt = new Option(d.label || 'Device', d.deviceId);
         outputDeviceSelect.add(opt);
       });
-      const saved = localStorage.getItem('ytbm_outputDeviceId');
-      if (saved) {
-        outputDeviceSelect.value = saved;
+      let saved = localStorage.getItem('ytbm_outputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_outputDeviceId', 'default');
       }
+      outputDeviceSelect.value = saved;
       outputDeviceSelect.disabled = outputs.length === 0;
     } catch (err) {
       console.error('Failed to enumerate output devices', err);
@@ -231,12 +233,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const inputs = devices.filter(d => d.kind === 'audioinput');
       inputDeviceSelect.innerHTML = '';
+      inputDeviceSelect.add(new Option('Default input', 'default'));
       inputs.forEach(d => {
         const opt = new Option(d.label || 'Device', d.deviceId);
         inputDeviceSelect.add(opt);
       });
-      const saved = localStorage.getItem('ytbm_inputDeviceId');
-      if (saved) inputDeviceSelect.value = saved;
+      let saved = localStorage.getItem('ytbm_inputDeviceId');
+      if (!saved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_inputDeviceId', 'default');
+      }
+      inputDeviceSelect.value = saved;
       inputDeviceSelect.disabled = inputs.length === 0;
     } catch (err) {
       console.error('Failed to enumerate input devices', err);
@@ -250,7 +257,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     inputDeviceSelect.style.flex = '1 1 auto';
     inputDeviceSelect.title = 'Choose audio input device';
     inputDeviceSelect.addEventListener('change', e => {
-      micDeviceId = e.target.value || null;
+      micDeviceId = e.target.value || 'default';
       localStorage.setItem('ytbm_inputDeviceId', micDeviceId);
     });
     parent.appendChild(inputDeviceSelect);
@@ -262,8 +269,11 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
 
   async function applySavedOutputDevice() {
-    const id = localStorage.getItem('ytbm_outputDeviceId');
-    if (!id || id === 'default') return;
+    let id = localStorage.getItem('ytbm_outputDeviceId');
+    if (!id) {
+      id = 'default';
+      localStorage.setItem('ytbm_outputDeviceId', 'default');
+    }
     await setOutputDevice(id);
     if (outputDeviceSelect) outputDeviceSelect.value = id;
   }
@@ -562,7 +572,9 @@ async function toggleMicInput() {
         },
         video: false
       };
-      if (micDeviceId) constraints.audio.deviceId = { exact: micDeviceId };
+      if (micDeviceId && micDeviceId !== 'default') {
+        constraints.audio.deviceId = { exact: micDeviceId };
+      }
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micSourceNode = audioContext.createMediaStreamSource(stream);
       micGainNode = audioContext.createGain();
