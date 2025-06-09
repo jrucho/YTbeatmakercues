@@ -541,6 +541,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let micSourceNode = null;
   let micGainNode = null;
   let monitorSourceNode = null;
+  let monitorOutputDest = null;
+  let monitorOutputAudio = null;
   let blindMode = false;
   
   // Global variable for the touch modifier mode
@@ -653,8 +655,20 @@ async function toggleMicInput() {
     }
   } 
   else if (micState === 1) {
-    // STATE 1 → 2: Turn on live monitoring
-    micGainNode.connect(masterGain);
+    // STATE 1 → 2: Turn on live monitoring to default output only
+    if (!monitorOutputAudio) {
+      monitorOutputAudio = new Audio();
+      monitorOutputAudio.autoplay = true;
+      monitorOutputAudio.style.display = 'none';
+      document.body.appendChild(monitorOutputAudio);
+      monitorOutputDest = audioContext.createMediaStreamDestination();
+      monitorOutputAudio.srcObject = monitorOutputDest.stream;
+      if (monitorOutputAudio.setSinkId) {
+        try { await monitorOutputAudio.setSinkId(''); } catch {}
+      }
+      monitorOutputAudio.play().catch(() => {});
+    }
+    micGainNode.connect(monitorOutputDest);
     if (monitorMicDeviceId && monitorMicDeviceId !== 'default' && monitorMicDeviceId !== micDeviceId) {
       try {
         const mConstraints = {
@@ -663,7 +677,7 @@ async function toggleMicInput() {
         };
         const mStream = await navigator.mediaDevices.getUserMedia(mConstraints);
         monitorSourceNode = audioContext.createMediaStreamSource(mStream);
-        monitorSourceNode.connect(masterGain);
+        monitorSourceNode.connect(monitorOutputDest);
       } catch (err) {
         console.warn('monitor input error', err);
       }
@@ -681,6 +695,18 @@ async function toggleMicInput() {
       monitorSourceNode.mediaStream.getTracks().forEach(track => track.stop());
     }
     if (monitorSourceNode) monitorSourceNode.disconnect();
+    if (monitorOutputDest) {
+      try { micGainNode.disconnect(monitorOutputDest); } catch {}
+      try { monitorSourceNode?.disconnect(monitorOutputDest); } catch {}
+      try { monitorOutputDest.disconnect(); } catch {}
+      monitorOutputDest = null;
+    }
+    if (monitorOutputAudio) {
+      monitorOutputAudio.pause();
+      monitorOutputAudio.srcObject = null;
+      monitorOutputAudio.remove();
+      monitorOutputAudio = null;
+    }
     monitorSourceNode = null;
     micState = 0;
   }
