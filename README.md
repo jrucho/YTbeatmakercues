@@ -10,7 +10,7 @@ built-in pack can be removed.
 
 https://www.instagram.com/reel/DKfAljPMP5w/?igsh=MXUzZG05ajg2dzJsMA==
 
-# YouTube Beatmaker Cues
+# YouTube Beatmaker Cues - Chrome Extension
 
 ![Screenshot 2025-06-06 at 19 38 10](https://github.com/user-attachments/assets/fc70d22d-c90a-4b66-9c4a-b66f001cdcc5)
 
