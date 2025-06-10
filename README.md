@@ -21,7 +21,6 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 
 https://www.instagram.com/reel/DKsfsPPMOxg/?igsh=NzkzdDVhajFrZWk1
 
-Mark cue points, play drum sounds, and customize your experience on YouTube.
 The extension supports managing multiple sample packs at once. Use the multi-
 select dropdown in the advanced panel to load several packs together or delete
 unused ones. Creating a new pack only asks for a name; you can later import
