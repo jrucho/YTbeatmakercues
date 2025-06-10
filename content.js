@@ -605,6 +605,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       isModPressed = false,
       pitchDownInterval = null,
       pitchUpInterval = null,
+      // Track last processed MIDI message to filter duplicates
+      lastMidiTimestamp = 0,
+      lastMidiData = [],
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -5560,6 +5563,16 @@ async function initializeMIDI() {
 }
 
 function handleMIDIMessage(e) {
+  // Filter out duplicate events which can happen on some controllers
+  if (e.timeStamp === lastMidiTimestamp &&
+      e.data[0] === lastMidiData[0] &&
+      e.data[1] === lastMidiData[1] &&
+      e.data[2] === lastMidiData[2]) {
+    return;
+  }
+  lastMidiTimestamp = e.timeStamp;
+  lastMidiData = [...e.data];
+
   let [st, note] = e.data;
   if (note === midiNotes.shift) {
     if (st === 144) isModPressed = true;
