@@ -4029,15 +4029,25 @@ function adjustSelectedCue(dt) {
 }
 
 function computeSuperKnobDelta(val) {
-  // Some endless encoders send relative values where 64 is neutral.
-  // Values 0..63 mean positive deltas, 65..127 mean negative.
-  if (val !== lastSuperKnobValue && (val <= 63 || val >= 65)) {
-    let diff = val <= 63 ? val : val - 128;
-    lastSuperKnobDirection = diff > 0 ? 1 : -1;
-    lastSuperKnobValue = val;
-    return diff;
+  // Try to interpret common relative CC formats (binary offset, signed bit,
+  // and two's complement). Whichever yields the smallest absolute change is
+  // used so endless encoders scroll in both directions without jumps.
+  if (val !== lastSuperKnobValue) {
+    const signedBit = (val & 0x40) ? -(val & 0x3f) : (val & 0x3f);
+    const binOffset = val - 64;          // 64 is neutral in binary offset mode
+    const twosComp  = val >= 64 ? val - 128 : val; // 2's complement mode
+    let diff = signedBit;
+    if (Math.abs(binOffset) < Math.abs(diff)) diff = binOffset;
+    if (Math.abs(twosComp) < Math.abs(diff)) diff = twosComp;
+
+    if (diff !== 0) {
+      lastSuperKnobDirection = diff > 0 ? 1 : -1;
+      lastSuperKnobValue = val;
+      return diff;
+    }
   }
 
+  // Many endless knobs send 64 for "no move". Consume and continue.
   if (val === 64) {
     lastSuperKnobValue = val;
     return 0;

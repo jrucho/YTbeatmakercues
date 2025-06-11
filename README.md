@@ -17,10 +17,11 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
 * Advanced control buttons now display in two columns for easier access
 * **Super Knob** scrolls smoothly from 0–127 and wraps for endless encoders
-  (tested with CC 3 and CC 38). Hold **Shift** to reposition a 0–127 knob before
-  continuing. Choose a speed (1–3) in the MIDI mapping window under the
-  Super Knob field. Speed **1** (default) matches the former fastest rate while
-  **2** and **3** move cues even quicker.
+  (tested with CC 3 and CC 38). Endless knobs are recognized in several
+  relative formats so they spin infinitely in either direction. Hold **Shift**
+  to reposition a 0–127 knob before continuing. Choose a speed (1–3) in the
+  MIDI mapping window under the Super Knob field. Speed **1** (default) matches
+  the former fastest rate while **2** and **3** move cues even quicker.
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 * Adjust cue points live using a single MIDI knob
