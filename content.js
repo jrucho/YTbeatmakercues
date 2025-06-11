@@ -4025,19 +4025,12 @@ function computeCueAdjustDelta(val) {
   let diff = val - lastCueAdjustValue;
 
   if (diff === 0) {
-    // endless encoders or absolute knobs stuck at limits
-    if (val === 1 || val === 65) diff = 1;
-    else if (val === 127 || val === 63 || val === 0) diff = -1;
-    else if (val > 65 && val <= 127) diff = val - 128;
-    else if (val > 0 && val < 63) diff = val;
-    else diff = lastCueAdjustDirection;
+    diff = lastCueAdjustDirection;
   } else {
     if (diff > 64) diff -= 128;
     else if (diff < -64) diff += 128;
+    lastCueAdjustDirection = diff > 0 ? 1 : diff < 0 ? -1 : lastCueAdjustDirection;
   }
-
-  if (diff > 0) lastCueAdjustDirection = 1;
-  else if (diff < 0) lastCueAdjustDirection = -1;
 
   lastCueAdjustValue = val;
   return diff;
