@@ -675,7 +675,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const superKnobSpeedMap = { 1: 0.01, 2: 0.03, 3: 0.07 };
+  const superKnobSpeedMap = { 1: 0.005, 2: 0.015, 3: 0.03 };
   updateSuperKnobStep();
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
@@ -4027,26 +4027,23 @@ function adjustSelectedCue(dt) {
 }
 
 function computeSuperKnobDelta(val) {
-  // Relative two's complement or binary offset
+  // Simple relative messages (common endless encoders)
   if (val === 65 || val === 1) {
     lastSuperKnobDirection = 1;
+    lastSuperKnobValue = val;
     return 1;
   }
   if (val === 63 || val === 127) {
     lastSuperKnobDirection = -1;
+    lastSuperKnobValue = val;
     return -1;
   }
-  if (val >= 1 && val <= 63) {
-    lastSuperKnobDirection = 1;
-    return val;
+  if (val === 64) {
+    lastSuperKnobValue = val;
+    return 0;
   }
-  if (val >= 65 && val <= 127) {
-    lastSuperKnobDirection = -1;
-    return val - 128;
-  }
-  if (val === 64) return 0;
 
-  // Absolute controller 0‑127
+  // First message after selecting a cue
   if (lastSuperKnobValue === null) {
     lastSuperKnobValue = val;
     lastSuperKnobDirection = 0;
@@ -4056,10 +4053,14 @@ function computeSuperKnobDelta(val) {
   let diff = val - lastSuperKnobValue;
   if (diff > 64) diff -= 128;
   else if (diff < -64) diff += 128;
+  if (diff > 32) diff -= 64;
+  else if (diff < -32) diff += 64;
 
-  if (diff > 0) lastSuperKnobDirection = 1;
-  else if (diff < 0) lastSuperKnobDirection = -1;
-  else diff = lastSuperKnobDirection;
+  if (diff === 0) {
+    diff = lastSuperKnobDirection;
+  } else {
+    lastSuperKnobDirection = diff > 0 ? 1 : -1;
+  }
 
   lastSuperKnobValue = val;
   return diff;
