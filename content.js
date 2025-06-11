@@ -612,6 +612,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       currentlyDetectingMidiControl = null,
       selectedCueKey = null,
       lastCueAdjustValue = null,
+      lastCueAdjustDirection = 0,
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -1297,6 +1298,7 @@ function triggerPadCue(padIndex) {
   if (vid && cuePoints[cueKey] !== undefined) {
     selectedCueKey = cueKey;
     lastCueAdjustValue = null;
+    lastCueAdjustDirection = 0;
     safeSeekVideo(null, cuePoints[cueKey]);  // routes into jumpToCue()
   }
 }
@@ -4007,20 +4009,26 @@ function adjustSelectedCue(dt) {
 function computeCueAdjustDelta(val) {
   if (lastCueAdjustValue === null) {
     lastCueAdjustValue = val;
+    lastCueAdjustDirection = 0;
     return 0;
   }
 
   let diff = val - lastCueAdjustValue;
+
   if (diff === 0) {
-    // relative (endless) encoder modes
+    // endless encoders that send a fixed value on rotation
     if (val === 1 || val === 65) diff = 1;
     else if (val === 127 || val === 63) diff = -1;
     else if (val > 65 && val <= 127) diff = val - 128;
     else if (val > 0 && val < 63) diff = val;
+    else if (val === 0 || val === 127) diff = lastCueAdjustDirection;
   } else {
     if (diff > 64) diff -= 128;
     else if (diff < -64) diff += 128;
   }
+
+  if (diff > 0) lastCueAdjustDirection = 1;
+  else if (diff < 0) lastCueAdjustDirection = -1;
 
   lastCueAdjustValue = val;
   return diff;
@@ -4089,6 +4097,7 @@ function sequencerTriggerCue(cueKey) {
   if (!video) return;
   selectedCueKey = cueKey;
   lastCueAdjustValue = null;
+  lastCueAdjustDirection = 0;
   
   if (cuePoints.hasOwnProperty(cueKey)) {
     const fadeTime = 0.002; // fade duration in seconds (50ms)
@@ -4184,6 +4193,7 @@ function sequencerTriggerCue(cueKey) {
   if (!video || !cuePoints[cueKey]) return;
   selectedCueKey = cueKey;
   lastCueAdjustValue = null;
+  lastCueAdjustDirection = 0;
   const fadeTime = 0.002; // 50ms fade
   const now = audioContext.currentTime;
   
@@ -4265,6 +4275,7 @@ function onKeyDown(e) {
     if (video && cuePoints[e.key] !== undefined) {
       selectedCueKey = e.key;
       lastCueAdjustValue = null;
+      lastCueAdjustDirection = 0;
       const fadeTime = 0.002; // 50ms fade duration
       const now = audioContext.currentTime;
       // Fade out the audio
@@ -5703,6 +5714,7 @@ function handleMIDIMessage(e) {
           if (k in cuePoints) {
         selectedCueKey = k;
         lastCueAdjustValue = null;
+        lastCueAdjustDirection = 0;
         // jump with a 50 ms cross-fade, same as the keyboard path
         sequencerTriggerCue(k);
           }

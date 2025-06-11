@@ -64,8 +64,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 🔄 **Cue Adjust Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
-  slide its position left or right. Works with endless encoders and normal
-  0–127 knobs.
+  slide its position left or right. Endless encoders scroll indefinitely and
+  regular 0–127 knobs also work.
 
 - 👇 **Touch Sequencer**  
   10 pads, 16-step sequencer, tap tempo, and BPM-based triggering.
