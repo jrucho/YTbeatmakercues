@@ -17,6 +17,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
 * Advanced control buttons now display in two columns for easier access
 * Cue Adjust knob keeps scrolling even when absolute controllers hit their limits
+  (tested with CC 3 and CC 38)
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 * Adjust cue points live using a single MIDI knob
@@ -65,8 +66,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 🔄 **Cue Adjust Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
-  slide its position left or right. Endless encoders scroll indefinitely and
-  regular 0–127 knobs also work.
+  slide its position left or right. Endless encoders scroll indefinitely, regular
+  0–127 knobs also work, and any CC number can be assigned.
 
 - 👇 **Touch Sequencer**  
   10 pads, 16-step sequencer, tap tempo, and BPM-based triggering.

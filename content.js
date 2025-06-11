@@ -4027,7 +4027,7 @@ function computeCueAdjustDelta(val) {
   if (diff === 0) {
     // endless encoders or absolute knobs stuck at limits
     if (val === 1 || val === 65) diff = 1;
-    else if (val === 127 || val === 63) diff = -1;
+    else if (val === 127 || val === 63 || val === 0) diff = -1;
     else if (val > 65 && val <= 127) diff = val - 128;
     else if (val > 0 && val < 63) diff = val;
     else diff = lastCueAdjustDirection;
@@ -5674,7 +5674,7 @@ function handleMIDIMessage(e) {
   }
 
   if (command === 0xb0) {
-    if (note === midiNotes.cueAdjust) {
+    if (Number(note) === Number(midiNotes.cueAdjust)) {
       if (selectedCueKey) {
         let diff = computeCueAdjustDelta(e.data[2]);
         if (diff !== 0) {
