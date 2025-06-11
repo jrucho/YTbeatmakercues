@@ -4029,46 +4029,15 @@ function adjustSelectedCue(dt) {
 }
 
 function computeSuperKnobDelta(val) {
-  // Try to interpret common relative CC formats (binary offset, signed bit,
-  // and two's complement). Whichever yields the smallest absolute change is
-  // used so endless encoders scroll in both directions without jumps.
-  if (val !== lastSuperKnobValue) {
-    const signedBit = (val & 0x40) ? -(val & 0x3f) : (val & 0x3f);
-    const binOffset = val - 64;          // 64 is neutral in binary offset mode
-    const twosComp  = val >= 64 ? val - 128 : val; // 2's complement mode
-    let diff = signedBit;
-    if (Math.abs(binOffset) < Math.abs(diff)) diff = binOffset;
-    if (Math.abs(twosComp) < Math.abs(diff)) diff = twosComp;
-
-    if (diff !== 0) {
-      lastSuperKnobDirection = diff > 0 ? 1 : -1;
-      lastSuperKnobValue = val;
-      return diff;
-    }
-  }
-
-  // Many endless knobs send 64 for "no move". Consume and continue.
-  if (val === 64) {
-    lastSuperKnobValue = val;
-    return 0;
-  }
-
-  // Absolute controllers: compute difference with wrap-around
+  // Stable algorithm used for both endless and standard 0–127 knobs.
   if (lastSuperKnobValue === null) {
     lastSuperKnobValue = val;
-    lastSuperKnobDirection = 0;
     return 0;
   }
 
   let diff = val - lastSuperKnobValue;
   if (diff > 64) diff -= 128;
   else if (diff < -64) diff += 128;
-
-  if (diff === 0) {
-    diff = lastSuperKnobDirection;
-  } else {
-    lastSuperKnobDirection = diff > 0 ? 1 : -1;
-  }
 
   lastSuperKnobValue = val;
   return diff;

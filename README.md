@@ -16,12 +16,10 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Lower latency when switching outputs using native sink routing when supported
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
 * Advanced control buttons now display in two columns for easier access
-* **Super Knob** scrolls smoothly from 0–127 and wraps for endless encoders
-  (tested with CC 3 and CC 38). Endless knobs are recognized in several
-  relative formats so they spin infinitely in either direction. Hold **Shift**
-  to reposition a 0–127 knob before continuing. Choose a speed (1–3) in the
-  MIDI mapping window under the Super Knob field. Speed **1** (default) matches
-  the former fastest rate while **2** and **3** move cues even quicker.
+* **Super Knob** scrolls cues using any MIDI CC. Endless encoders behave like
+  regular 0–127 knobs for now. Hold **Shift** to reposition before continuing
+  and choose a speed (1–3) in the MIDI mapping window. Speed **1** is the
+  default, with **2** and **3** moving cues faster.
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 * Adjust cue points live using a single MIDI knob
@@ -70,11 +68,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 🔄 **Super Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
-  slide its position left or right. Endless encoders scroll without limits. For
-  standard 0–127 knobs, hold the Shift key (or MIDI shift note) to reposition the
-  knob before continuing. Choose a speed from 1 (default) to 3 (fastest) in the
-  MIDI mapping window. Speed **1** mirrors the former top speed, with **2** and
-  **3** stepping up even faster. Any CC number can be assigned.
+  slide its position left or right. Endless encoders currently act like normal
+  0–127 knobs for maximum stability. Hold Shift (or a MIDI shift note) to
+  reposition, and choose a speed from 1 (default) to 3 in the MIDI mapping
+  window. Any CC number can be assigned.
 
 - 👇 **Touch Sequencer**  
   10 pads, 16-step sequencer, tap tempo, and BPM-based triggering.
