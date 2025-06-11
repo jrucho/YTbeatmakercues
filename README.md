@@ -19,7 +19,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 
-https://www.instagram.com/reel/DKsfsPPMOxg/?igsh=NzkzdDVhajFrZWk1
+[https://www.instagram.com/reel/DKsfsPPMOxg/?igsh=NzkzdDVhajFrZWk1](https://www.instagram.com/reel/DKvE_jEseKd/?igsh=MTJra2M5Z3A5ZTM4aw==)
 
 The extension supports managing multiple sample packs at once. Use the multi-
 select dropdown in the advanced panel to load several packs together or delete
