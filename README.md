@@ -21,6 +21,9 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 
 [https://www.instagram.com/reel/DKsfsPPMOxg/?igsh=NzkzdDVhajFrZWk1](https://www.instagram.com/reel/DKvE_jEseKd/?igsh=MTJra2M5Z3A5ZTM4aw==)
 
+https://www.instagram.com/reel/DKvgj2TIICH/?igsh=Ym5xNDR0bXUzZXZj
+Thanks Noche for the video
+
 The extension supports managing multiple sample packs at once. Use the multi-
 select dropdown in the advanced panel to load several packs together or delete
 unused ones. Creating a new pack only asks for a name; you can later import
