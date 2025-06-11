@@ -675,7 +675,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const superKnobSpeedMap = { 1: 0.03, 2: 0.06, 3: 0.12 };
+  // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
+  // progressively quicker for rapid cue movement.
+  const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateSuperKnobStep();
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
@@ -4027,23 +4029,21 @@ function adjustSelectedCue(dt) {
 }
 
 function computeSuperKnobDelta(val) {
-  // Simple relative messages (common endless encoders)
-  if (val === 65 || val === 1) {
-    lastSuperKnobDirection = 1;
+  // Some endless encoders send relative values where 64 is neutral.
+  // Values 0..63 mean positive deltas, 65..127 mean negative.
+  if (val !== lastSuperKnobValue && (val <= 63 || val >= 65)) {
+    let diff = val <= 63 ? val : val - 128;
+    lastSuperKnobDirection = diff > 0 ? 1 : -1;
     lastSuperKnobValue = val;
-    return 1;
+    return diff;
   }
-  if (val === 63 || val === 127) {
-    lastSuperKnobDirection = -1;
-    lastSuperKnobValue = val;
-    return -1;
-  }
+
   if (val === 64) {
     lastSuperKnobValue = val;
     return 0;
   }
 
-  // First message after selecting a cue
+  // Absolute controllers: compute difference with wrap-around
   if (lastSuperKnobValue === null) {
     lastSuperKnobValue = val;
     lastSuperKnobDirection = 0;
@@ -4053,8 +4053,6 @@ function computeSuperKnobDelta(val) {
   let diff = val - lastSuperKnobValue;
   if (diff > 64) diff -= 128;
   else if (diff < -64) diff += 128;
-  if (diff > 32) diff -= 64;
-  else if (diff < -32) diff += 64;
 
   if (diff === 0) {
     diff = lastSuperKnobDirection;
