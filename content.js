@@ -613,6 +613,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       selectedCueKey = null,
       lastCueAdjustValue = null,
       lastCueAdjustDirection = 0,
+      cueSaveTimeout = null,
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -3801,6 +3802,14 @@ function saveCuePointsToURL() {
   }
 }
 
+function scheduleSaveCuePoints() {
+  if (cueSaveTimeout) clearTimeout(cueSaveTimeout);
+  cueSaveTimeout = setTimeout(() => {
+    cueSaveTimeout = null;
+    saveCuePointsToURL();
+  }, 150);
+}
+
 function observeProgressBar() {
   const progressBar = getProgressBarElement();
   if (!progressBar) return;
@@ -4001,7 +4010,7 @@ function adjustSelectedCue(dt) {
   let t = cuePoints[selectedCueKey] + dt;
   t = Math.max(0, Math.min(dur, t));
   cuePoints[selectedCueKey] = t;
-  saveCuePointsToURL();
+  scheduleSaveCuePoints();
   updateCueMarkers();
   refreshCuesButton();
 }
@@ -4016,12 +4025,12 @@ function computeCueAdjustDelta(val) {
   let diff = val - lastCueAdjustValue;
 
   if (diff === 0) {
-    // endless encoders that send a fixed value on rotation
+    // endless encoders or absolute knobs stuck at limits
     if (val === 1 || val === 65) diff = 1;
     else if (val === 127 || val === 63) diff = -1;
     else if (val > 65 && val <= 127) diff = val - 128;
     else if (val > 0 && val < 63) diff = val;
-    else if (val === 0 || val === 127) diff = lastCueAdjustDirection;
+    else diff = lastCueAdjustDirection;
   } else {
     if (diff > 64) diff -= 128;
     else if (diff < -64) diff += 128;

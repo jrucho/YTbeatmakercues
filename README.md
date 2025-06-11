@@ -16,6 +16,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Lower latency when switching outputs using native sink routing when supported
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
 * Advanced control buttons now display in two columns for easier access
+* Cue Adjust knob keeps scrolling even when absolute controllers hit their limits
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 * Adjust cue points live using a single MIDI knob
