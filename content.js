@@ -604,6 +604,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // MIDI
       currentlyDetectingMidi = null,
       isModPressed = false,
+      isShiftKeyDown = false,
       pitchDownInterval = null,
       pitchUpInterval = null,
       // Track last processed MIDI message to filter duplicates
@@ -4016,6 +4017,18 @@ function adjustSelectedCue(dt) {
 }
 
 function computeCueAdjustDelta(val) {
+  // Common relative CC modes use 64 as "no change".
+  if (val >= 1 && val <= 63) {
+    lastCueAdjustDirection = 1;
+    return val;
+  }
+  if (val >= 65 && val <= 127) {
+    lastCueAdjustDirection = -1;
+    return val - 128;
+  }
+  if (val === 64) return 0;
+
+  // Fallback: treat as absolute controller (0-127)
   if (lastCueAdjustValue === null) {
     lastCueAdjustValue = val;
     lastCueAdjustDirection = 0;
@@ -4023,14 +4036,11 @@ function computeCueAdjustDelta(val) {
   }
 
   let diff = val - lastCueAdjustValue;
+  if (diff > 64) diff -= 128;
+  else if (diff < -64) diff += 128;
 
-  if (diff === 0) {
-    diff = lastCueAdjustDirection;
-  } else {
-    if (diff > 64) diff -= 128;
-    else if (diff < -64) diff += 128;
-    lastCueAdjustDirection = diff > 0 ? 1 : diff < 0 ? -1 : lastCueAdjustDirection;
-  }
+  if (diff === 0) diff = lastCueAdjustDirection;
+  else lastCueAdjustDirection = diff > 0 ? 1 : -1;
 
   lastCueAdjustValue = val;
   return diff;
@@ -4238,6 +4248,10 @@ function isTypingInTextField(e) {
  * Keyboard & Sample Triggers
  **************************************/
 function onKeyDown(e) {
+  if (e.key === "Shift") {
+    isShiftKeyDown = true;
+    return;
+  }
   if (isTypingInTextField(e)) {
   return;
 }
@@ -4381,6 +4395,10 @@ function onKeyDown(e) {
 }
 
 function onKeyUp(e) {
+  if (e.key === "Shift") {
+    isShiftKeyDown = false;
+    return;
+  }
   const k = e.key.toLowerCase();
   if (isTypingInTextField(e)) {
   return;
@@ -5669,9 +5687,14 @@ function handleMIDIMessage(e) {
   if (command === 0xb0) {
     if (Number(note) === Number(midiNotes.cueAdjust)) {
       if (selectedCueKey) {
-        let diff = computeCueAdjustDelta(e.data[2]);
-        if (diff !== 0) {
-          adjustSelectedCue(diff * 0.05);
+        if (isModPressed || isShiftKeyDown) {
+          lastCueAdjustValue = e.data[2];
+          lastCueAdjustDirection = 0;
+        } else {
+          let diff = computeCueAdjustDelta(e.data[2]);
+          if (diff !== 0) {
+            adjustSelectedCue(diff * 0.05);
+          }
         }
       }
     }
