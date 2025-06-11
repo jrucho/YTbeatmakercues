@@ -615,6 +615,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       lastCueAdjustValue = null,
       lastCueAdjustDirection = 0,
       cueSaveTimeout = null,
+      cueSpeedSelect = null,
+      cueAdjustSpeedLevel = parseInt(localStorage.getItem('ytbm_cueAdjustSpeed') || '2', 10),
+      cueAdjustStep = 0.05,
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -672,6 +675,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
+  const cueAdjustSpeedMap = { 1: 0.02, 2: 0.05, 3: 0.1, 4: 0.2 };
+  updateCueAdjustStep();
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -849,6 +854,11 @@ function updateMonitorSelectColor() {
     }
   }
   updateMonitorToggleColor();
+}
+
+function updateCueAdjustStep() {
+  cueAdjustStep = cueAdjustSpeedMap[cueAdjustSpeedLevel] || 0.05;
+  localStorage.setItem('ytbm_cueAdjustSpeed', String(cueAdjustSpeedLevel));
 }
 
 // Add the mic button to the minimal UI
@@ -4017,7 +4027,18 @@ function adjustSelectedCue(dt) {
 }
 
 function computeCueAdjustDelta(val) {
-  // Common relative CC modes use 64 as "no change".
+  // Try relative binary offset first (values around 64)
+  if (val >= 60 && val <= 68) {
+    let diff = val - 64;
+    if (diff !== 0) {
+      lastCueAdjustDirection = diff > 0 ? 1 : -1;
+    } else {
+      diff = lastCueAdjustDirection;
+    }
+    return diff;
+  }
+
+  // Relative two's complement
   if (val >= 1 && val <= 63) {
     lastCueAdjustDirection = 1;
     return val;
@@ -5420,6 +5441,28 @@ function addControls() {
   compFaderRow.appendChild(loFiCompFaderValueLabel);
   cw.appendChild(compFaderRow);
 
+  const cueSpeedRow = document.createElement("div");
+  cueSpeedRow.style.display = "flex";
+  cueSpeedRow.style.alignItems = "center";
+  cueSpeedRow.style.gap = "4px";
+  cueSpeedRow.style.marginBottom = "8px";
+
+  const cueSpeedLabel = document.createElement("span");
+  cueSpeedLabel.innerText = "CueSpeed:";
+  cueSpeedLabel.style.width = "70px";
+  cueSpeedRow.appendChild(cueSpeedLabel);
+
+  cueSpeedSelect = document.createElement("select");
+  cueSpeedSelect.className = "looper-btn";
+  [1,2,3,4].forEach(n => cueSpeedSelect.add(new Option(String(n), String(n))));
+  cueSpeedSelect.value = String(cueAdjustSpeedLevel);
+  cueSpeedSelect.addEventListener("change", () => {
+    cueAdjustSpeedLevel = parseInt(cueSpeedSelect.value, 10);
+    updateCueAdjustStep();
+  });
+  cueSpeedRow.appendChild(cueSpeedSelect);
+  cw.appendChild(cueSpeedRow);
+
   minimalUIButton = document.createElement("button");
   minimalUIButton.className = "looper-btn";
   minimalUIButton.innerText = "Close";
@@ -5693,7 +5736,7 @@ function handleMIDIMessage(e) {
         } else {
           let diff = computeCueAdjustDelta(e.data[2]);
           if (diff !== 0) {
-            adjustSelectedCue(diff * 0.05);
+            adjustSelectedCue(diff * cueAdjustStep);
           }
         }
       }
