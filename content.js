@@ -616,8 +616,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       lastSuperKnobDirection = 0,
       cueSaveTimeout = null,
       superKnobSpeedSelect = null,
-      superKnobSpeedLevel = parseInt(localStorage.getItem('ytbm_superKnobSpeed') || '2', 10),
-      superKnobStep = 0.05,
+      superKnobSpeedLevel = parseInt(localStorage.getItem('ytbm_superKnobSpeed') || '1', 10),
+      superKnobStep = 0.03,
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -675,7 +675,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const superKnobSpeedMap = { 1: 0.005, 2: 0.015, 3: 0.03 };
+  const superKnobSpeedMap = { 1: 0.03, 2: 0.06, 3: 0.12 };
   updateSuperKnobStep();
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
@@ -857,7 +857,7 @@ function updateMonitorSelectColor() {
 }
 
 function updateSuperKnobStep() {
-  superKnobStep = superKnobSpeedMap[superKnobSpeedLevel] || 0.05;
+  superKnobStep = superKnobSpeedMap[superKnobSpeedLevel] || 0.03;
   localStorage.setItem('ytbm_superKnobSpeed', String(superKnobSpeedLevel));
 }
 
