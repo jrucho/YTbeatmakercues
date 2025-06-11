@@ -675,7 +675,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const superKnobSpeedMap = { 1: 0.02, 2: 0.05, 3: 0.1 };
+  const superKnobSpeedMap = { 1: 0.01, 2: 0.03, 3: 0.07 };
   updateSuperKnobStep();
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
@@ -4054,8 +4054,13 @@ function computeSuperKnobDelta(val) {
   }
 
   let diff = val - lastSuperKnobValue;
-  if (diff === 0) diff = lastSuperKnobDirection;
-  else lastSuperKnobDirection = diff > 0 ? 1 : -1;
+  if (diff > 64) diff -= 128;
+  else if (diff < -64) diff += 128;
+
+  if (diff > 0) lastSuperKnobDirection = 1;
+  else if (diff < 0) lastSuperKnobDirection = -1;
+  else diff = lastSuperKnobDirection;
+
   lastSuperKnobValue = val;
   return diff;
 }
