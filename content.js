@@ -4004,6 +4004,28 @@ function adjustSelectedCue(dt) {
   refreshCuesButton();
 }
 
+function computeCueAdjustDelta(val) {
+  if (lastCueAdjustValue === null) {
+    lastCueAdjustValue = val;
+    return 0;
+  }
+
+  let diff = val - lastCueAdjustValue;
+  if (diff === 0) {
+    // relative (endless) encoder modes
+    if (val === 1 || val === 65) diff = 1;
+    else if (val === 127 || val === 63) diff = -1;
+    else if (val > 65 && val <= 127) diff = val - 128;
+    else if (val > 0 && val < 63) diff = val;
+  } else {
+    if (diff > 64) diff -= 128;
+    else if (diff < -64) diff += 128;
+  }
+
+  lastCueAdjustValue = val;
+  return diff;
+}
+
 function refreshCuesButton() {
   if (!cuesButton) return;
   let c = Object.keys(cuePoints).length;
@@ -5634,13 +5656,8 @@ function handleMIDIMessage(e) {
   if (command === 0xb0) {
     if (note === midiNotes.cueAdjust) {
       if (selectedCueKey) {
-        if (lastCueAdjustValue === null) {
-          lastCueAdjustValue = e.data[2];
-        } else {
-          let diff = e.data[2] - lastCueAdjustValue;
-          if (diff > 64) diff -= 128;
-          else if (diff < -64) diff += 128;
-          lastCueAdjustValue = e.data[2];
+        let diff = computeCueAdjustDelta(e.data[2]);
+        if (diff !== 0) {
           adjustSelectedCue(diff * 0.05);
         }
       }
