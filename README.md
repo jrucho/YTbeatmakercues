@@ -16,9 +16,10 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Lower latency when switching outputs using native sink routing when supported
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
 * Advanced control buttons now display in two columns for easier access
-* Cue Adjust knob keeps scrolling even when absolute controllers hit their limits
+* **Super Knob** keeps scrolling even when absolute controllers hit their limits
   (tested with CC 3 and CC 38). Hold Shift to reset a 0–127 knob before
-  continuing. Choose scroll speed (1–4) in the Advanced panel.
+  continuing. Choose a speed (1–3) in the MIDI mapping window under the
+  Super Knob field.
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
 * Adjust cue points live using a single MIDI knob
@@ -65,13 +66,13 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🎹 **MIDI Support**
   Use your MIDI controller to trigger actions. Custom mappings available via UI.
 
-- 🔄 **Cue Adjust Knob**
+- 🔄 **Super Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
   slide its position left or right. Endless encoders scroll indefinitely. For
   standard 0–127 knobs, hold the Shift key (or MIDI shift note) to reposition the
   knob without moving the cue, then release Shift and continue scrolling. Choose
-  a speed from 1 (slow) to 4 (fast) in the Advanced panel. Any CC number can be
-  assigned.
+  a speed from 1 (slow) to 3 (fast) in the MIDI mapping window. Any CC number can
+  be assigned.
 
 - 👇 **Touch Sequencer**  
   10 pads, 16-step sequencer, tap tempo, and BPM-based triggering.
