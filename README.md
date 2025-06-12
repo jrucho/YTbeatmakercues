@@ -1,5 +1,7 @@
 # YouTube Beatmaker Cues - Chrome Extension
 
+> This extension was inspired by the muscle memory workflow of the OP-Z, the versatility of Ableton Live, and the hands-on approach I developed over the years using the SP-404.
+
 ![Screenshot 2025-06-06 at 19 38 10](https://github.com/user-attachments/assets/fc70d22d-c90a-4b66-9c4a-b66f001cdcc5)
 
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
