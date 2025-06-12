@@ -116,8 +116,8 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 ## Compressors
 
 - **Native:** Hard, clear compression.
-- **Tape Warm:** Vintage saturation, SP303-inspired.
-- **SP404OG:** Bright and clean compression with analog warmth.
+- **Ultra Tape:** Vintage saturation, SP303-inspired.
+- **Bright Open:** Bright and clean compression with analog warmth.
 
 > 🔊 *Tip: Reduce YouTube volume to ~40–50% for best effect with compression modes.*
 
