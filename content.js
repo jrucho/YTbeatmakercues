@@ -515,7 +515,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         // NEW: Reverb / Cassette
         reverbToggle: 29,
         cassetteToggle: 30,
-        randomCues: 28
+        randomCues: 28,
+        superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
       // Arrays of samples
@@ -603,11 +604,20 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // MIDI
       currentlyDetectingMidi = null,
       isModPressed = false,
+      isShiftKeyDown = false,
       pitchDownInterval = null,
       pitchUpInterval = null,
       // Track last processed MIDI message to filter duplicates
       lastMidiTimestamp = 0,
       lastMidiData = [],
+      currentlyDetectingMidiControl = null,
+      selectedCueKey = null,
+      lastSuperKnobValue = null,
+      lastSuperKnobDirection = 0,
+      cueSaveTimeout = null,
+      superKnobSpeedSelect = null,
+      superKnobSpeedLevel = parseInt(localStorage.getItem('ytbm_superKnobSpeed') || '1', 10),
+      superKnobStep = 0.03,
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -665,6 +675,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
+  // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
+  // progressively quicker for rapid cue movement.
+  const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
+  updateSuperKnobStep();
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -842,6 +856,11 @@ function updateMonitorSelectColor() {
     }
   }
   updateMonitorToggleColor();
+}
+
+function updateSuperKnobStep() {
+  superKnobStep = superKnobSpeedMap[superKnobSpeedLevel] || 0.03;
+  localStorage.setItem('ytbm_superKnobSpeed', String(superKnobSpeedLevel));
 }
 
 // Add the mic button to the minimal UI
@@ -1291,6 +1310,9 @@ function triggerPadCue(padIndex) {
   const vid = getVideoElement();
   const cueKey = (padIndex === 9) ? "0" : String(padIndex + 1);
   if (vid && cuePoints[cueKey] !== undefined) {
+    selectedCueKey = cueKey;
+    lastSuperKnobValue = null;
+    lastSuperKnobDirection = 0;
     safeSeekVideo(null, cuePoints[cueKey]);  // routes into jumpToCue()
   }
 }
@@ -3793,6 +3815,14 @@ function saveCuePointsToURL() {
   }
 }
 
+function scheduleSaveCuePoints() {
+  if (cueSaveTimeout) clearTimeout(cueSaveTimeout);
+  cueSaveTimeout = setTimeout(() => {
+    cueSaveTimeout = null;
+    saveCuePointsToURL();
+  }, 150);
+}
+
 function observeProgressBar() {
   const progressBar = getProgressBarElement();
   if (!progressBar) return;
@@ -3985,6 +4015,34 @@ function addCueAtCurrentVideoTime() {
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
+function adjustSelectedCue(dt) {
+  if (!selectedCueKey) return;
+  const vid = getVideoElement();
+  if (!vid || cuePoints[selectedCueKey] === undefined) return;
+  const dur = vid.duration || Infinity;
+  let t = cuePoints[selectedCueKey] + dt;
+  t = Math.max(0, Math.min(dur, t));
+  cuePoints[selectedCueKey] = t;
+  scheduleSaveCuePoints();
+  updateCueMarkers();
+  refreshCuesButton();
+}
+
+function computeSuperKnobDelta(val) {
+  // Stable algorithm used for both endless and standard 0–127 knobs.
+  if (lastSuperKnobValue === null) {
+    lastSuperKnobValue = val;
+    return 0;
+  }
+
+  let diff = val - lastSuperKnobValue;
+  if (diff > 64) diff -= 128;
+  else if (diff < -64) diff += 128;
+
+  lastSuperKnobValue = val;
+  return diff;
+}
+
 function refreshCuesButton() {
   if (!cuesButton) return;
   let c = Object.keys(cuePoints).length;
@@ -4043,9 +4101,12 @@ function triggerPadCue(padIndex) {
     console.log(`Pad ${padIndex} cue triggered via sequencer`);
   }
 
-  function sequencerTriggerCue(cueKey) {
+function sequencerTriggerCue(cueKey) {
   const video = getVideoElement();
   if (!video) return;
+  selectedCueKey = cueKey;
+  lastSuperKnobValue = null;
+  lastSuperKnobDirection = 0;
   
   if (cuePoints.hasOwnProperty(cueKey)) {
     const fadeTime = 0.002; // fade duration in seconds (50ms)
@@ -4139,6 +4200,9 @@ document.addEventListener("keydown", e => {
 function sequencerTriggerCue(cueKey) {
   const video = getVideoElement();
   if (!video || !cuePoints[cueKey]) return;
+  selectedCueKey = cueKey;
+  lastSuperKnobValue = null;
+  lastSuperKnobDirection = 0;
   const fadeTime = 0.002; // 50ms fade
   const now = audioContext.currentTime;
   
@@ -4181,6 +4245,10 @@ function isTypingInTextField(e) {
  * Keyboard & Sample Triggers
  **************************************/
 function onKeyDown(e) {
+  if (e.key === "Shift") {
+    isShiftKeyDown = true;
+    return;
+  }
   if (isTypingInTextField(e)) {
   return;
 }
@@ -4218,6 +4286,9 @@ function onKeyDown(e) {
   if ((e.key >= "1" && e.key <= "9") || e.key === "0") {
     let video = getVideoElement();
     if (video && cuePoints[e.key] !== undefined) {
+      selectedCueKey = e.key;
+      lastSuperKnobValue = null;
+      lastSuperKnobDirection = 0;
       const fadeTime = 0.002; // 50ms fade duration
       const now = audioContext.currentTime;
       // Fade out the audio
@@ -4321,6 +4392,10 @@ function onKeyDown(e) {
 }
 
 function onKeyUp(e) {
+  if (e.key === "Shift") {
+    isShiftKeyDown = false;
+    return;
+  }
   const k = e.key.toLowerCase();
   if (isTypingInTextField(e)) {
   return;
@@ -5342,6 +5417,7 @@ function addControls() {
   compFaderRow.appendChild(loFiCompFaderValueLabel);
   cw.appendChild(compFaderRow);
 
+
   minimalUIButton = document.createElement("button");
   minimalUIButton.className = "looper-btn";
   minimalUIButton.innerText = "Close";
@@ -5574,6 +5650,14 @@ function handleMIDIMessage(e) {
   lastMidiData = [...e.data];
 
   let [st, note] = e.data;
+  const command = st & 0xf0;
+  if (command === 0xb0 && currentlyDetectingMidiControl) {
+    midiNotes[currentlyDetectingMidiControl] = note;
+    updateMidiMapInput(currentlyDetectingMidiControl, note);
+    currentlyDetectingMidiControl = null;
+    return;
+  }
+
   if (note === midiNotes.shift) {
     if (st === 144) isModPressed = true;
     else if (st === 128) isModPressed = false;
@@ -5598,7 +5682,21 @@ function handleMIDIMessage(e) {
     }
   }
 
-  if (st === 144) {
+  if (command === 0xb0) {
+    if (Number(note) === Number(midiNotes.superKnob)) {
+      if (selectedCueKey) {
+        if (isModPressed || isShiftKeyDown) {
+          lastSuperKnobValue = e.data[2];
+          lastSuperKnobDirection = 0;
+        } else {
+          let diff = computeSuperKnobDelta(e.data[2]);
+          if (diff !== 0) {
+            adjustSelectedCue(diff * superKnobStep);
+          }
+        }
+      }
+    }
+  } else if (st === 144) {
 	if (Number(note) === Number(midiNotes.randomCues)) {
       randomizeCuesInOneClick();
       return;
@@ -5637,9 +5735,12 @@ function handleMIDIMessage(e) {
           if (window.refreshMinimalState) window.refreshMinimalState();
         } else {
           if (k in cuePoints) {
+        selectedCueKey = k;
+        lastSuperKnobValue = null;
+        lastSuperKnobDirection = 0;
         // jump with a 50 ms cross-fade, same as the keyboard path
         sequencerTriggerCue(k);
-      }
+          }
         }
       }
     }
@@ -6073,9 +6174,32 @@ function buildMIDIMapWindow() {
       <input data-midiname="cassetteToggle" value="${escapeHtml(String(midiNotes.cassetteToggle))}" type="number">
       <button data-detect="cassetteToggle" class="detect-midi-btn">Detect</button>
     </div>
+    <h4>Super Knob</h4>
+    <div class="midimap-row">
+      <label>Knob:</label>
+      <input data-midicc="superKnob" value="${escapeHtml(String(midiNotes.superKnob))}" type="number">
+      <button data-ccdetect="superKnob" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Speed:</label>
+      <select id="superKnobSpeedSelect" class="looper-btn">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+    </div>
     <button class="looper-midimap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
   `;
   midiMapContentWrap.innerHTML = out;
+
+  superKnobSpeedSelect = midiMapWindowContainer.querySelector('#superKnobSpeedSelect');
+  if (superKnobSpeedSelect) {
+    superKnobSpeedSelect.value = String(superKnobSpeedLevel);
+    superKnobSpeedSelect.addEventListener('change', () => {
+      superKnobSpeedLevel = parseInt(superKnobSpeedSelect.value, 10);
+      updateSuperKnobStep();
+    });
+  }
 
   document.body.appendChild(midiMapWindowContainer);
   makePanelDraggable(midiMapWindowContainer, midiMapDragHandle, "ytbm_midiMapPos");
@@ -6098,6 +6222,16 @@ function buildMIDIMapWindow() {
       let val = parseInt(inp.value, 10);
       if (!isNaN(val)) midiNotes.cues[k] = val;
     });
+    let ccFields = midiMapWindowContainer.querySelectorAll("input[data-midicc]");
+    ccFields.forEach(inp => {
+      let k = inp.getAttribute("data-midicc");
+      let val = parseInt(inp.value, 10);
+      if (!isNaN(val)) midiNotes[k] = val;
+    });
+    if (superKnobSpeedSelect) {
+      superKnobSpeedLevel = parseInt(superKnobSpeedSelect.value, 10);
+      updateSuperKnobStep();
+    }
     saveMappingsToLocalStorage();
     alert("MIDI Map saved!");
     midiMapWindowContainer.style.display = "none";
@@ -6108,6 +6242,7 @@ function buildMIDIMapWindow() {
     btn.addEventListener("click", () => {
       let d = btn.getAttribute("data-detect");
       let c = btn.getAttribute("data-cuedetect");
+      let cc = btn.getAttribute("data-ccdetect");
       if (d) {
         currentlyDetectingMidi = d;
         alert(`Now press a MIDI key for "${d}"...`);
@@ -6116,6 +6251,9 @@ function buildMIDIMapWindow() {
         if (currentlyDetectingMidi) {
           alert(`Now press a MIDI key for "Cue ${c}"...`);
         }
+      } else if (cc) {
+        currentlyDetectingMidiControl = cc;
+        alert(`Now move a MIDI knob for "${cc}"...`);
       }
     });
   });
@@ -6127,6 +6265,10 @@ function updateMidiMapInput(name, val) {
   if (!inp) {
     let cueInp = midiMapWindowContainer.querySelector(`input[data-midicue="${name}"]`);
     if (cueInp) cueInp.value = val;
+    else {
+      let ccInp = midiMapWindowContainer.querySelector(`input[data-midicc="${name}"]`);
+      if (ccInp) ccInp.value = val;
+    }
   } else {
     inp.value = val;
   }
@@ -6152,6 +6294,15 @@ function syncMidiNotesFromWindow() {
     .querySelectorAll("input[data-midiname]")
     .forEach(inp => {
       const key = inp.dataset.midiname;
+      const v   = parseInt(inp.value, 10);
+      if (!isNaN(v)) midiNotes[key] = v;
+    });
+
+  /* cc fields */
+  midiMapWindowContainer
+    .querySelectorAll("input[data-midicc]")
+    .forEach(inp => {
+      const key = inp.dataset.midicc;
       const v   = parseInt(inp.value, 10);
       if (!isNaN(v)) midiNotes[key] = v;
     });

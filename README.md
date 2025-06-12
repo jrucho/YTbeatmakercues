@@ -16,8 +16,13 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Lower latency when switching outputs using native sink routing when supported
 * Input monitoring uses a separate low-latency `AudioContext` for minimal delay
 * Advanced control buttons now display in two columns for easier access
+* **Super Knob** scrolls cues using any MIDI CC. Endless encoders behave like
+  regular 0–127 knobs for now. Hold **Shift** to reposition before continuing
+  and choose a speed (1–3) in the MIDI mapping window. Speed **1** is the
+  default, with **2** and **3** moving cues faster.
 * Avoids duplicate initialization in YouTube iframes to prevent freezes
 * Mic button cycles Off → Record (green) → Monitor (red) so you can hear the mic while capturing loops
+* Adjust cue points live using a single MIDI knob
 
 [https://www.instagram.com/reel/DKsfsPPMOxg/?igsh=NzkzdDVhajFrZWk1](https://www.instagram.com/reel/DKvE_jEseKd/?igsh=MTJra2M5Z3A5ZTM4aw==)
 
@@ -58,8 +63,15 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🥁 **Sample Kits**  
   Manage built-in and imported samples (kick, hihat, snare), randomize or load packs on demand.
 
-- 🎹 **MIDI Support**  
+- 🎹 **MIDI Support**
   Use your MIDI controller to trigger actions. Custom mappings available via UI.
+
+- 🔄 **Super Knob**
+  Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
+  slide its position left or right. Endless encoders currently act like normal
+  0–127 knobs for maximum stability. Hold Shift (or a MIDI shift note) to
+  reposition, and choose a speed from 1 (default) to 3 in the MIDI mapping
+  window. Any CC number can be assigned.
 
 - 👇 **Touch Sequencer**  
   10 pads, 16-step sequencer, tap tempo, and BPM-based triggering.
