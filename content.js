@@ -6047,9 +6047,9 @@ function updatePitch(v) {
     }
   } else {
     // pitchTarget === "loop"
-    if (loopSource) {
-      loopSource.playbackRate.value = rate;
-    }
+    loopSources.forEach((src, i) => {
+      if (src) src.playbackRate.value = rate * (audioLoopRates[i] || 1);
+    });
     // Keep the main video at normal speed
     if (videoPreviewElement) videoPreviewElement.playbackRate = 1;
     const mv = getVideoElement();

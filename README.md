@@ -72,7 +72,9 @@ Hold the mapped **MIDI Shift** note while pressing any loop note to erase that
 loop instantly.
 
 - 🎚️ **Pitch Control**  
-  Independent pitch control for video and loop playback.
+  Independent pitch control for video and loop playback. When targeting loops,
+  the pitch slider adjusts all four audio loopers together and exported files
+  include the modified pitch.
 
 - 🎛️ **Live Effects**  
   Toggle EQ (`E`), Compressor (`C`), Reverb (`Q`), and Cassette (`W`) in real time.
