@@ -540,6 +540,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       activeLoopIndex = 0,
       loopSources = [],
       recordingNewLoop = false,
+      loopsBPM = null,
+      baseLoopDuration = null,
+      audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
       // Video Looper
       videoLooperState = "idle",
       videoMediaRecorder = null,
@@ -1956,6 +1959,13 @@ function finalizeLoopBuffer(buf) {
   crossfadeLoop(buf, 0.005);
 
   pushUndoState();
+  if (!baseLoopDuration) {
+    baseLoopDuration = buf.duration;
+    loopsBPM = Math.round((60 * 4) / baseLoopDuration);
+    audioLoopRates[activeLoopIndex] = 1;
+  } else {
+    audioLoopRates[activeLoopIndex] = baseLoopDuration / buf.duration;
+  }
   audioLoopBuffers[activeLoopIndex] = buf;
   recordingNewLoop = false;
   loopBuffer = buf;
@@ -3229,17 +3239,21 @@ function stopRecordingAndPlay() {
 
 function playLoop() {
   ensureAudioContext().then(() => {
-    const bufs = audioLoopBuffers.filter(b => b);
-    if (!bufs.length || !audioContext) return;
+    if (!audioContext) return;
     stopLoopSource();
-    loopSources = bufs.map(buf => {
+    loopSources = [];
+    audioLoopBuffers.forEach((buf, i) => {
+      if (!buf) return;
       const src = audioContext.createBufferSource();
       src.buffer = buf;
       src.loop = true;
-      src.playbackRate.value = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
+      let rate = audioLoopRates[i] || 1;
+      if (pitchTarget === "loop") rate *= getCurrentPitchRate();
+      src.playbackRate.value = rate;
       src.connect(loopAudioGain);
-      return src;
+      loopSources.push(src);
     });
+    if (!loopSources.length) return;
     loopStartAbsoluteTime = audioContext.currentTime;
     loopSources.forEach(src => src.start(0));
     loopSource = loopSources[0] || null;
@@ -3353,7 +3367,12 @@ function eraseAudioLoop() {
   stopLoopSource();
   looperState = "idle";
   audioLoopBuffers[activeLoopIndex] = null;
-  if (audioLoopBuffers.every(b => !b)) loopBuffer = null;
+  if (audioLoopBuffers.every(b => !b)) {
+    loopBuffer = null;
+    baseLoopDuration = null;
+    loopsBPM = null;
+    audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
+  }
   updateExportButtonColor();
   updateLooperButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
@@ -3462,7 +3481,7 @@ function startVideoRecording() {
       mime = "video/webm";
     }
   }
-  videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime });
+  videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
 
   videoMediaRecorder.ondataavailable = e => {
     if (e.data.size > 0) videoRecordedChunks.push(e.data);
@@ -4571,26 +4590,33 @@ function exportLoop() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } else if (loopBuffer) {
-      let r = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
-      if (Math.abs(r - 1) < 0.01) {
-        let wav = encodeWAV(loopBuffer);
-        let url = URL.createObjectURL(wav);
-        let a = document.createElement("a");
-        a.style.display = "none";
-        a.href = url;
-        a.download = "loop.wav";
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        exportAudioWithPitch(r);
-      }
+    } else {
+      const loops = audioLoopBuffers.map((b, i) => ({ buf: b, idx: i })).filter(o => o.buf);
+      if (!loops.length) return;
+      const rBase = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
+      let bpm = loopsBPM ? loopsBPM : (baseLoopDuration ? Math.round((60 * 4) / baseLoopDuration) : 0);
+      loops.forEach(({buf, idx}) => {
+        let rate = rBase * (audioLoopRates[idx] || 1);
+        const name = `loop${String.fromCharCode(65 + idx)}${bpm ? "-" + bpm + "bpm" : ""}.wav`;
+        if (Math.abs(rate - 1) < 0.01) {
+          let wav = encodeWAV(buf);
+          let url = URL.createObjectURL(wav);
+          let a = document.createElement("a");
+          a.style.display = "none";
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          exportAudioWithPitch(buf, rate, name);
+        }
+      });
     }
   });
 }
-async function exportAudioWithPitch(rate) {
-  if (!loopBuffer) return;
+async function exportAudioWithPitch(buf, rate, fileName = "loop-pitched.wav") {
+  if (!buf) return;
   let dst = audioContext.createMediaStreamDestination();
   let chunks = [];
   let mr;
@@ -4611,7 +4637,7 @@ async function exportAudioWithPitch(rate) {
     let a = document.createElement("a");
     a.style.display = "none";
     a.href = url;
-    a.download = "loop-pitched.wav";
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     URL.revokeObjectURL(url);
@@ -4619,12 +4645,12 @@ async function exportAudioWithPitch(rate) {
   mr.start();
 
   let src = audioContext.createBufferSource();
-  src.buffer = loopBuffer;
+  src.buffer = buf;
   src.playbackRate.value = rate;
   src.connect(dst);
   src.start();
 
-  let dur = loopBuffer.duration / rate;
+  let dur = buf.duration / rate;
   setTimeout(() => {
     if (mr.state === "recording") mr.stop();
     src.stop();

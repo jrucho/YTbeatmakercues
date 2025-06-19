@@ -52,8 +52,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 🔁 **Audio & Video Loopers**
   Record loops in sync with video or audio. Use `R`, `S`, `D`, or `F` to control
-  up to four separate audio loops. Double press a loop key to erase. Use `V` for
-  the video looper.
+  up to four separate audio loops. The first loop sets the tempo automatically;
+  additional loops stay synced to that BPM. Double press a loop key to erase.
+  Exporting downloads each loop with its BPM in the file name. Use `V` for the
+  video looper.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
@@ -68,7 +70,7 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   Manage built-in and imported samples (kick, hihat, snare), randomize or load packs on demand.
 
 - 🎹 **MIDI Support**
-  Use your MIDI controller to trigger actions. Custom mappings available via UI.
+  Use your MIDI controller to trigger actions. Custom mappings are available via UI, including key and MIDI assignments for all four loopers.
 
 - 🔄 **Super Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
@@ -106,6 +108,8 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Random Cue | `-` |
 | Blind Mode | B |
 | Show Advanced Panel | A |
+
+All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 
 ## Touch Sequencer
 
