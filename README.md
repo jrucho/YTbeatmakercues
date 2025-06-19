@@ -69,13 +69,15 @@ compact progress bar tucked beneath it with four tick marks showing the current
 bar, and the button itself pulses in time while recording. Progress fills use
 bright CMYK colors (cyan, magenta, yellow, black) so each loop stands out.
 Hold the mapped **MIDI Shift** note while pressing any loop note to erase that
-loop instantly.
+loop instantly. The progress bars speed up or slow down when loops are pitched
+so the visuals stay in sync.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback. When targeting loops,
   the pitch slider adjusts all four audio loopers together and exported files
   include the modified pitch. If loops are pitched when exporting, each file
   name ends with `-pitched-<BPM>bpm` where `<BPM>` reflects the new tempo.
+  Export uses offline rendering for reliability.
 
 - 🎛️ **Live Effects**  
   Toggle EQ (`E`), Compressor (`C`), Reverb (`Q`), and Cassette (`W`) in real time.

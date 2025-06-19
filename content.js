@@ -2225,10 +2225,12 @@ function loopProgressStep() {
   const now = audioContext.currentTime;
   let elapsed = now - loopStartAbsoluteTime;
   if (elapsed < 0) elapsed = 0;
-  const progress = elapsed % baseLoopDuration;
-  const pct = (progress / baseLoopDuration) * 100;
-  const bar = Math.floor((progress / baseLoopDuration) * 4);
-  const beatDur = baseLoopDuration / 4;
+  let dur = baseLoopDuration;
+  if (pitchTarget === "loop") dur /= getCurrentPitchRate();
+  const progress = elapsed % dur;
+  const pct = (progress / dur) * 100;
+  const bar = Math.floor((progress / dur) * 4);
+  const beatDur = dur / 4;
   const beatProg = elapsed % beatDur;
   const pulse = 1 - (beatProg / beatDur);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
@@ -3292,7 +3294,8 @@ function startRecording() {
     if (!audioContext) return;
     if (recordingNewLoop && looperState !== "idle" && baseLoopDuration) {
       const now = audioContext.currentTime;
-      const d = baseLoopDuration;
+      let d = baseLoopDuration;
+      if (pitchTarget === "loop") d /= getCurrentPitchRate();
       const elapsed = (now - loopStartAbsoluteTime) % d;
       const remain = d - elapsed;
       if (newLoopStartTimeout) clearTimeout(newLoopStartTimeout);
@@ -3352,7 +3355,9 @@ function playNewLoop(index) {
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
     src.connect(loopAudioGain);
-    const offset = (audioContext.currentTime - loopStartAbsoluteTime) % baseLoopDuration;
+    let d = baseLoopDuration;
+    if (pitchTarget === "loop") d /= getCurrentPitchRate();
+    const offset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
     src.start(0, offset);
     loopSources[index] = src;
     if (!loopSource) loopSource = src;
@@ -3373,8 +3378,11 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
     src.playbackRate.value = rate;
     src.connect(loopAudioGain);
     const when = startTime ? startTime : audioContext.currentTime;
-    if (!startTime && baseLoopDuration)
-      startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % baseLoopDuration;
+    if (!startTime && baseLoopDuration) {
+      let d = baseLoopDuration;
+      if (pitchTarget === "loop") d /= getCurrentPitchRate();
+      startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
+    }
     src.start(when, startOffset);
     if (!loopSource)
       loopStartAbsoluteTime = when - startOffset;
@@ -3390,7 +3398,9 @@ function schedulePlayLoop(index) {
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
     let when = audioContext.currentTime;
     if (baseLoopDuration) {
-      when = Math.ceil(when / baseLoopDuration) * baseLoopDuration;
+      let d = baseLoopDuration;
+      if (pitchTarget === "loop") d /= getCurrentPitchRate();
+      when = Math.ceil(when / d) * d;
     }
     playSingleLoop(index, 0, when);
   });
@@ -3525,8 +3535,10 @@ function stopLoop(index) {
     return;
   }
   let now = audioContext.currentTime;
-  let elapsed = (now - loopStartAbsoluteTime) % baseLoopDuration;
-  let remain = baseLoopDuration - elapsed;
+  let d = baseLoopDuration;
+  if (pitchTarget === "loop") d /= getCurrentPitchRate();
+  let elapsed = (now - loopStartAbsoluteTime) % d;
+  let remain = d - elapsed;
   if (pendingStopTimeouts[index]) clearTimeout(pendingStopTimeouts[index]);
   pendingStopTimeouts[index] = setTimeout(() => stopLoopImmediately(index), remain * 1000);
 }
@@ -4917,44 +4929,23 @@ function exportLoop() {
 }
 async function exportAudioWithPitch(buf, rate, fileName = "loop-pitched.wav") {
   if (!buf) return;
-  let dst = audioContext.createMediaStreamDestination();
-  let chunks = [];
-  let mr;
-  try {
-    mr = new MediaRecorder(dst.stream, { mimeType: "audio/webm" });
-  } catch (e) {
-    mr = new MediaRecorder(dst.stream);
-  }
-  mr.ondataavailable = e => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-  mr.onstop = async () => {
-    let blob = new Blob(chunks, { type: "audio/webm" });
-    let arr = await blob.arrayBuffer();
-    let decoded = await audioContext.decodeAudioData(arr);
-    let wav = encodeWAV(decoded);
-    let url = URL.createObjectURL(wav);
-    let a = document.createElement("a");
-    a.style.display = "none";
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-  mr.start();
-
-  let src = audioContext.createBufferSource();
+  const len = Math.ceil((buf.duration / rate) * buf.sampleRate);
+  const off = new OfflineAudioContext(buf.numberOfChannels, len, buf.sampleRate);
+  const src = off.createBufferSource();
   src.buffer = buf;
   src.playbackRate.value = rate;
-  src.connect(dst);
+  src.connect(off.destination);
   src.start();
-
-  let dur = buf.duration / rate;
-  setTimeout(() => {
-    if (mr.state === "recording") mr.stop();
-    src.stop();
-  }, dur * 1000);
+  const rendered = await off.startRendering();
+  const wav = encodeWAV(rendered);
+  const url = URL.createObjectURL(wav);
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function encodeWAV(buf) {
