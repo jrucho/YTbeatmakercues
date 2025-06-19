@@ -1870,65 +1870,6 @@ function crossfadeLoop(buffer, fadeTime) {
   }
 }
 
-function trimSilence(buf, threshold = 0.001) {
-  const len = buf.length;
-  const chans = buf.numberOfChannels;
-  let start = 0;
-  let end = len;
-
-  outer: for (; start < len; start++) {
-    for (let c = 0; c < chans; c++) {
-      if (Math.abs(buf.getChannelData(c)[start]) > threshold) break outer;
-    }
-  }
-
-  outer2: for (end = len - 1; end >= start; end--) {
-    for (let c = 0; c < chans; c++) {
-      if (Math.abs(buf.getChannelData(c)[end]) > threshold) break outer2;
-    }
-  }
-  end++;
-
-  if (start === 0 && end === len) return buf;
-
-  const newBuf = audioContext.createBuffer(chans, end - start, buf.sampleRate);
-  for (let c = 0; c < chans; c++) {
-    newBuf.getChannelData(c).set(buf.getChannelData(c).subarray(start, end));
-  }
-  return newBuf;
-}
-
-function alignToZeroCrossings(buf, searchTime = 0.05) {
-  const searchSamples = Math.floor(buf.sampleRate * searchTime);
-  const len = buf.length;
-  const chans = buf.numberOfChannels;
-  const data0 = buf.getChannelData(0);
-
-  let start = 0;
-  for (let i = 1; i < Math.min(searchSamples, len - 1); i++) {
-    if (Math.sign(data0[i]) !== Math.sign(data0[i - 1])) {
-      start = i;
-      break;
-    }
-  }
-
-  let end = len;
-  for (let i = len - 1; i >= Math.max(len - searchSamples, 1); i--) {
-    if (Math.sign(data0[i]) !== Math.sign(data0[i - 1])) {
-      end = i;
-      break;
-    }
-  }
-
-  if (start === 0 && end === len) return buf;
-
-  const newLen = end - start;
-  const newBuf = audioContext.createBuffer(chans, newLen, buf.sampleRate);
-  for (let c = 0; c < chans; c++) {
-    newBuf.getChannelData(c).set(buf.getChannelData(c).subarray(start, end));
-  }
-  return newBuf;
-}
 
 async function processLoopFromBlob() {
   if (looperState !== "recording") return;
@@ -1956,8 +1897,9 @@ function processLoopFromFrames(frames) {
 }
 
 function finalizeLoopBuffer(buf) {
-  buf = trimSilence(buf);
-  buf = alignToZeroCrossings(buf);
+  // Older versions trimmed leading/trailing silence which sometimes
+  // chopped short percussive sounds like hihats. Remove the automatic
+  // trimming so the loop is kept exactly as recorded.
 
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
