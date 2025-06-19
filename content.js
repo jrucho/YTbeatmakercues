@@ -530,6 +530,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       recordedFrames = [],
       loopBuffer = null,
       loopSource = null,
+      audioLoopBuffers = [],
+      loopSources = [],
+      recordingNewLoop = false,
       // Video Looper
       videoLooperState = "idle",
       videoMediaRecorder = null,
@@ -1945,6 +1948,12 @@ function finalizeLoopBuffer(buf) {
   crossfadeLoop(buf, 0.005);
 
   pushUndoState();
+  if (recordingNewLoop || audioLoopBuffers.length === 0) {
+    audioLoopBuffers.push(buf);
+    recordingNewLoop = false;
+  } else {
+    audioLoopBuffers[audioLoopBuffers.length - 1] = buf;
+  }
   loopBuffer = buf;
 
   looperState = "playing";
@@ -3169,7 +3178,8 @@ async function loadAudio(path) {
  **************************************/
 function startRecording() {
   ensureAudioContext().then(async () => {
-    if (looperState !== "idle" || !audioContext) return;
+    if (!audioContext) return;
+    if (!recordingNewLoop && looperState !== "idle") return;
     bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1;
     bus2RecGain.gain.value = 1;
     bus3RecGain.gain.value = 0;
@@ -3215,22 +3225,26 @@ function stopRecordingAndPlay() {
 
 function playLoop() {
   ensureAudioContext().then(() => {
-    if (!loopBuffer || !audioContext) return;
+    if (!audioLoopBuffers.length || !audioContext) return;
     stopLoopSource();
-    loopSource = audioContext.createBufferSource();
-    loopSource.buffer = loopBuffer;
-    loopSource.loop = true;
-    loopSource.playbackRate.value = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
-    loopSource.connect(loopAudioGain);
+    loopSources = audioLoopBuffers.map(buf => {
+      const src = audioContext.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.playbackRate.value = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
+      src.connect(loopAudioGain);
+      return src;
+    });
     loopStartAbsoluteTime = audioContext.currentTime;
-    loopSource.start(0);
+    loopSources.forEach(src => src.start(0));
+    loopSource = loopSources[0] || null;
   });
 }
 
 function stopLoopSource() {
-  if (loopSource) {
-    loopSource.stop();
-    loopSource.disconnect();
+  if (loopSources.length) {
+    loopSources.forEach(src => { try { src.stop(); src.disconnect(); } catch {} });
+    loopSources = [];
     loopSource = null;
   }
 }
@@ -3334,6 +3348,7 @@ function eraseAudioLoop() {
   stopLoopSource();
   looperState = "idle";
   loopBuffer = null;
+  audioLoopBuffers = [];
   updateExportButtonColor();
   updateLooperButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
@@ -3436,12 +3451,13 @@ function startVideoRecording() {
   let finalStream = new MediaStream(allTracks);
 
   let mime = "video/mp4;codecs=avc1.42E01E,mp4a.40.2";
-  try {
-    videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime });
-  } catch (e) {
+  if (!MediaRecorder.isTypeSupported(mime)) {
     mime = "video/webm;codecs=vp9,opus";
-    videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime });
+    if (!MediaRecorder.isTypeSupported(mime)) {
+      mime = "video/webm";
+    }
   }
+  videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime });
 
   videoMediaRecorder.ondataavailable = e => {
     if (e.data.size > 0) videoRecordedChunks.push(e.data);
@@ -4503,7 +4519,10 @@ function onLooperButtonMouseUp() {
 }
 
 function singlePressAudioLooperAction() {
-  if (looperState === "idle") {
+  if (isShiftKeyDown) {
+    recordingNewLoop = true;
+    startRecording();
+  } else if (looperState === "idle") {
     startRecording();
   } else if (looperState === "recording") {
     stopRecordingAndPlay();
