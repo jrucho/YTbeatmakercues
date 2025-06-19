@@ -2223,11 +2223,13 @@ function loopProgressStep() {
   loopProgressRAF = requestAnimationFrame(loopProgressStep);
   if (!audioContext || !baseLoopDuration) return;
   const now = audioContext.currentTime;
-  const progress = (now - loopStartAbsoluteTime) % baseLoopDuration;
+  let elapsed = now - loopStartAbsoluteTime;
+  if (elapsed < 0) elapsed = 0;
+  const progress = elapsed % baseLoopDuration;
   const pct = (progress / baseLoopDuration) * 100;
   const bar = Math.floor((progress / baseLoopDuration) * 4);
   const beatDur = baseLoopDuration / 4;
-  const beatProg = (now - loopStartAbsoluteTime) % beatDur;
+  const beatProg = elapsed % beatDur;
   const pulse = 1 - (beatProg / beatDur);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const active = loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i);
@@ -3374,6 +3376,8 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
     if (!startTime && baseLoopDuration)
       startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % baseLoopDuration;
     src.start(when, startOffset);
+    if (!loopSource)
+      loopStartAbsoluteTime = when - startOffset;
     loopSources[index] = src;
     loopPlaying[index] = true;
     if (!loopSource) loopSource = src;
