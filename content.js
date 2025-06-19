@@ -600,6 +600,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       minimalActive = true,
       loopProgressFills = new Array(MAX_AUDIO_LOOPS).fill(null),
       loopProgressFillsMin = new Array(MAX_AUDIO_LOOPS).fill(null),
+      looperPulseEl = null,
+      looperPulseElMin = null,
       loopProgressRAF = null,
       // Overdub timers
       overdubStartTimeout = null,
@@ -2213,6 +2215,8 @@ function stopLoopProgress() {
   loopProgressRAF = null;
   loopProgressFills.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
   loopProgressFillsMin.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
+  if (looperPulseEl) looperPulseEl.style.opacity = 0;
+  if (looperPulseElMin) looperPulseElMin.style.opacity = 0;
 }
 
 function loopProgressStep() {
@@ -2222,6 +2226,9 @@ function loopProgressStep() {
   const progress = (now - loopStartAbsoluteTime) % baseLoopDuration;
   const pct = (progress / baseLoopDuration) * 100;
   const bar = Math.floor((progress / baseLoopDuration) * 4);
+  const beatDur = baseLoopDuration / 4;
+  const beatProg = (now - loopStartAbsoluteTime) % beatDur;
+  const pulse = 1 - (beatProg / beatDur);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const active = loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i);
     const adv = loopProgressFills[i];
@@ -2239,6 +2246,9 @@ function loopProgressStep() {
         .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
     }
   }
+  const showPulse = looperState === "recording" || looperState === "overdubbing";
+  if (looperPulseEl) looperPulseEl.style.opacity = showPulse ? pulse : 0;
+  if (looperPulseElMin) looperPulseElMin.style.opacity = showPulse ? pulse : 0;
 }
 
 function blinkButton(element, updateFn, color = "magenta", duration = 150) {
@@ -5174,9 +5184,20 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   let loopBtnMin = document.createElement("button");
   loopBtnMin.className = "looper-btn";
   loopBtnMin.style.position = "relative";
-  loopBtnMin.style.paddingBottom = "8px";
   loopBtnMin.innerText = "Looper(R/S/D/F/V)";
   loopBtnMin.title = "Audio/Video Looper";
+  looperPulseElMin = document.createElement('div');
+  looperPulseElMin.style.position = 'absolute';
+  looperPulseElMin.style.left = '0';
+  looperPulseElMin.style.top = '0';
+  looperPulseElMin.style.right = '0';
+  looperPulseElMin.style.bottom = '0';
+  looperPulseElMin.style.borderRadius = '3px';
+  looperPulseElMin.style.background = 'rgba(255,255,255,0.25)';
+  looperPulseElMin.style.opacity = 0;
+  looperPulseElMin.style.transition = 'opacity 0.1s';
+  looperPulseElMin.style.pointerEvents = 'none';
+  loopBtnMin.appendChild(looperPulseElMin);
   addTrackedListener(loopBtnMin, "mousedown", e => {
     ensureAudioContext().then(() => {
       if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseDown();
@@ -5192,6 +5213,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   const pWrap = document.createElement('div');
   pWrap.style.marginTop = '2px';
   pWrap.style.height = '6px';
+  pWrap.style.width = '100%';
   pWrap.style.background = '#222';
   pWrap.style.pointerEvents = 'none';
   pWrap.style.display = 'flex';
@@ -5227,8 +5249,13 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     pWrap.appendChild(b);
     loopProgressFillsMin[i] = f;
   }
-  minimalUIContainer.appendChild(loopBtnMin);
-  minimalUIContainer.appendChild(pWrap);
+  const loopWrapMin = document.createElement('div');
+  loopWrapMin.style.display = 'flex';
+  loopWrapMin.style.flexDirection = 'column';
+  loopWrapMin.style.alignItems = 'stretch';
+  loopWrapMin.appendChild(loopBtnMin);
+  loopWrapMin.appendChild(pWrap);
+  minimalUIContainer.appendChild(loopWrapMin);
 
   let exportBtnMin = document.createElement("button");
   exportBtnMin.className = "looper-btn";
@@ -5461,14 +5488,26 @@ function addControls() {
   unifiedLooperButton = document.createElement("button");
   unifiedLooperButton.className = "looper-btn";
   unifiedLooperButton.style.position = "relative";
-  unifiedLooperButton.style.paddingBottom = "10px";
   unifiedLooperButton.innerText = "AudioLoops(R/S/D/F)";
   unifiedLooperButton.addEventListener("mousedown", onLooperButtonMouseDown);
   unifiedLooperButton.addEventListener("mouseup", onLooperButtonMouseUp);
+  looperPulseEl = document.createElement('div');
+  looperPulseEl.style.position = 'absolute';
+  looperPulseEl.style.left = '0';
+  looperPulseEl.style.top = '0';
+  looperPulseEl.style.right = '0';
+  looperPulseEl.style.bottom = '0';
+  looperPulseEl.style.borderRadius = '4px';
+  looperPulseEl.style.background = 'rgba(255,255,255,0.25)';
+  looperPulseEl.style.opacity = 0;
+  looperPulseEl.style.transition = 'opacity 0.1s';
+  looperPulseEl.style.pointerEvents = 'none';
+  unifiedLooperButton.appendChild(looperPulseEl);
 
   const progressWrap = document.createElement("div");
   progressWrap.style.marginTop = "2px";
   progressWrap.style.height = "8px";
+  progressWrap.style.width = '100%';
   progressWrap.style.pointerEvents = "none";
   progressWrap.style.background = "#222";
   progressWrap.style.display = "flex";
@@ -5503,8 +5542,13 @@ function addControls() {
     progressWrap.appendChild(barBg);
     loopProgressFills[i] = fill;
   }
-  looperButtonRow.appendChild(unifiedLooperButton);
-  looperButtonRow.appendChild(progressWrap);
+  const unifiedWrap = document.createElement('div');
+  unifiedWrap.style.display = 'flex';
+  unifiedWrap.style.flexDirection = 'column';
+  unifiedWrap.style.alignItems = 'stretch';
+  unifiedWrap.appendChild(unifiedLooperButton);
+  unifiedWrap.appendChild(progressWrap);
+  looperButtonRow.appendChild(unifiedWrap);
 
   videoLooperButton = document.createElement("button");
   videoLooperButton.className = "looper-btn";

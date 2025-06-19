@@ -64,10 +64,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   immediately, otherwise they wait for the next bar. Exporting downloads each
   loop with its BPM in the file name. Use `V` for the video looper. Hold Option
   and press **Cmd+R** to erase **all** loops. Use Cmd+R/S/D/F individually to
-  erase loops A–D or Cmd+V for the video loop. Each looper button displays a
-  bright progress bar under the button with four tick marks showing the current
-  bar. Hold the mapped **MIDI Shift** note while pressing any loop note to erase
-  that loop instantly.
+  erase loops A–D or Cmd+V for the video loop. Each looper button now has a
+  compact progress bar tucked beneath it with four tick marks showing the current
+  bar, and the button itself pulses in time while recording. Hold the mapped
+  **MIDI Shift** note while pressing any loop note to erase that loop instantly.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
