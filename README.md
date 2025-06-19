@@ -56,7 +56,6 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   additional loops stay synced to that BPM. Double press a loop key to erase.
   Exporting downloads each loop with its BPM in the file name. Use `V` for the
   video looper.
-  Press `P` to pause or resume all loops.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
@@ -104,7 +103,6 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Reverb Toggle | Q |
 | Cassette Toggle | W |
 | Undo / Redo | U / Cmd+U |
-| Pause Loops | P |
 | Export | Ctrl/Cmd + Enter |
 | Pitch Down / Up | `,` / `.` |
 | Random Cue | `-` |

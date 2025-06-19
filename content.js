@@ -492,8 +492,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         // NEW: Reverb + Cassette toggles
         reverb: "q",
         cassette: "w",
-        randomCues: "-",
-        pause: "p"
+        randomCues: "-"
       },
       midiPresets = [],
       presetSelect = null,
@@ -524,7 +523,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverbToggle: 29,
         cassetteToggle: 30,
         randomCues: 28,
-        pause: 63,
         superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
@@ -547,7 +545,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
-      pausedOffset = 0,
       // Video Looper
       videoLooperState = "idle",
       videoMediaRecorder = null,
@@ -2023,7 +2020,6 @@ function cleanupResources() {
   loopBuffer = null;
   audioBuffers = {};
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
-  pausedOffset = 0;
   undoStack = [];
   redoStack = [];
 }
@@ -3295,27 +3291,6 @@ function stopLoopSource() {
   }
 }
 
-function togglePauseLoop() {
-  ensureAudioContext().then(() => {
-    if (!audioContext) return;
-    if (looperState === "playing" || looperState === "overdubbing") {
-      pausedOffset = baseLoopDuration ? (audioContext.currentTime - loopStartAbsoluteTime) % baseLoopDuration : 0;
-      stopLoopSource();
-      looperState = "paused";
-      updateLooperButtonColor();
-      updateExportButtonColor();
-      if (window.refreshMinimalState) window.refreshMinimalState();
-    } else if (looperState === "paused") {
-      looperState = "playing";
-      playLoop(pausedOffset);
-      pausedOffset = 0;
-      updateLooperButtonColor();
-      updateExportButtonColor();
-      if (window.refreshMinimalState) window.refreshMinimalState();
-    }
-  });
-}
-
 function toggleOverdub() {
   ensureAudioContext().then(() => {
     if (!loopBuffer || looperState === "idle") return;
@@ -3404,7 +3379,6 @@ function stopLoop() {
   clearOverdubTimers();
   stopLoopSource();
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
-  pausedOffset = 0;
   looperState = "idle";
   updateLooperButtonColor();
   updateExportButtonColor();
@@ -3416,14 +3390,17 @@ function eraseAudioLoop() {
   clearOverdubTimers();
   stopLoopSource();
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
-  looperState = "idle";
   audioLoopBuffers[activeLoopIndex] = null;
   if (audioLoopBuffers.every(b => !b)) {
     loopBuffer = null;
     baseLoopDuration = null;
     loopsBPM = null;
     audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
-    pausedOffset = 0;
+    looperState = "idle";
+  } else {
+    loopBuffer = audioLoopBuffers.find(b => b) || null;
+    looperState = "playing";
+    playLoop();
   }
   updateExportButtonColor();
   updateLooperButtonColor();
@@ -4430,12 +4407,6 @@ function onKeyDown(e) {
     toggleEQFilter();
     return;
   }
-  if (k === extensionKeys.pause.toLowerCase()) {
-    e.preventDefault();
-    e.stopPropagation();
-    togglePauseLoop();
-    return;
-  }
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
@@ -4507,11 +4478,6 @@ function onKeyUp(e) {
   if (isTypingInTextField(e)) {
   return;
 }
-  if (k === extensionKeys.pause.toLowerCase()) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
@@ -4594,8 +4560,8 @@ function onLooperButtonMouseUp() {
     const tFirst = pressTimes[0];
     const tLast  = pressTimes[2];
     if (tLast - tFirst < clickDelay * 2) {
-      console.log("TRIPLE PRESS => STOP AUDIO LOOP");
-      stopLoop();
+      console.log("TRIPLE PRESS => ERASE AUDIO LOOP");
+      eraseAudioLoop();
 
       // Clear out so we don't also do single/double logic
       pressTimes = [];
@@ -4606,9 +4572,9 @@ function onLooperButtonMouseUp() {
 
   // If not triple, either double or single
   if (isDoublePress) {
-    // DOUBLE PRESS => always STOP
-    console.log("DOUBLE PRESS => STOP AUDIO LOOP");
-    stopLoop();
+    // DOUBLE PRESS => erase loop
+    console.log("DOUBLE PRESS => ERASE AUDIO LOOP");
+    eraseAudioLoop();
 
     isDoublePress = false;
     pressTimes = [];
@@ -5848,7 +5814,6 @@ function handleMIDIMessage(e) {
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseDown();
     if (note === midiNotes.eqToggle) toggleEQFilter();
     if (note === midiNotes.compToggle) toggleCompressor();
-    if (note === midiNotes.pause) togglePauseLoop();
     if (note === midiNotes.reverbToggle) toggleReverb();
     if (note === midiNotes.cassetteToggle) toggleCassette();
 
@@ -5883,7 +5848,6 @@ function handleMIDIMessage(e) {
     if (note === midiNotes.looperD) { activeLoopIndex = 3; onLooperButtonMouseUp(); }
     // if (note === midiNotes.undo) onUndoButtonMouseUp();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseUp();
-    if (note === midiNotes.pause) { /* nothing on note off */ }
   }
 }
 
@@ -6123,10 +6087,6 @@ function buildKeyMapWindow() {
       <input data-extkey="undo" value="${escapeHtml(extensionKeys.undo)}" maxlength="1">
     </div>
     <div class="keymap-row">
-      <label>Pause:</label>
-      <input data-extkey="pause" value="${escapeHtml(extensionKeys.pause)}" maxlength="1">
-    </div>
-    <div class="keymap-row">
       <label>PitchDown:</label>
       <input data-extkey="pitchDown" value="${escapeHtml(extensionKeys.pitchDown)}" maxlength="1">
     </div>
@@ -6311,11 +6271,6 @@ function buildMIDIMapWindow() {
       <label>Undo:</label>
       <input data-midiname="undo" value="${escapeHtml(String(midiNotes.undo))}" type="number">
       <button data-detect="undo" class="detect-midi-btn">Detect</button>
-    </div>
-    <div class="midimap-row">
-      <label>Pause:</label>
-      <input data-midiname="pause" value="${escapeHtml(String(midiNotes.pause))}" type="number">
-      <button data-detect="pause" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>VideoLoop:</label>
