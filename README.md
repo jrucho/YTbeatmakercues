@@ -57,13 +57,12 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   play adds it seamlessly without restarting. Press another loop key during
   playback to queue a new recording for the next bar. Loops keep the exact length you
   recorded—automatic trimming has been removed to avoid cutting short sounds.
-  Double press a loop key to stop the loops after the current bar finishes. Hold
-  that second press a moment longer (or tap three times quickly) to erase the
-  selected loop—the button blinks briefly when this happens. If no loops are
-  currently playing, new recordings start immediately; otherwise they wait for
-  the next bar. Single presses while stopped resume playback on the next bar.
-  Exporting downloads each loop with its BPM in the file name. Use `V` for the
-  video looper.
+  Double press a loop key to stop **that** loop at the end of the bar. Hold the
+  second press a moment longer (or tap three times quickly) to erase only the
+  selected loop—the button blinks briefly when this happens. Loops can be
+  resumed individually with a single press; if no loops are playing they start
+  immediately, otherwise they wait for the next bar. Exporting downloads each
+  loop with its BPM in the file name. Use `V` for the video looper.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
