@@ -53,9 +53,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🔁 **Audio & Video Loopers**
   Record loops in sync with video or audio. Use `R`, `S`, `D`, or `F` to control
   up to four separate audio loops. The first loop sets the tempo automatically;
-  additional loops stay synced to that BPM. Double press a loop key to erase.
-  Exporting downloads each loop with its BPM in the file name. Use `V` for the
-  video looper.
+  additional loops stay synced to that BPM. Double press a loop key to stop the
+  loops. Hold that second press a moment longer (or tap three times quickly) to
+  erase the selected loop. Exporting downloads each loop with its BPM in the
+  file name. Use `V` for the video looper.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.

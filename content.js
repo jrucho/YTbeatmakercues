@@ -600,6 +600,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       overdubStopTimeout = null,
       // Double-press logic
       clickDelay = 300,
+      holdEraseDelay = 400,
       lastClickTime = 0,
       isDoublePress = false,
       doublePressHoldStartTime = null,
@@ -3432,8 +3433,14 @@ function onVideoLooperButtonMouseDown() {
 
 function onVideoLooperButtonMouseUp() {
   if (isDoublePressVideo) {
-    eraseVideoLoop();
+    const holdMs = doublePressHoldStartTimeVideo ? (Date.now() - doublePressHoldStartTimeVideo) : 0;
+    if (holdMs >= holdEraseDelay) {
+      eraseVideoLoop();
+    } else {
+      stopVideoLoop();
+    }
     isDoublePressVideo = false;
+    doublePressHoldStartTimeVideo = null;
   } else {
     singlePressActionVideo();
   }
@@ -4547,8 +4554,10 @@ function onLooperButtonMouseDown() {
   const delta = now - lastClickTime;
   if (delta < clickDelay) {
     isDoublePress = true;
+    doublePressHoldStartTime = now;
   } else {
     isDoublePress = false;
+    doublePressHoldStartTime = null;
   }
 
   lastClickTime = now;
@@ -4572,16 +4581,22 @@ function onLooperButtonMouseUp() {
 
   // If not triple, either double or single
   if (isDoublePress) {
-    // DOUBLE PRESS => erase loop
-    console.log("DOUBLE PRESS => ERASE AUDIO LOOP");
-    eraseAudioLoop();
+    const holdMs = doublePressHoldStartTime ? (Date.now() - doublePressHoldStartTime) : 0;
+    if (holdMs >= holdEraseDelay) {
+      console.log("DOUBLE PRESS HOLD => ERASE AUDIO LOOP");
+      eraseAudioLoop();
+    } else {
+      console.log("DOUBLE PRESS => STOP LOOP");
+      stopLoop();
+    }
 
     isDoublePress = false;
     pressTimes = [];
+    doublePressHoldStartTime = null;
 
   } else {
-    // SINGLE PRESS => start or overdub
-    console.log("SINGLE PRESS => START/OVERDUB");
+    // SINGLE PRESS => start or overdub or resume playback
+    console.log("SINGLE PRESS => START/OVERDUB/PLAY");
     singlePressAudioLooperAction();
     pressTimes = [];
   }
@@ -4589,7 +4604,15 @@ function onLooperButtonMouseUp() {
 
 function singlePressAudioLooperAction() {
   if (looperState === "idle") {
-    startRecording();
+    if (audioLoopBuffers[activeLoopIndex]) {
+      looperState = "playing";
+      playLoop();
+      updateLooperButtonColor();
+      updateExportButtonColor();
+      if (window.refreshMinimalState) window.refreshMinimalState();
+    } else {
+      startRecording();
+    }
   } else if (looperState === "recording") {
     stopRecordingAndPlay();
   } else {
