@@ -5211,9 +5211,11 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     });
   });
   const pWrap = document.createElement('div');
-  pWrap.style.marginTop = '2px';
+  pWrap.style.position = 'absolute';
+  pWrap.style.left = '0';
+  pWrap.style.right = '0';
+  pWrap.style.bottom = '-6px';
   pWrap.style.height = '6px';
-  pWrap.style.width = '100%';
   pWrap.style.background = '#222';
   pWrap.style.pointerEvents = 'none';
   pWrap.style.display = 'flex';
@@ -5232,7 +5234,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     f.style.bottom = '0';
     f.style.width = '0%';
     f.style.opacity = 0;
-    f.style.background = ['#0ff','#f0f','#ff0','#fa0'][i % 4];
+    f.style.background = ['#0ff','#f0f','#ff0','#000'][i % 4];
     b.appendChild(f);
     for (let j=1;j<4;j++){
       const di=document.createElement('div');
@@ -5250,7 +5252,10 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     loopProgressFillsMin[i] = f;
   }
   const loopWrapMin = document.createElement('div');
+  loopWrapMin.style.position = 'relative';
   loopWrapMin.style.display = 'flex';
+  loopWrapMin.style.overflow = 'visible';
+  loopWrapMin.style.paddingBottom = '0';
   loopWrapMin.style.flexDirection = 'column';
   loopWrapMin.style.alignItems = 'stretch';
   loopWrapMin.appendChild(loopBtnMin);
@@ -5505,9 +5510,11 @@ function addControls() {
   unifiedLooperButton.appendChild(looperPulseEl);
 
   const progressWrap = document.createElement("div");
-  progressWrap.style.marginTop = "2px";
+  progressWrap.style.position = "absolute";
+  progressWrap.style.left = "0";
+  progressWrap.style.right = "0";
+  progressWrap.style.bottom = "-8px";
   progressWrap.style.height = "8px";
-  progressWrap.style.width = '100%';
   progressWrap.style.pointerEvents = "none";
   progressWrap.style.background = "#222";
   progressWrap.style.display = "flex";
@@ -5525,7 +5532,7 @@ function addControls() {
     fill.style.left = '0';
     fill.style.width = '0%';
     fill.style.opacity = 0;
-    fill.style.background = ['#0ff','#f0f','#ff0','#fa0'][i % 4];
+    fill.style.background = ['#0ff','#f0f','#ff0','#000'][i % 4];
     barBg.appendChild(fill);
     for (let j = 1; j < 4; j++) {
       const ind = document.createElement('div');
@@ -5543,7 +5550,9 @@ function addControls() {
     loopProgressFills[i] = fill;
   }
   const unifiedWrap = document.createElement('div');
+  unifiedWrap.style.position = 'relative';
   unifiedWrap.style.display = 'flex';
+  unifiedWrap.style.overflow = 'visible';
   unifiedWrap.style.flexDirection = 'column';
   unifiedWrap.style.alignItems = 'stretch';
   unifiedWrap.appendChild(unifiedLooperButton);
