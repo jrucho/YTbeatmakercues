@@ -478,7 +478,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
       // Additional extension-wide keystrokes that can be rebound:
       extensionKeys = {
-        looper: "r",
+        looperA: "r",
+        looperB: "s",
+        looperC: "d",
+        looperD: "f",
         videoLooper: "v",
         compressor: "c",
         eq: "e",
@@ -506,7 +509,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         pitchDown: 42,
         pitchUp: 43,
         cues: { 1: 48, 2: 49, 3: 50, 4: 51, 5: 44, 6: 45, 7: 46, 8: 47, 9: 40, 0: 41 },
-        looper: 34,
+        looperA: 34,
+        looperB: 60,
+        looperC: 61,
+        looperD: 62,
         undo: 35,
         eqToggle: 33,   // MIDI note to toggle EQ
         compToggle: 32, // MIDI note to toggle Compressor
@@ -530,7 +536,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       recordedFrames = [],
       loopBuffer = null,
       loopSource = null,
-      audioLoopBuffers = [],
+      audioLoopBuffers = new Array(MAX_AUDIO_LOOPS).fill(null),
+      activeLoopIndex = 0,
       loopSources = [],
       recordingNewLoop = false,
       // Video Looper
@@ -1949,15 +1956,8 @@ function finalizeLoopBuffer(buf) {
   crossfadeLoop(buf, 0.005);
 
   pushUndoState();
-  if (recordingNewLoop || audioLoopBuffers.length === 0) {
-    if (audioLoopBuffers.length >= MAX_AUDIO_LOOPS) {
-      audioLoopBuffers.shift();
-    }
-    audioLoopBuffers.push(buf);
-    recordingNewLoop = false;
-  } else {
-    audioLoopBuffers[audioLoopBuffers.length - 1] = buf;
-  }
+  audioLoopBuffers[activeLoopIndex] = buf;
+  recordingNewLoop = false;
   loopBuffer = buf;
 
   looperState = "playing";
@@ -3229,9 +3229,10 @@ function stopRecordingAndPlay() {
 
 function playLoop() {
   ensureAudioContext().then(() => {
-    if (!audioLoopBuffers.length || !audioContext) return;
+    const bufs = audioLoopBuffers.filter(b => b);
+    if (!bufs.length || !audioContext) return;
     stopLoopSource();
-    loopSources = audioLoopBuffers.map(buf => {
+    loopSources = bufs.map(buf => {
       const src = audioContext.createBufferSource();
       src.buffer = buf;
       src.loop = true;
@@ -3347,12 +3348,12 @@ function stopLoop() {
 }
 
 function eraseAudioLoop() {
-  if (loopBuffer) pushUndoState();
+  if (audioLoopBuffers[activeLoopIndex]) pushUndoState();
   clearOverdubTimers();
   stopLoopSource();
   looperState = "idle";
-  loopBuffer = null;
-  audioLoopBuffers = [];
+  audioLoopBuffers[activeLoopIndex] = null;
+  if (audioLoopBuffers.every(b => !b)) loopBuffer = null;
   updateExportButtonColor();
   updateLooperButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
@@ -4265,7 +4266,7 @@ function isTypingInTextField(e) {
  * Keyboard & Sample Triggers
  **************************************/
 function onKeyDown(e) {
-  if (e.key === "Alt") {
+  if (e.key === "Shift") {
     isShiftKeyDown = true;
     return;
   }
@@ -4357,9 +4358,14 @@ function onKeyDown(e) {
     toggleEQFilter();
     return;
   }
-  if (k === extensionKeys.looper.toLowerCase()) {
-    onLooperButtonMouseDown();
-    return;
+  const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
+  for (let i = 0; i < loopKeys.length; i++) {
+    if (k === loopKeys[i].toLowerCase()) {
+      activeLoopIndex = i;
+      if (looperState !== "idle" && !audioLoopBuffers[i]) recordingNewLoop = true;
+      onLooperButtonMouseDown();
+      return;
+    }
   }
   if (k === extensionKeys.videoLooper.toLowerCase()) {
     onVideoLooperButtonMouseDown();
@@ -4412,7 +4418,7 @@ function onKeyDown(e) {
 }
 
 function onKeyUp(e) {
-  if (e.key === "Alt") {
+  if (e.key === "Shift") {
     isShiftKeyDown = false;
     return;
   }
@@ -4420,8 +4426,12 @@ function onKeyUp(e) {
   if (isTypingInTextField(e)) {
   return;
 }
-  if (k === extensionKeys.looper.toLowerCase()) {
-    onLooperButtonMouseUp();
+  const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
+  for (let i = 0; i < loopKeys.length; i++) {
+    if (k === loopKeys[i].toLowerCase()) {
+      activeLoopIndex = i;
+      onLooperButtonMouseUp();
+    }
   }
   if (k === extensionKeys.videoLooper.toLowerCase()) {
     onVideoLooperButtonMouseUp();
@@ -4523,10 +4533,7 @@ function onLooperButtonMouseUp() {
 }
 
 function singlePressAudioLooperAction() {
-  if (isShiftKeyDown || isModPressed) {
-    recordingNewLoop = true;
-    startRecording();
-  } else if (looperState === "idle") {
+  if (looperState === "idle") {
     startRecording();
   } else if (looperState === "recording") {
     stopRecordingAndPlay();
@@ -4857,7 +4864,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
 
   let loopBtnMin = document.createElement("button");
   loopBtnMin.className = "looper-btn";
-  loopBtnMin.innerText = "Looper(R/V)";
+  loopBtnMin.innerText = "Looper(R/S/D/F/V)";
   loopBtnMin.title = "Audio/Video Looper";
   addTrackedListener(loopBtnMin, "mousedown", e => {
     ensureAudioContext().then(() => {
@@ -5103,7 +5110,7 @@ function addControls() {
 
   unifiedLooperButton = document.createElement("button");
   unifiedLooperButton.className = "looper-btn";
-  unifiedLooperButton.innerText = "AudioLooper(R)";
+  unifiedLooperButton.innerText = "AudioLoops(R/S/D/F)";
   unifiedLooperButton.addEventListener("mousedown", onLooperButtonMouseDown);
   unifiedLooperButton.addEventListener("mouseup", onLooperButtonMouseUp);
   looperButtonRow.appendChild(unifiedLooperButton);
@@ -5737,7 +5744,10 @@ function handleMIDIMessage(e) {
     if (note === midiNotes.kick) playSample("kick");
     if (note === midiNotes.hihat) playSample("hihat");
     if (note === midiNotes.snare) playSample("snare");
-    if (note === midiNotes.looper) onLooperButtonMouseDown();
+    if (note === midiNotes.looperA) { activeLoopIndex = 0; if (looperState !== "idle" && !audioLoopBuffers[0]) recordingNewLoop = true; onLooperButtonMouseDown(); }
+    if (note === midiNotes.looperB) { activeLoopIndex = 1; if (looperState !== "idle" && !audioLoopBuffers[1]) recordingNewLoop = true; onLooperButtonMouseDown(); }
+    if (note === midiNotes.looperC) { activeLoopIndex = 2; if (looperState !== "idle" && !audioLoopBuffers[2]) recordingNewLoop = true; onLooperButtonMouseDown(); }
+    if (note === midiNotes.looperD) { activeLoopIndex = 3; if (looperState !== "idle" && !audioLoopBuffers[3]) recordingNewLoop = true; onLooperButtonMouseDown(); }
     if (note === midiNotes.undo) onUndoButtonMouseDown();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseDown();
     if (note === midiNotes.eqToggle) toggleEQFilter();
@@ -5770,7 +5780,10 @@ function handleMIDIMessage(e) {
   } else if (st === 128) {
     if (note === midiNotes.pitchDown) stopPitchDownRepeat();
     if (note === midiNotes.pitchUp) stopPitchUpRepeat();
-    if (note === midiNotes.looper) onLooperButtonMouseUp();
+    if (note === midiNotes.looperA) { activeLoopIndex = 0; onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperB) { activeLoopIndex = 1; onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperC) { activeLoopIndex = 2; onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperD) { activeLoopIndex = 3; onLooperButtonMouseUp(); }
     // if (note === midiNotes.undo) onUndoButtonMouseUp();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseUp();
   }
@@ -5980,8 +5993,20 @@ function buildKeyMapWindow() {
     </div>
     <h4>Other Keys</h4>
     <div class="keymap-row">
-      <label>Looper:</label>
-      <input data-extkey="looper" value="${escapeHtml(extensionKeys.looper)}" maxlength="1">
+      <label>Loop A:</label>
+      <input data-extkey="looperA" value="${escapeHtml(extensionKeys.looperA)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Loop B:</label>
+      <input data-extkey="looperB" value="${escapeHtml(extensionKeys.looperB)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Loop C:</label>
+      <input data-extkey="looperC" value="${escapeHtml(extensionKeys.looperC)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Loop D:</label>
+      <input data-extkey="looperD" value="${escapeHtml(extensionKeys.looperD)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>VideoLooper:</label>
@@ -6161,9 +6186,24 @@ function buildMIDIMapWindow() {
     </div>
     <h4>Looper / Undo / VideoLooper</h4>
     <div class="midimap-row">
-      <label>Looper:</label>
-      <input data-midiname="looper" value="${escapeHtml(String(midiNotes.looper))}" type="number">
-      <button data-detect="looper" class="detect-midi-btn">Detect</button>
+      <label>Loop A:</label>
+      <input data-midiname="looperA" value="${escapeHtml(String(midiNotes.looperA))}" type="number">
+      <button data-detect="looperA" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Loop B:</label>
+      <input data-midiname="looperB" value="${escapeHtml(String(midiNotes.looperB))}" type="number">
+      <button data-detect="looperB" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Loop C:</label>
+      <input data-midiname="looperC" value="${escapeHtml(String(midiNotes.looperC))}" type="number">
+      <button data-detect="looperC" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Loop D:</label>
+      <input data-midiname="looperD" value="${escapeHtml(String(midiNotes.looperD))}" type="number">
+      <button data-detect="looperD" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Undo:</label>
