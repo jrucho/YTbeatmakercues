@@ -74,7 +74,8 @@ loop instantly.
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback. When targeting loops,
   the pitch slider adjusts all four audio loopers together and exported files
-  include the modified pitch.
+  include the modified pitch. If loops are pitched when exporting, each file
+  name ends with `-pitched-<BPM>bpm` where `<BPM>` reflects the new tempo.
 
 - 🎛️ **Live Effects**  
   Toggle EQ (`E`), Compressor (`C`), Reverb (`Q`), and Cassette (`W`) in real time.

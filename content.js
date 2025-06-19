@@ -4887,13 +4887,16 @@ function exportLoop() {
       const loops = audioLoopBuffers.map((b, i) => ({ buf: b, idx: i })).filter(o => o.buf);
       if (!loops.length) return;
       const rBase = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
+      const pitched = Math.abs(rBase - 1) > 0.001;
       let bpm = loopsBPM ? loopsBPM : (baseLoopDuration ? Math.round((60 * 4) / baseLoopDuration) : 0);
       loops.forEach(({buf, idx}) => {
-        let rate = rBase * (audioLoopRates[idx] || 1);
-        const name = `loop${String.fromCharCode(65 + idx)}${bpm ? "-" + bpm + "bpm" : ""}.wav`;
+        const rate = rBase * (audioLoopRates[idx] || 1);
+        const outBpm = pitched && bpm ? Math.round(bpm * rBase) : bpm;
+        const base = `loop${String.fromCharCode(65 + idx)}`;
+        const name = `${base}${pitched ? "-pitched" : ""}${outBpm ? "-" + outBpm + "bpm" : ""}.wav`;
         if (Math.abs(rate - 1) < 0.01) {
-          let wav = encodeWAV(buf);
-          let url = URL.createObjectURL(wav);
+          const wav = encodeWAV(buf);
+          const url = URL.createObjectURL(wav);
           let a = document.createElement("a");
           a.style.display = "none";
           a.href = url;
