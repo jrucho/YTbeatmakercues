@@ -4474,10 +4474,10 @@ function onKeyDown(e) {
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
-      if (e.repeat) return; // ignore key repeat so hold detection works
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      if (e.repeat) return; // ignore repeat but still consume the event
       activeLoopIndex = i;
       if (looperState !== "idle" && !audioLoopBuffers[i]) recordingNewLoop = true;
       onLooperButtonMouseDown();
@@ -4485,6 +4485,9 @@ function onKeyDown(e) {
     }
   }
   if (k === extensionKeys.videoLooper.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
     if (e.repeat) return;
     onVideoLooperButtonMouseDown();
     return;
