@@ -542,6 +542,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       loopSources = [],
       recordingNewLoop = false,
       newLoopStartTimeout = null,
+      pendingPlayTimeout = null,
+      pendingStopTimeout = null,
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
@@ -2021,6 +2023,8 @@ function cleanupResources() {
   loopBuffer = null;
   audioBuffers = {};
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  if (pendingPlayTimeout) { clearTimeout(pendingPlayTimeout); pendingPlayTimeout = null; }
+  if (pendingStopTimeout) { clearTimeout(pendingStopTimeout); pendingStopTimeout = null; }
   undoStack = [];
   redoStack = [];
 }
@@ -3261,7 +3265,7 @@ function stopRecordingAndPlay() {
   }
 }
 
-function playLoop(startOffset = 0) {
+function playLoop(startOffset = 0, startTime = null) {
   ensureAudioContext().then(() => {
     if (!audioContext) return;
     stopLoopSource();
@@ -3278,9 +3282,22 @@ function playLoop(startOffset = 0) {
       loopSources.push(src);
     });
     if (!loopSources.length) return;
-    loopStartAbsoluteTime = audioContext.currentTime - startOffset;
-    loopSources.forEach(src => src.start(0, startOffset));
+    const when = startTime ? startTime : audioContext.currentTime;
+    loopStartAbsoluteTime = when - startOffset;
+    loopSources.forEach(src => src.start(when, startOffset));
     loopSource = loopSources[0] || null;
+  });
+}
+
+function schedulePlayLoop() {
+  ensureAudioContext().then(() => {
+    if (!audioContext) return;
+    if (pendingStopTimeout) { clearTimeout(pendingStopTimeout); pendingStopTimeout = null; }
+    let when = audioContext.currentTime;
+    if (baseLoopDuration) {
+      when = Math.ceil(when / baseLoopDuration) * baseLoopDuration;
+    }
+    playLoop(0, when);
   });
 }
 
@@ -3376,14 +3393,27 @@ function stopOverdubImmediately() {
   }
 }
 
-function stopLoop() {
-  clearOverdubTimers();
+function stopLoopImmediately() {
   stopLoopSource();
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  if (pendingStopTimeout) { clearTimeout(pendingStopTimeout); pendingStopTimeout = null; }
   looperState = "idle";
   updateLooperButtonColor();
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
+function stopLoop() {
+  clearOverdubTimers();
+  if (!baseLoopDuration || !loopSource) {
+    stopLoopImmediately();
+    return;
+  }
+  let now = audioContext.currentTime;
+  let elapsed = (now - loopStartAbsoluteTime) % baseLoopDuration;
+  let remain = baseLoopDuration - elapsed;
+  if (pendingStopTimeout) clearTimeout(pendingStopTimeout);
+  pendingStopTimeout = setTimeout(stopLoopImmediately, remain * 1000);
 }
 
 function eraseAudioLoop() {
@@ -4606,7 +4636,7 @@ function singlePressAudioLooperAction() {
   if (looperState === "idle") {
     if (audioLoopBuffers[activeLoopIndex]) {
       looperState = "playing";
-      playLoop();
+      schedulePlayLoop();
       updateLooperButtonColor();
       updateExportButtonColor();
       if (window.refreshMinimalState) window.refreshMinimalState();
