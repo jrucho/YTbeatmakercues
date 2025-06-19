@@ -472,8 +472,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     if (outputDeviceSelect) outputDeviceSelect.value = id;
   }
   /**************************************
-   * Global Variables
-   **************************************/
+  * Global Variables
+  **************************************/
+  const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
       // Additional extension-wide keystrokes that can be rebound:
@@ -688,7 +689,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
   // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
   // progressively quicker for rapid cue movement.
   const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
