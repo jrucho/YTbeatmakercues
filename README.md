@@ -62,7 +62,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   selected loop—the button blinks briefly when this happens. Loops can be
   resumed individually with a single press; if no loops are playing they start
   immediately, otherwise they wait for the next bar. Exporting downloads each
-  loop with its BPM in the file name. Use `V` for the video looper.
+  loop with its BPM in the file name. Use `V` for the video looper. Press
+  **Cmd+R** any time to erase all audio loops at once.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
@@ -110,6 +111,7 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Reverb Toggle | Q |
 | Cassette Toggle | W |
 | Undo / Redo | U / Cmd+U |
+| Erase All Loops | Cmd+R |
 | Export | Ctrl/Cmd + Enter |
 | Pitch Down / Up | `,` / `.` |
 | Random Cue | `-` |

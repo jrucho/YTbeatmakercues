@@ -1995,6 +1995,12 @@ function captureAppState() {
   return {
     loopBuffer,
     looperState,
+    audioLoopBuffers: audioLoopBuffers.slice(),
+    audioLoopRates: audioLoopRates.slice(),
+    loopPlaying: loopPlaying.slice(),
+    baseLoopDuration,
+    loopsBPM,
+    activeLoopIndex,
     cuePoints: JSON.parse(JSON.stringify(cuePoints)), // copy
     currentSampleIndex: { ...currentSampleIndex },
 
@@ -2024,6 +2030,12 @@ function captureAppState() {
 function restoreAppState(st) {
   loopBuffer = st.loopBuffer;
   looperState = st.looperState;
+  audioLoopBuffers = st.audioLoopBuffers.slice();
+  audioLoopRates = st.audioLoopRates.slice();
+  loopPlaying = st.loopPlaying.slice();
+  baseLoopDuration = st.baseLoopDuration;
+  loopsBPM = st.loopsBPM;
+  activeLoopIndex = st.activeLoopIndex;
   cuePoints = JSON.parse(JSON.stringify(st.cuePoints));
   currentSampleIndex = { ...st.currentSampleIndex };
 
@@ -3464,6 +3476,25 @@ function eraseAudioLoop() {
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
+function eraseAllAudioLoops() {
+  if (audioLoopBuffers.some(b => b)) pushUndoState();
+  clearOverdubTimers();
+  stopAllLoopSources();
+  audioLoopBuffers.fill(null);
+  loopPlaying.fill(false);
+  audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
+  baseLoopDuration = null;
+  loopsBPM = null;
+  loopBuffer = null;
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
+  looperState = "idle";
+  updateExportButtonColor();
+  updateLooperButtonColor();
+  blinkButton(unifiedLooperButton, updateLooperButtonColor);
+  if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
 function clearOverdubTimers() {
   if (overdubStartTimeout) clearTimeout(overdubStartTimeout);
   if (overdubStopTimeout) clearTimeout(overdubStopTimeout);
@@ -4397,9 +4428,17 @@ function onKeyDown(e) {
     exportLoop();
     return;
   }
-  
-  // Declare a single lowercase key variable
+
   const k = e.key.toLowerCase();
+
+  // Cmd+R erases all audio loops
+  if (e.metaKey && k === extensionKeys.looperA.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAllAudioLoops();
+    return;
+  }
   
   if (e.key.toLowerCase() === "i") {
   e.preventDefault();
