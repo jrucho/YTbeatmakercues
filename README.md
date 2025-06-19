@@ -50,8 +50,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🎯 **Cue Points**  
   Set up to 10 visual cue points on any YouTube video. Use keyboard shortcuts or drag & drop markers.
 
-- 🔁 **Audio & Video Loopers**  
-  Record loops in sync with video or audio (shortcuts: `R` for audio, `V` for video). Double press to erase.
+- 🔁 **Audio & Video Loopers**
+  Record loops in sync with video or audio. Press `R` to record or overdub,
+  hold **Option** while pressing `R` to add another audio loop (up to 4 at once).
+  Use `V` for the video looper. Double press either key to erase.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
@@ -92,7 +94,7 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Action | Key |
 |-------|-----|
 | Set/Jump to Cue | Ctrl/Cmd + [1–0] |
-| Audio Looper | R |
+| Audio Looper | R (Option+R adds new loop) |
 | Video Looper | V |
 | EQ Toggle | E |
 | Compressor Toggle | C |

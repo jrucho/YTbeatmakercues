@@ -678,6 +678,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
+  const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
   // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
   // progressively quicker for rapid cue movement.
   const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
@@ -1949,6 +1950,9 @@ function finalizeLoopBuffer(buf) {
 
   pushUndoState();
   if (recordingNewLoop || audioLoopBuffers.length === 0) {
+    if (audioLoopBuffers.length >= MAX_AUDIO_LOOPS) {
+      audioLoopBuffers.shift();
+    }
     audioLoopBuffers.push(buf);
     recordingNewLoop = false;
   } else {
@@ -4261,7 +4265,7 @@ function isTypingInTextField(e) {
  * Keyboard & Sample Triggers
  **************************************/
 function onKeyDown(e) {
-  if (e.key === "Shift") {
+  if (e.key === "Alt") {
     isShiftKeyDown = true;
     return;
   }
@@ -4408,7 +4412,7 @@ function onKeyDown(e) {
 }
 
 function onKeyUp(e) {
-  if (e.key === "Shift") {
+  if (e.key === "Alt") {
     isShiftKeyDown = false;
     return;
   }
@@ -4519,7 +4523,7 @@ function onLooperButtonMouseUp() {
 }
 
 function singlePressAudioLooperAction() {
-  if (isShiftKeyDown) {
+  if (isShiftKeyDown || isModPressed) {
     recordingNewLoop = true;
     startRecording();
   } else if (looperState === "idle") {
