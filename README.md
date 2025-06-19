@@ -64,7 +64,9 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   immediately, otherwise they wait for the next bar. Exporting downloads each
   loop with its BPM in the file name. Use `V` for the video looper. Hold Option
   and press **Cmd+R** to erase **all** loops. Use Cmd+R/S/D/F individually to
-  erase loops A–D or Cmd+V for the video loop.
+  erase loops A–D or Cmd+V for the video loop. Each looper button shows a small
+  progress bar divided into four segments so you can see the current bar and how
+  far through the loop you are in real time.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.

@@ -598,6 +598,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       micButton = null,          // <-- NEW: declare it here
       detectBpmButton = null,
       minimalActive = true,
+      loopProgressFills = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopProgressFillsMin = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopProgressRAF = null,
       // Overdub timers
       overdubStartTimeout = null,
       overdubStopTimeout = null,
@@ -2167,6 +2170,8 @@ function updateLooperButtonColor() {
   else if (looperState === "overdubbing") c = "orange";
   else if (looperState === "playing") c = "green";
   unifiedLooperButton.style.backgroundColor = (looperState === "idle") ? "grey" : c;
+  updateLooperButtonLabel();
+  updateLoopProgressState();
 }
 function updateVideoLooperButtonColor() {
   if (!videoLooperButton) return;
@@ -2174,6 +2179,66 @@ function updateVideoLooperButtonColor() {
   if (videoLooperState === "recording") c = "red";
   else if (videoLooperState === "playing") c = "green";
   videoLooperButton.style.backgroundColor = (videoLooperState === "idle") ? "grey" : c;
+}
+
+function updateLooperButtonLabel() {
+  if (!unifiedLooperButton) return;
+  let active = [];
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    if (audioLoopBuffers[i] && (loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i)))
+      active.push(String.fromCharCode(65 + i));
+  }
+  if (active.length === 0) {
+    unifiedLooperButton.innerText = "AudioLoops(R/S/D/F)";
+  } else {
+    unifiedLooperButton.innerText = "Loops:" + active.join(" ");
+  }
+}
+
+function updateLoopProgressState() {
+  if (looperState === "idle" && videoLooperState === "idle" && !loopPlaying.some(p => p)) {
+    stopLoopProgress();
+  } else {
+    startLoopProgress();
+  }
+}
+
+function startLoopProgress() {
+  if (loopProgressRAF) return;
+  loopProgressRAF = requestAnimationFrame(loopProgressStep);
+}
+
+function stopLoopProgress() {
+  if (loopProgressRAF) cancelAnimationFrame(loopProgressRAF);
+  loopProgressRAF = null;
+  loopProgressFills.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
+  loopProgressFillsMin.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
+}
+
+function loopProgressStep() {
+  loopProgressRAF = requestAnimationFrame(loopProgressStep);
+  if (!audioContext || !baseLoopDuration) return;
+  const now = audioContext.currentTime;
+  const progress = (now - loopStartAbsoluteTime) % baseLoopDuration;
+  const pct = (progress / baseLoopDuration) * 100;
+  const bar = Math.floor((progress / baseLoopDuration) * 4);
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const active = loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i);
+    const adv = loopProgressFills[i];
+    const min = loopProgressFillsMin[i];
+    if (adv) {
+      adv.style.width = pct + '%';
+      adv.style.opacity = active ? 1 : 0;
+      Array.from(adv.parentElement.querySelectorAll('.bar-ind'))
+        .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+    }
+    if (min) {
+      min.style.width = pct + '%';
+      min.style.opacity = active ? 1 : 0;
+      Array.from(min.parentElement.querySelectorAll('.bar-ind'))
+        .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+    }
+  }
 }
 
 function blinkButton(element, updateFn, color = "magenta", duration = 150) {
@@ -2374,6 +2439,7 @@ function updateMinimalLoopButtonColor(btn) {
   else if (videoLooperState === "recording") color = "red";
   else if (videoLooperState === "playing") color = "green";
   btn.style.backgroundColor = color;
+  updateLoopProgressState();
 }
 function updateMinimalExportColor(btn) {
   if (videoLooperState !== "idle" && videoPreviewURL)
@@ -5107,6 +5173,8 @@ container.insertBefore(minimalUIContainer, container.firstChild);
 
   let loopBtnMin = document.createElement("button");
   loopBtnMin.className = "looper-btn";
+  loopBtnMin.style.position = "relative";
+  loopBtnMin.style.paddingBottom = "8px";
   loopBtnMin.innerText = "Looper(R/S/D/F/V)";
   loopBtnMin.title = "Audio/Video Looper";
   addTrackedListener(loopBtnMin, "mousedown", e => {
@@ -5121,6 +5189,48 @@ container.insertBefore(minimalUIContainer, container.firstChild);
       else onLooperButtonMouseUp();
     });
   });
+  const pWrap = document.createElement('div');
+  pWrap.style.position = 'absolute';
+  pWrap.style.left = '2px';
+  pWrap.style.right = '2px';
+  pWrap.style.bottom = '2px';
+  pWrap.style.height = '6px';
+  pWrap.style.background = '#222';
+  pWrap.style.pointerEvents = 'none';
+  pWrap.style.display = 'flex';
+  pWrap.style.flexDirection = 'column';
+  pWrap.style.justifyContent = 'space-between';
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const b = document.createElement('div');
+    b.style.position = 'relative';
+    b.style.height = '1px';
+    b.style.background = '#333';
+    const f = document.createElement('div');
+    f.style.position = 'absolute';
+    f.style.left = '0';
+    f.style.right = 'auto';
+    f.style.top = '0';
+    f.style.bottom = '0';
+    f.style.width = '0%';
+    f.style.opacity = 0;
+    f.style.background = ['#f44','#4f4','#44f','#ff4'][i % 4];
+    b.appendChild(f);
+    for (let j=1;j<4;j++){
+      const di=document.createElement('div');
+      di.className='bar-ind';
+      di.style.position='absolute';
+      di.style.left=(j*25)+'%';
+      di.style.top='0';
+      di.style.bottom='0';
+      di.style.width='1px';
+      di.style.background='#555';
+      di.style.opacity=0.3;
+      b.appendChild(di);
+    }
+    pWrap.appendChild(b);
+    loopProgressFillsMin[i] = f;
+  }
+  loopBtnMin.appendChild(pWrap);
   minimalUIContainer.appendChild(loopBtnMin);
 
   let exportBtnMin = document.createElement("button");
@@ -5353,9 +5463,53 @@ function addControls() {
 
   unifiedLooperButton = document.createElement("button");
   unifiedLooperButton.className = "looper-btn";
+  unifiedLooperButton.style.position = "relative";
+  unifiedLooperButton.style.paddingBottom = "10px";
   unifiedLooperButton.innerText = "AudioLoops(R/S/D/F)";
   unifiedLooperButton.addEventListener("mousedown", onLooperButtonMouseDown);
   unifiedLooperButton.addEventListener("mouseup", onLooperButtonMouseUp);
+
+  const progressWrap = document.createElement("div");
+  progressWrap.style.position = "absolute";
+  progressWrap.style.left = "2px";
+  progressWrap.style.right = "2px";
+  progressWrap.style.bottom = "2px";
+  progressWrap.style.height = "8px";
+  progressWrap.style.pointerEvents = "none";
+  progressWrap.style.background = "#222";
+  progressWrap.style.display = "flex";
+  progressWrap.style.flexDirection = "column";
+  progressWrap.style.justifyContent = "space-between";
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const barBg = document.createElement('div');
+    barBg.style.position = 'relative';
+    barBg.style.height = '2px';
+    barBg.style.background = '#333';
+    const fill = document.createElement('div');
+    fill.style.position = 'absolute';
+    fill.style.top = '0';
+    fill.style.bottom = '0';
+    fill.style.left = '0';
+    fill.style.width = '0%';
+    fill.style.opacity = 0;
+    fill.style.background = ['#f44','#4f4','#44f','#ff4'][i % 4];
+    barBg.appendChild(fill);
+    for (let j = 1; j < 4; j++) {
+      const ind = document.createElement('div');
+      ind.className = 'bar-ind';
+      ind.style.position = 'absolute';
+      ind.style.left = (j*25)+'%';
+      ind.style.top = '0';
+      ind.style.bottom = '0';
+      ind.style.width = '1px';
+      ind.style.background = '#555';
+      ind.style.opacity = 0.3;
+      barBg.appendChild(ind);
+    }
+    progressWrap.appendChild(barBg);
+    loopProgressFills[i] = fill;
+  }
+  unifiedLooperButton.appendChild(progressWrap);
   looperButtonRow.appendChild(unifiedLooperButton);
 
   videoLooperButton = document.createElement("button");
