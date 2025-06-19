@@ -3476,6 +3476,13 @@ function eraseAudioLoop() {
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
+function eraseAudioLoopAt(index) {
+  const prev = activeLoopIndex;
+  activeLoopIndex = index;
+  eraseAudioLoop();
+  activeLoopIndex = prev;
+}
+
 function eraseAllAudioLoops() {
   if (audioLoopBuffers.some(b => b)) pushUndoState();
   clearOverdubTimers();
@@ -4431,12 +4438,49 @@ function onKeyDown(e) {
 
   const k = e.key.toLowerCase();
 
-  // Cmd+R erases all audio loops
-  if (e.metaKey && k === extensionKeys.looperA.toLowerCase()) {
+  // Option+Cmd+R erases all audio loops
+  if (e.metaKey && e.altKey && k === extensionKeys.looperA.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
     eraseAllAudioLoops();
+    return;
+  }
+  // Cmd+V erases the video loop
+  if (e.metaKey && k === extensionKeys.videoLooper.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseVideoLoop();
+    return;
+  }
+  // Cmd+R/S/D/F erase loops A–D
+  if (e.metaKey && k === extensionKeys.looperA.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(0);
+    return;
+  }
+  if (e.metaKey && k === extensionKeys.looperB.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(1);
+    return;
+  }
+  if (e.metaKey && k === extensionKeys.looperC.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(2);
+    return;
+  }
+  if (e.metaKey && k === extensionKeys.looperD.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(3);
     return;
   }
   
