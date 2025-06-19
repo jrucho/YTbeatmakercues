@@ -4368,6 +4368,7 @@ function onKeyDown(e) {
   if (k === extensionKeys.compressor.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     toggleCompressor();
     return;
   }
@@ -4380,6 +4381,9 @@ function onKeyDown(e) {
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       activeLoopIndex = i;
       if (looperState !== "idle" && !audioLoopBuffers[i]) recordingNewLoop = true;
       onLooperButtonMouseDown();
@@ -4448,6 +4452,9 @@ function onKeyUp(e) {
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       activeLoopIndex = i;
       onLooperButtonMouseUp();
     }
@@ -4457,8 +4464,8 @@ function onKeyUp(e) {
   }
   // Remove the undo handling here because it's handled in onKeyDown.
 }
-addTrackedListener(document, "keydown", onKeyDown);
-addTrackedListener(document, "keyup", onKeyUp);
+addTrackedListener(document, "keydown", onKeyDown, true);
+addTrackedListener(document, "keyup", onKeyUp, true);
 
 function playSample(n) {
   ensureAudioContext().then(() => {
