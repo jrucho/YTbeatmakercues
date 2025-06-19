@@ -1940,15 +1940,17 @@ async function processLoopFromBlob() {
 
 function processLoopFromFrames(frames) {
   if (!frames || !frames.length) return;
-  const channels = frames[0].length;
-  const length = frames.reduce((t, f) => t + f[0].length, 0);
+  const channels = frames.reduce((m, f) => Math.max(m, f.length), 0);
+  const length = frames.reduce((t, f) => t + (f[0] ? f[0].length : 0), 0);
   const buf = audioContext.createBuffer(channels, length, audioContext.sampleRate);
   let offset = 0;
   for (const block of frames) {
+    const len = block[0] ? block[0].length : 0;
     for (let c = 0; c < channels; c++) {
-      buf.getChannelData(c).set(block[c], offset);
+      const src = block[c] || block[0] || new Float32Array(len);
+      buf.getChannelData(c).set(src, offset);
     }
-    offset += block[0].length;
+    offset += len;
   }
   finalizeLoopBuffer(buf);
 }
@@ -3406,6 +3408,7 @@ async function processOverdub() {
   pushUndoState();
   loopBuffer = mixBuffers(loopBuffer, overdubBuf);
   applyFadeToBuffer(loopBuffer, 0.01);
+  audioLoopBuffers[activeLoopIndex] = loopBuffer;
 
   looperState = "playing";
   playLoop();
