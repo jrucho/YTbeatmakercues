@@ -4628,7 +4628,12 @@ function singlePressAudioLooperAction() {
   } else if (looperState === "recording") {
     stopRecordingAndPlay();
   } else {
-    toggleOverdub();
+    if (!audioLoopBuffers[activeLoopIndex]) {
+      recordingNewLoop = true;
+      startRecording();
+    } else {
+      toggleOverdub();
+    }
   }
 }
 

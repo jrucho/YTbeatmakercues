@@ -54,7 +54,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   Record loops in sync with video or audio. Use `R`, `S`, `D`, or `F` to control
   up to four separate audio loops. The first loop sets the tempo automatically;
   additional loops stay synced to that BPM. Recording a new loop while others
-  play adds it seamlessly without restarting. Loops keep the exact length you
+  play adds it seamlessly without restarting. Press another loop key during
+  playback to queue a new recording for the next bar. Loops keep the exact length you
   recorded—automatic trimming has been removed to avoid cutting short sounds.
   Double press a loop key to stop the loops after the current bar finishes. Hold
   that second press a moment longer (or tap three times quickly) to erase the
