@@ -541,6 +541,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       activeLoopIndex = 0,
       loopSources = [],
       recordingNewLoop = false,
+      newLoopStartTimeout = null,
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
@@ -2018,6 +2019,7 @@ function cleanupResources() {
   cleanupFunctions.length = 0;
   loopBuffer = null;
   audioBuffers = {};
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   undoStack = [];
   redoStack = [];
 }
@@ -3190,10 +3192,9 @@ async function loadAudio(path) {
 /**************************************
  * Audio Looper
  **************************************/
-function startRecording() {
+function beginLoopRecording() {
   ensureAudioContext().then(async () => {
     if (!audioContext) return;
-    if (!recordingNewLoop && looperState !== "idle") return;
     bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1;
     bus2RecGain.gain.value = 1;
     bus3RecGain.gain.value = 0;
@@ -3226,6 +3227,28 @@ function startRecording() {
     updateLooperButtonColor();
     updateExportButtonColor();
     if (window.refreshMinimalState) window.refreshMinimalState();
+  });
+}
+
+function startRecording() {
+  ensureAudioContext().then(() => {
+    if (!audioContext) return;
+    if (recordingNewLoop && looperState !== "idle" && baseLoopDuration) {
+      const now = audioContext.currentTime;
+      const d = baseLoopDuration;
+      const elapsed = (now - loopStartAbsoluteTime) % d;
+      const remain = d - elapsed;
+      if (newLoopStartTimeout) clearTimeout(newLoopStartTimeout);
+      newLoopStartTimeout = setTimeout(() => {
+        beginLoopRecording();
+        setTimeout(() => {
+          if (looperState === "recording") stopRecordingAndPlay();
+        }, d * 1000);
+      }, remain * 1000);
+    } else {
+      if (!recordingNewLoop && looperState !== "idle") return;
+      beginLoopRecording();
+    }
   });
 }
 
@@ -3355,6 +3378,7 @@ function stopOverdubImmediately() {
 function stopLoop() {
   clearOverdubTimers();
   stopLoopSource();
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   looperState = "idle";
   updateLooperButtonColor();
   updateExportButtonColor();
@@ -3365,6 +3389,7 @@ function eraseAudioLoop() {
   if (audioLoopBuffers[activeLoopIndex]) pushUndoState();
   clearOverdubTimers();
   stopLoopSource();
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   looperState = "idle";
   audioLoopBuffers[activeLoopIndex] = null;
   if (audioLoopBuffers.every(b => !b)) {
