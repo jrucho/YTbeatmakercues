@@ -2459,7 +2459,7 @@ async function ensureAudioContext() {
   if (!audioContext) {
     // Create the main AudioContext with minimal latency for responsive pads
     audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      latencyHint: 0, // lowest possible latency
+      latencyHint: "interactive", // lowest possible latency
       sampleRate: 48000
     });
     setupAudioNodes();
@@ -3704,7 +3704,7 @@ function startVideoRecording() {
     console.error("Video recording error:", err);
     alert("Video recording failed!");
   };
-  videoMediaRecorder.start();
+  videoMediaRecorder.start(100);
 
   videoLooperState = "recording";
   updateVideoLooperButtonColor();
@@ -5190,10 +5190,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     });
   });
   const pWrap = document.createElement('div');
-  pWrap.style.position = 'absolute';
-  pWrap.style.left = '2px';
-  pWrap.style.right = '2px';
-  pWrap.style.bottom = '2px';
+  pWrap.style.marginTop = '2px';
   pWrap.style.height = '6px';
   pWrap.style.background = '#222';
   pWrap.style.pointerEvents = 'none';
@@ -5213,7 +5210,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     f.style.bottom = '0';
     f.style.width = '0%';
     f.style.opacity = 0;
-    f.style.background = ['#f44','#4f4','#44f','#ff4'][i % 4];
+    f.style.background = ['#0ff','#f0f','#ff0','#fa0'][i % 4];
     b.appendChild(f);
     for (let j=1;j<4;j++){
       const di=document.createElement('div');
@@ -5230,8 +5227,8 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     pWrap.appendChild(b);
     loopProgressFillsMin[i] = f;
   }
-  loopBtnMin.appendChild(pWrap);
   minimalUIContainer.appendChild(loopBtnMin);
+  minimalUIContainer.appendChild(pWrap);
 
   let exportBtnMin = document.createElement("button");
   exportBtnMin.className = "looper-btn";
@@ -5470,10 +5467,7 @@ function addControls() {
   unifiedLooperButton.addEventListener("mouseup", onLooperButtonMouseUp);
 
   const progressWrap = document.createElement("div");
-  progressWrap.style.position = "absolute";
-  progressWrap.style.left = "2px";
-  progressWrap.style.right = "2px";
-  progressWrap.style.bottom = "2px";
+  progressWrap.style.marginTop = "2px";
   progressWrap.style.height = "8px";
   progressWrap.style.pointerEvents = "none";
   progressWrap.style.background = "#222";
@@ -5492,7 +5486,7 @@ function addControls() {
     fill.style.left = '0';
     fill.style.width = '0%';
     fill.style.opacity = 0;
-    fill.style.background = ['#f44','#4f4','#44f','#ff4'][i % 4];
+    fill.style.background = ['#0ff','#f0f','#ff0','#fa0'][i % 4];
     barBg.appendChild(fill);
     for (let j = 1; j < 4; j++) {
       const ind = document.createElement('div');
@@ -5509,8 +5503,8 @@ function addControls() {
     progressWrap.appendChild(barBg);
     loopProgressFills[i] = fill;
   }
-  unifiedLooperButton.appendChild(progressWrap);
   looperButtonRow.appendChild(unifiedLooperButton);
+  looperButtonRow.appendChild(progressWrap);
 
   videoLooperButton = document.createElement("button");
   videoLooperButton.className = "looper-btn";
@@ -6141,10 +6135,42 @@ function handleMIDIMessage(e) {
     if (note === midiNotes.kick) playSample("kick");
     if (note === midiNotes.hihat) playSample("hihat");
     if (note === midiNotes.snare) playSample("snare");
-    if (note === midiNotes.looperA) { activeLoopIndex = 0; if (looperState !== "idle" && !audioLoopBuffers[0]) recordingNewLoop = true; onLooperButtonMouseDown(); }
-    if (note === midiNotes.looperB) { activeLoopIndex = 1; if (looperState !== "idle" && !audioLoopBuffers[1]) recordingNewLoop = true; onLooperButtonMouseDown(); }
-    if (note === midiNotes.looperC) { activeLoopIndex = 2; if (looperState !== "idle" && !audioLoopBuffers[2]) recordingNewLoop = true; onLooperButtonMouseDown(); }
-    if (note === midiNotes.looperD) { activeLoopIndex = 3; if (looperState !== "idle" && !audioLoopBuffers[3]) recordingNewLoop = true; onLooperButtonMouseDown(); }
+    if (note === midiNotes.looperA) {
+      activeLoopIndex = 0;
+      if (isModPressed) {
+        eraseAudioLoopAt(0);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[0]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
+    if (note === midiNotes.looperB) {
+      activeLoopIndex = 1;
+      if (isModPressed) {
+        eraseAudioLoopAt(1);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[1]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
+    if (note === midiNotes.looperC) {
+      activeLoopIndex = 2;
+      if (isModPressed) {
+        eraseAudioLoopAt(2);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[2]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
+    if (note === midiNotes.looperD) {
+      activeLoopIndex = 3;
+      if (isModPressed) {
+        eraseAudioLoopAt(3);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[3]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
     if (note === midiNotes.undo) onUndoButtonMouseDown();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseDown();
     if (note === midiNotes.eqToggle) toggleEQFilter();
@@ -6177,10 +6203,10 @@ function handleMIDIMessage(e) {
   } else if (st === 128) {
     if (note === midiNotes.pitchDown) stopPitchDownRepeat();
     if (note === midiNotes.pitchUp) stopPitchUpRepeat();
-    if (note === midiNotes.looperA) { activeLoopIndex = 0; onLooperButtonMouseUp(); }
-    if (note === midiNotes.looperB) { activeLoopIndex = 1; onLooperButtonMouseUp(); }
-    if (note === midiNotes.looperC) { activeLoopIndex = 2; onLooperButtonMouseUp(); }
-    if (note === midiNotes.looperD) { activeLoopIndex = 3; onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperA) { activeLoopIndex = 0; if (!isModPressed) onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperB) { activeLoopIndex = 1; if (!isModPressed) onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperC) { activeLoopIndex = 2; if (!isModPressed) onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperD) { activeLoopIndex = 3; if (!isModPressed) onLooperButtonMouseUp(); }
     // if (note === midiNotes.undo) onUndoButtonMouseUp();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseUp();
   }

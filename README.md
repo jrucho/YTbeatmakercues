@@ -64,9 +64,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   immediately, otherwise they wait for the next bar. Exporting downloads each
   loop with its BPM in the file name. Use `V` for the video looper. Hold Option
   and press **Cmd+R** to erase **all** loops. Use Cmd+R/S/D/F individually to
-  erase loops A–D or Cmd+V for the video loop. Each looper button shows a small
-  progress bar divided into four segments so you can see the current bar and how
-  far through the loop you are in real time.
+  erase loops A–D or Cmd+V for the video loop. Each looper button displays a
+  bright progress bar under the button with four tick marks showing the current
+  bar. Hold the mapped **MIDI Shift** note while pressing any loop note to erase
+  that loop instantly.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback.
@@ -127,6 +128,7 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Show Advanced Panel | A |
 
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
+Holding the MIDI Shift note while pressing a loop note erases that loop.
 
 ## Touch Sequencer
 
