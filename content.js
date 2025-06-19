@@ -2211,6 +2211,16 @@ function updateVideoLooperButtonColor() {
   else if (videoLooperState === "playing") c = "green";
   videoLooperButton.style.backgroundColor = (videoLooperState === "idle") ? "grey" : c;
 }
+
+function blinkButton(element, updateFn, color = "magenta", duration = 150) {
+  if (!element) return;
+  const prev = element.style.backgroundColor;
+  element.style.backgroundColor = color;
+  setTimeout(() => {
+    if (typeof updateFn === "function") updateFn();
+    else element.style.backgroundColor = prev;
+  }, duration);
+}
 function updateExportButtonColor() {
   if (!exportButton) return;
   if (videoLooperState !== "idle" && videoPreviewURL) {
@@ -3435,6 +3445,7 @@ function eraseAudioLoop() {
   }
   updateExportButtonColor();
   updateLooperButtonColor();
+  blinkButton(unifiedLooperButton, updateLooperButtonColor);
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
@@ -3508,6 +3519,7 @@ function eraseVideoLoop() {
     videoPreviewURL = null;
   }
   updateVideoLooperButtonColor();
+  blinkButton(videoLooperButton, updateVideoLooperButtonColor);
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
@@ -4447,6 +4459,7 @@ function onKeyDown(e) {
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
+      if (e.repeat) return; // ignore key repeat so hold detection works
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -4457,6 +4470,7 @@ function onKeyDown(e) {
     }
   }
   if (k === extensionKeys.videoLooper.toLowerCase()) {
+    if (e.repeat) return;
     onVideoLooperButtonMouseDown();
     return;
   }

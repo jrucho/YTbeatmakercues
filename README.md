@@ -55,8 +55,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   up to four separate audio loops. The first loop sets the tempo automatically;
   additional loops stay synced to that BPM. Double press a loop key to stop the
   loops after the current bar finishes. Hold that second press a moment longer
-  (or tap three times quickly) to erase the selected loop. Single pressing while
-  stopped resumes playback on the next bar. Exporting downloads each loop with
+  (or tap three times quickly) to erase the selected loop—the button blinks
+  briefly when this happens. If no loops are currently playing, new recordings
+  start immediately; otherwise they wait for the next bar. Single presses while
+  stopped resume playback on the next bar. Exporting downloads each loop with
   its BPM in the file name. Use `V` for the video looper.
 
 - 🎚️ **Pitch Control**  
