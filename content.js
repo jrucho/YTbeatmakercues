@@ -549,6 +549,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
+      masterLoopIndex = null,
       // Video Looper
       videoLooperState = "idle",
       videoMediaRecorder = null,
@@ -3346,6 +3347,8 @@ function playLoop(startOffset = 0, startTime = null) {
     loopStartAbsoluteTime = when - startOffset;
     loopSources.forEach(src => { if (src) src.start(when, startOffset); });
     loopSource = loopSources.find(src => src) || null;
+    masterLoopIndex = loopSources.findIndex(src => src);
+    if (masterLoopIndex === -1) masterLoopIndex = null;
   });
 }
 
@@ -3367,6 +3370,7 @@ function playNewLoop(index) {
     loopSources[index] = src;
     if (!loopSource) loopSource = src;
     loopPlaying[index] = true;
+    if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
 
@@ -3389,8 +3393,10 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
       startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
     }
     src.start(when, startOffset);
-    if (!loopSource)
+    if (!loopSource) {
       loopStartAbsoluteTime = when - startOffset;
+      masterLoopIndex = index;
+    }
     loopSources[index] = src;
     loopPlaying[index] = true;
     if (!loopSource) loopSource = src;
@@ -3408,6 +3414,20 @@ function schedulePlayLoop(index) {
       when = Math.ceil(when / d) * d;
     }
     playSingleLoop(index, 0, when);
+    if (masterLoopIndex === null) masterLoopIndex = index;
+  });
+}
+
+function scheduleResumeLoop(index) {
+  ensureAudioContext().then(() => {
+    if (!audioContext || !baseLoopDuration) return;
+    if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
+    let d = baseLoopDuration;
+    if (pitchTarget === "loop") d /= getCurrentPitchRate();
+    const now = audioContext.currentTime;
+    const elapsed = (now - loopStartAbsoluteTime) % d;
+    const when = now + (d - elapsed);
+    playSingleLoop(index, 0, when);
   });
 }
 
@@ -3415,6 +3435,7 @@ function stopAllLoopSources() {
   loopSources.forEach(src => { if (src) { try { src.stop(); src.disconnect(); } catch {} } });
   loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
   loopSource = null;
+  masterLoopIndex = null;
 }
 
 function stopLoopSource(index) {
@@ -3426,6 +3447,10 @@ function stopLoopSource(index) {
   loopPlaying[index] = false;
   if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
   if (loopSource === src) loopSource = loopSources.find(s => s) || null;
+  if (index === masterLoopIndex) {
+    masterLoopIndex = loopSources.findIndex(s => s);
+    if (masterLoopIndex === -1) masterLoopIndex = null;
+  }
 }
 
 function toggleOverdub() {
@@ -4872,7 +4897,11 @@ function singlePressAudioLooperAction() {
       startRecording();
     } else if (!loopPlaying[activeLoopIndex]) {
       loopPlaying[activeLoopIndex] = true;
-      playNewLoop(activeLoopIndex);
+      if (loopSources.some(Boolean)) {
+        scheduleResumeLoop(activeLoopIndex);
+      } else {
+        schedulePlayLoop(activeLoopIndex);
+      }
     } else {
       toggleOverdub();
     }
