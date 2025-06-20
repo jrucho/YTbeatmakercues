@@ -3544,8 +3544,12 @@ function stopLoop(index) {
   if (pitchTarget === "loop") d /= getCurrentPitchRate();
   let elapsed = (now - loopStartAbsoluteTime) % d;
   let remain = d - elapsed;
+  const src = loopSources[index];
+  if (src) {
+    src.stop(now + remain);
+  }
   if (pendingStopTimeouts[index]) clearTimeout(pendingStopTimeouts[index]);
-  pendingStopTimeouts[index] = setTimeout(() => stopLoopImmediately(index), remain * 1000);
+  pendingStopTimeouts[index] = setTimeout(() => stopLoopImmediately(index), (remain + 0.05) * 1000);
 }
 
 function eraseAudioLoop() {
