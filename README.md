@@ -68,8 +68,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   Cmd+R/S/D/F individually to erase loops A–D or Cmd+V for the video loop. Each
   looper button now has a compact progress bar tucked beneath it with four tick
 marks showing the current bar, and the button itself pulses in time while
-recording. Loopers A–C use cyan, magenta and yellow bars, while Looper D uses a
-brighter orange line that’s slightly thicker (1.4px) for better visibility.
+recording. Loopers A–C use cyan, magenta and yellow bars, while Looper D uses
+orange. All four progress bars are a bright 1.4 px thick for better visibility.
 Hold the mapped **MIDI Shift** note while pressing any loop note to erase that
 loop instantly. The progress bars speed up or slow down when loops are pitched
 so the visuals stay in sync.

@@ -2034,6 +2034,10 @@ function captureAppState() {
 }
 
 function restoreAppState(st) {
+  stopAllLoopSources();
+  pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+
   loopBuffer = st.loopBuffer;
   looperState = st.looperState;
   audioLoopBuffers = st.audioLoopBuffers.slice();
@@ -2096,7 +2100,7 @@ function restoreAppState(st) {
   } else if (looperState === "recording") {
     looperState = "idle";
   } else {
-    stopLoop();
+    looperState = "idle";
   }
 
   if (window.refreshMinimalState) {
@@ -5223,7 +5227,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const b = document.createElement('div');
     b.style.position = 'relative';
-    b.style.height = i === 3 ? '1.4px' : '1px';
+    b.style.height = '1.4px';
     b.style.background = '#333';
     const f = document.createElement('div');
     f.style.position = 'absolute';
@@ -5522,7 +5526,7 @@ function addControls() {
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const barBg = document.createElement('div');
     barBg.style.position = 'relative';
-    barBg.style.height = i === 3 ? '1.4px' : '2px';
+    barBg.style.height = '1.4px';
     barBg.style.background = '#333';
     const fill = document.createElement('div');
     fill.style.position = 'absolute';
