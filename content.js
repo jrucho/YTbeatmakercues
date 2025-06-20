@@ -475,6 +475,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   * Global Variables
   **************************************/
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
+  const PLAY_PADDING = 0.05; // schedule slightly ahead for stable sync
   const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
@@ -3365,8 +3366,9 @@ function playNewLoop(index) {
     src.connect(loopAudioGain);
     let d = baseLoopDuration;
     if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const offset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
-    src.start(0, offset);
+    const when = audioContext.currentTime + PLAY_PADDING;
+    const offset = (when - loopStartAbsoluteTime) % d;
+    src.start(when, offset);
     loopSources[index] = src;
     if (!loopSource) loopSource = src;
     loopPlaying[index] = true;
@@ -3407,7 +3409,7 @@ function schedulePlayLoop(index) {
   ensureAudioContext().then(() => {
     if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    let when = audioContext.currentTime;
+    let when = audioContext.currentTime + PLAY_PADDING;
     if (baseLoopDuration) {
       let d = baseLoopDuration;
       if (pitchTarget === "loop") d /= getCurrentPitchRate();
@@ -3422,7 +3424,11 @@ function scheduleResumeLoop(index) {
   ensureAudioContext().then(() => {
     if (!audioContext || !baseLoopDuration) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    playSingleLoop(index);
+    const when = audioContext.currentTime + PLAY_PADDING;
+    let d = baseLoopDuration;
+    if (pitchTarget === "loop") d /= getCurrentPitchRate();
+    const startOffset = (when - loopStartAbsoluteTime) % d;
+    playSingleLoop(index, startOffset, when);
   });
 }
 
