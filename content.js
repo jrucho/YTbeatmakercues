@@ -1,23 +1,3 @@
-// ---- Basic helpers (added by ChatGPT fix) ----
-if (typeof getVideoElement === "undefined") {
-  function getVideoElement() {
-    return document.querySelector('video');
-  }
-}
-
-if (typeof safeSeekVideo === "undefined") {
-  /**
-   * Seek the main YouTube player safely and resume playback.
-   * @param {*} _  (kept for compatibility with old call‑sites that pass “evt”)
-   * @param {number} t  target time in seconds
-   */
-  function safeSeekVideo(_, t) {
-    const vid = getVideoElement();
-    if (!vid) return;
-    vid.currentTime = t;
-    vid.play();
-  }
-}
 
 if (typeof escapeHtml === "undefined") {
   function escapeHtml(str) {
@@ -3200,6 +3180,7 @@ if (video) {
 
 function updateVideoWithCues() {
   const video = getVideoElement();
+  if (draggingMarker) return;
   if (video) {
     // Attach the listener once (we flag it to avoid adding it repeatedly)
     if (!video._hasCueKeyListener) {
@@ -4213,15 +4194,6 @@ function updateCueMarkers() {
   });
 }
 
-function updateVideoWithCues() {
-  // If a cue marker is being dragged, do not update the markers.
-  if (draggingMarker) return;
-
-  let vid = getVideoElement();
-  if (vid && vid.duration) {
-    updateCueMarkers();
-  }
-}
 
 function onMarkerMouseDown(e, key, marker) {
   e.stopPropagation();
@@ -4388,41 +4360,6 @@ function copyCueLink() {
   }
 }
 
-function triggerPadCue(padIndex) {
-    let cueKey = (padIndex + 1) % 10;
-    cueKey = cueKey === 0 ? "0" : String(cueKey);
-    sequencerTriggerCue(cueKey);
-    console.log(`Pad ${padIndex} cue triggered via sequencer`);
-  }
-
-function sequencerTriggerCue(cueKey) {
-  const video = getVideoElement();
-  if (!video) return;
-  selectedCueKey = cueKey;
-  lastSuperKnobValue = null;
-  lastSuperKnobDirection = 0;
-  
-  if (cuePoints.hasOwnProperty(cueKey)) {
-    const fadeTime = 0.002; // fade duration in seconds (50ms)
-    const now = audioContext.currentTime;
-    
-    // Fade out: cancel any previous gain changes, then ramp down
-    videoGain.gain.cancelScheduledValues(now);
-    videoGain.gain.setValueAtTime(videoGain.gain.value, now);
-    videoGain.gain.linearRampToValueAtTime(0, now + fadeTime);
-    
-    // After fadeTime seconds, jump to cue and fade back in
-    setTimeout(() => {
-      video.currentTime = cuePoints[cueKey];
-      const t = audioContext.currentTime;
-      videoGain.gain.setValueAtTime(0, t);
-      videoGain.gain.linearRampToValueAtTime(1, t + fadeTime);
-      console.log(`Sequencer triggered cue ${cueKey} at time ${cuePoints[cueKey]}`);
-    }, fadeTime * 1000);
-  } else {
-    console.warn(`No cue defined for key "${cueKey}"`);
-  }
-}
 
 
 /**************************************
