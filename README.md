@@ -7,6 +7,13 @@
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+## New in 1.4
+* Four independent audio loopers with bright progress bars beneath each button
+* Each bar shows four tick marks so you can follow the beat
+* Progress bars are a uniform 1.4 px thick for clarity
+* Export downloads every active loop as its own track with BPM
+* Pitching loops renames files with `-pitched-<BPM>bpm`
+
 
 ## New in 1.3
 * Works inside the YouTube iframe on [Samplette.io](https://samplette.io) and other `youtube-nocookie.com` embeds, even when the referrer is hidden. The toolbar becomes scrollable and MIDI features are disabled there.
@@ -50,11 +57,36 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🎯 **Cue Points**  
   Set up to 10 visual cue points on any YouTube video. Use keyboard shortcuts or drag & drop markers.
 
-- 🔁 **Audio & Video Loopers**  
-  Record loops in sync with video or audio (shortcuts: `R` for audio, `V` for video). Double press to erase.
+- 🔁 **Audio & Video Loopers**
+  Record loops in sync with video or audio. Use `R`, `S`, `D`, or `F` to control
+  up to four separate audio loops. The first loop sets the tempo automatically;
+  additional loops stay synced to that BPM. Recording a new loop while others
+  play adds it seamlessly without restarting. Press another loop key during
+  playback to queue a new recording for the next bar. Loops keep the exact length you
+  recorded—automatic trimming has been removed to avoid cutting short sounds.
+  Double press a loop key to stop **that** loop at the end of the bar. Hold the
+  second press a moment longer (or tap three times quickly) to erase only the
+  selected loop—the button blinks briefly when this happens. Loops can be
+  resumed individually with a single press; if no loops are playing they start
+  immediately, otherwise they wait for the next bar. Exporting downloads each
+  active loop as its own track with the BPM rounded in the file name. If loops
+  are pitched, the filenames also include `-pitched-<BPM>bpm`. Use `V` for the
+  video looper. Hold Option and press **Cmd+R** to erase **all** loops. Use
+  Cmd+R/S/D/F individually to erase loops A–D or Cmd+V for the video loop. Each
+  looper button now has a compact progress bar tucked beneath it with four tick
+marks showing the current bar, and the button itself pulses in time while
+recording. Loopers A–C use cyan, magenta and yellow bars, while Looper D uses
+orange. All four progress bars are a bright 1.4 px thick for better visibility.
+Hold the mapped **MIDI Shift** note while pressing any loop note to erase that
+loop instantly. The progress bars speed up or slow down when loops are pitched
+so the visuals stay in sync.
 
 - 🎚️ **Pitch Control**  
-  Independent pitch control for video and loop playback.
+  Independent pitch control for video and loop playback. When targeting loops,
+  the pitch slider adjusts all four audio loopers together and exported files
+  include the modified pitch. If loops are pitched when exporting, each file
+  name ends with `-pitched-<BPM>bpm` where `<BPM>` reflects the new tempo.
+  Export uses offline rendering for reliability.
 
 - 🎛️ **Live Effects**  
   Toggle EQ (`E`), Compressor (`C`), Reverb (`Q`), and Cassette (`W`) in real time.
@@ -66,7 +98,7 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   Manage built-in and imported samples (kick, hihat, snare), randomize or load packs on demand.
 
 - 🎹 **MIDI Support**
-  Use your MIDI controller to trigger actions. Custom mappings available via UI.
+  Use your MIDI controller to trigger actions. Custom mappings are available via UI, including key and MIDI assignments for all four loopers.
 
 - 🔄 **Super Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
@@ -92,18 +124,27 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Action | Key |
 |-------|-----|
 | Set/Jump to Cue | Ctrl/Cmd + [1–0] |
-| Audio Looper | R |
+| Audio Loopers | R / S / D / F |
 | Video Looper | V |
 | EQ Toggle | E |
 | Compressor Toggle | C |
 | Reverb Toggle | Q |
 | Cassette Toggle | W |
 | Undo / Redo | U / Cmd+U |
+| Erase Loop A | Cmd+R |
+| Erase Loop B | Cmd+S |
+| Erase Loop C | Cmd+D |
+| Erase Loop D | Cmd+F |
+| Erase All Loops | Cmd+Option+R |
+| Erase Video Loop | Cmd+V |
 | Export | Ctrl/Cmd + Enter |
 | Pitch Down / Up | `,` / `.` |
 | Random Cue | `-` |
 | Blind Mode | B |
 | Show Advanced Panel | A |
+
+All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
+Holding the MIDI Shift note while pressing a loop note erases that loop.
 
 ## Touch Sequencer
 
