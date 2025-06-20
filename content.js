@@ -3393,6 +3393,8 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
       startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
     }
     src.start(when, startOffset);
+    if (!loopSource)
+      loopStartAbsoluteTime = when - startOffset;
     if (!loopSource) {
       loopStartAbsoluteTime = when - startOffset;
       masterLoopIndex = index;
