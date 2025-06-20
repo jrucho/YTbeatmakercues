@@ -475,6 +475,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   * Global Variables
   **************************************/
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
+  const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
       // Additional extension-wide keystrokes that can be rebound:
@@ -5222,7 +5223,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const b = document.createElement('div');
     b.style.position = 'relative';
-    b.style.height = '1px';
+    b.style.height = i === 3 ? '1.4px' : '1px';
     b.style.background = '#333';
     const f = document.createElement('div');
     f.style.position = 'absolute';
@@ -5232,7 +5233,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     f.style.bottom = '0';
     f.style.width = '0%';
     f.style.opacity = 0;
-    f.style.background = ['#0ff','#f0f','#ff0','#000'][i % 4];
+    f.style.background = LOOP_COLORS[i % 4];
     b.appendChild(f);
     for (let j=1;j<4;j++){
       const di=document.createElement('div');
@@ -5521,7 +5522,7 @@ function addControls() {
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const barBg = document.createElement('div');
     barBg.style.position = 'relative';
-    barBg.style.height = '2px';
+    barBg.style.height = i === 3 ? '1.4px' : '2px';
     barBg.style.background = '#333';
     const fill = document.createElement('div');
     fill.style.position = 'absolute';
@@ -5530,7 +5531,7 @@ function addControls() {
     fill.style.left = '0';
     fill.style.width = '0%';
     fill.style.opacity = 0;
-    fill.style.background = ['#0ff','#f0f','#ff0','#000'][i % 4];
+    fill.style.background = LOOP_COLORS[i % 4];
     barBg.appendChild(fill);
     for (let j = 1; j < 4; j++) {
       const ind = document.createElement('div');
