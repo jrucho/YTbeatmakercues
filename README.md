@@ -7,6 +7,13 @@
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+## New in 1.4
+* Four independent audio loopers with bright progress bars beneath each button
+* Each bar shows four tick marks so you can follow the beat
+* Progress bars are a uniform 1.4 px thick for clarity
+* Export downloads every active loop as its own track with BPM
+* Pitching loops renames files with `-pitched-<BPM>bpm`
+
 
 ## New in 1.3
 * Works inside the YouTube iframe on [Samplette.io](https://samplette.io) and other `youtube-nocookie.com` embeds, even when the referrer is hidden. The toolbar becomes scrollable and MIDI features are disabled there.
