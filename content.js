@@ -472,13 +472,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     if (outputDeviceSelect) outputDeviceSelect.value = id;
   }
   /**************************************
-   * Global Variables
-   **************************************/
+  * Global Variables
+  **************************************/
+  const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
+  const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
       // Additional extension-wide keystrokes that can be rebound:
       extensionKeys = {
-        looper: "r",
+        looperA: "r",
+        looperB: "s",
+        looperC: "d",
+        looperD: "f",
         videoLooper: "v",
         compressor: "c",
         eq: "e",
@@ -506,7 +511,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         pitchDown: 42,
         pitchUp: 43,
         cues: { 1: 48, 2: 49, 3: 50, 4: 51, 5: 44, 6: 45, 7: 46, 8: 47, 9: 40, 0: 41 },
-        looper: 34,
+        looperA: 34,
+        looperB: 60,
+        looperC: 61,
+        looperD: 62,
         undo: 35,
         eqToggle: 33,   // MIDI note to toggle EQ
         compToggle: 32, // MIDI note to toggle Compressor
@@ -530,6 +538,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       recordedFrames = [],
       loopBuffer = null,
       loopSource = null,
+      audioLoopBuffers = new Array(MAX_AUDIO_LOOPS).fill(null),
+      activeLoopIndex = 0,
+      loopSources = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopPlaying = new Array(MAX_AUDIO_LOOPS).fill(false),
+      recordingNewLoop = false,
+      newLoopStartTimeout = null,
+      pendingPlayTimeout = null,
+      pendingStopTimeouts = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopsBPM = null,
+      baseLoopDuration = null,
+      audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
       // Video Looper
       videoLooperState = "idle",
       videoMediaRecorder = null,
@@ -580,11 +599,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       micButton = null,          // <-- NEW: declare it here
       detectBpmButton = null,
       minimalActive = true,
+      loopProgressFills = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopProgressFillsMin = new Array(MAX_AUDIO_LOOPS).fill(null),
+      looperPulseEl = null,
+      looperPulseElMin = null,
+      loopProgressRAF = null,
       // Overdub timers
       overdubStartTimeout = null,
       overdubStopTimeout = null,
       // Double-press logic
       clickDelay = 300,
+      holdEraseDelay = 400,
       lastClickTime = 0,
       isDoublePress = false,
       doublePressHoldStartTime = null,
@@ -1852,65 +1877,6 @@ function crossfadeLoop(buffer, fadeTime) {
   }
 }
 
-function trimSilence(buf, threshold = 0.001) {
-  const len = buf.length;
-  const chans = buf.numberOfChannels;
-  let start = 0;
-  let end = len;
-
-  outer: for (; start < len; start++) {
-    for (let c = 0; c < chans; c++) {
-      if (Math.abs(buf.getChannelData(c)[start]) > threshold) break outer;
-    }
-  }
-
-  outer2: for (end = len - 1; end >= start; end--) {
-    for (let c = 0; c < chans; c++) {
-      if (Math.abs(buf.getChannelData(c)[end]) > threshold) break outer2;
-    }
-  }
-  end++;
-
-  if (start === 0 && end === len) return buf;
-
-  const newBuf = audioContext.createBuffer(chans, end - start, buf.sampleRate);
-  for (let c = 0; c < chans; c++) {
-    newBuf.getChannelData(c).set(buf.getChannelData(c).subarray(start, end));
-  }
-  return newBuf;
-}
-
-function alignToZeroCrossings(buf, searchTime = 0.05) {
-  const searchSamples = Math.floor(buf.sampleRate * searchTime);
-  const len = buf.length;
-  const chans = buf.numberOfChannels;
-  const data0 = buf.getChannelData(0);
-
-  let start = 0;
-  for (let i = 1; i < Math.min(searchSamples, len - 1); i++) {
-    if (Math.sign(data0[i]) !== Math.sign(data0[i - 1])) {
-      start = i;
-      break;
-    }
-  }
-
-  let end = len;
-  for (let i = len - 1; i >= Math.max(len - searchSamples, 1); i--) {
-    if (Math.sign(data0[i]) !== Math.sign(data0[i - 1])) {
-      end = i;
-      break;
-    }
-  }
-
-  if (start === 0 && end === len) return buf;
-
-  const newLen = end - start;
-  const newBuf = audioContext.createBuffer(chans, newLen, buf.sampleRate);
-  for (let c = 0; c < chans; c++) {
-    newBuf.getChannelData(c).set(buf.getChannelData(c).subarray(start, end));
-  }
-  return newBuf;
-}
 
 async function processLoopFromBlob() {
   if (looperState !== "recording") return;
@@ -1922,22 +1888,25 @@ async function processLoopFromBlob() {
 
 function processLoopFromFrames(frames) {
   if (!frames || !frames.length) return;
-  const channels = frames[0].length;
-  const length = frames.reduce((t, f) => t + f[0].length, 0);
+  const channels = frames.reduce((m, f) => Math.max(m, f.length), 0);
+  const length = frames.reduce((t, f) => t + (f[0] ? f[0].length : 0), 0);
   const buf = audioContext.createBuffer(channels, length, audioContext.sampleRate);
   let offset = 0;
   for (const block of frames) {
+    const len = block[0] ? block[0].length : 0;
     for (let c = 0; c < channels; c++) {
-      buf.getChannelData(c).set(block[c], offset);
+      const src = block[c] || block[0] || new Float32Array(len);
+      buf.getChannelData(c).set(src, offset);
     }
-    offset += block[0].length;
+    offset += len;
   }
   finalizeLoopBuffer(buf);
 }
 
 function finalizeLoopBuffer(buf) {
-  buf = trimSilence(buf);
-  buf = alignToZeroCrossings(buf);
+  // Older versions trimmed leading/trailing silence which sometimes
+  // chopped short percussive sounds like hihats. Remove the automatic
+  // trimming so the loop is kept exactly as recorded.
 
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
@@ -1945,10 +1914,25 @@ function finalizeLoopBuffer(buf) {
   crossfadeLoop(buf, 0.005);
 
   pushUndoState();
+  if (!baseLoopDuration) {
+    baseLoopDuration = buf.duration;
+    loopsBPM = Math.round((60 * 4) / baseLoopDuration);
+    audioLoopRates[activeLoopIndex] = 1;
+  } else {
+    audioLoopRates[activeLoopIndex] = baseLoopDuration / buf.duration;
+  }
+  audioLoopBuffers[activeLoopIndex] = buf;
+  const wasNew = recordingNewLoop;
+  recordingNewLoop = false;
   loopBuffer = buf;
+  loopPlaying[activeLoopIndex] = true;
 
   looperState = "playing";
-  playLoop();
+  if (wasNew && loopSources.some(Boolean)) {
+    playNewLoop(activeLoopIndex);
+  } else {
+    playLoop();
+  }
   updateLooperButtonColor();
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
@@ -1995,6 +1979,10 @@ function cleanupResources() {
   cleanupFunctions.length = 0;
   loopBuffer = null;
   audioBuffers = {};
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  if (pendingPlayTimeout) { clearTimeout(pendingPlayTimeout); pendingPlayTimeout = null; }
+  pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
+  loopPlaying.fill(false);
   undoStack = [];
   redoStack = [];
 }
@@ -2013,6 +2001,12 @@ function captureAppState() {
   return {
     loopBuffer,
     looperState,
+    audioLoopBuffers: audioLoopBuffers.slice(),
+    audioLoopRates: audioLoopRates.slice(),
+    loopPlaying: loopPlaying.slice(),
+    baseLoopDuration,
+    loopsBPM,
+    activeLoopIndex,
     cuePoints: JSON.parse(JSON.stringify(cuePoints)), // copy
     currentSampleIndex: { ...currentSampleIndex },
 
@@ -2040,8 +2034,18 @@ function captureAppState() {
 }
 
 function restoreAppState(st) {
+  stopAllLoopSources();
+  pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+
   loopBuffer = st.loopBuffer;
   looperState = st.looperState;
+  audioLoopBuffers = st.audioLoopBuffers.slice();
+  audioLoopRates = st.audioLoopRates.slice();
+  loopPlaying = st.loopPlaying.slice();
+  baseLoopDuration = st.baseLoopDuration;
+  loopsBPM = st.loopsBPM;
+  activeLoopIndex = st.activeLoopIndex;
   cuePoints = JSON.parse(JSON.stringify(st.cuePoints));
   currentSampleIndex = { ...st.currentSampleIndex };
 
@@ -2096,7 +2100,7 @@ function restoreAppState(st) {
   } else if (looperState === "recording") {
     looperState = "idle";
   } else {
-    stopLoop();
+    looperState = "idle";
   }
 
   if (window.refreshMinimalState) {
@@ -2173,6 +2177,8 @@ function updateLooperButtonColor() {
   else if (looperState === "overdubbing") c = "orange";
   else if (looperState === "playing") c = "green";
   unifiedLooperButton.style.backgroundColor = (looperState === "idle") ? "grey" : c;
+  updateLooperButtonLabel();
+  updateLoopProgressState();
 }
 function updateVideoLooperButtonColor() {
   if (!videoLooperButton) return;
@@ -2180,6 +2186,88 @@ function updateVideoLooperButtonColor() {
   if (videoLooperState === "recording") c = "red";
   else if (videoLooperState === "playing") c = "green";
   videoLooperButton.style.backgroundColor = (videoLooperState === "idle") ? "grey" : c;
+}
+
+function updateLooperButtonLabel() {
+  if (!unifiedLooperButton) return;
+  let active = [];
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    if (audioLoopBuffers[i] && (loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i)))
+      active.push(String.fromCharCode(65 + i));
+  }
+  if (active.length === 0) {
+    unifiedLooperButton.innerText = "AudioLoops(R/S/D/F)";
+  } else {
+    unifiedLooperButton.innerText = "Loops:" + active.join(" ");
+  }
+}
+
+function updateLoopProgressState() {
+  if (looperState === "idle" && videoLooperState === "idle" && !loopPlaying.some(p => p)) {
+    stopLoopProgress();
+  } else {
+    startLoopProgress();
+  }
+}
+
+function startLoopProgress() {
+  if (loopProgressRAF) return;
+  loopProgressRAF = requestAnimationFrame(loopProgressStep);
+}
+
+function stopLoopProgress() {
+  if (loopProgressRAF) cancelAnimationFrame(loopProgressRAF);
+  loopProgressRAF = null;
+  loopProgressFills.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
+  loopProgressFillsMin.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
+  if (looperPulseEl) looperPulseEl.style.opacity = 0;
+  if (looperPulseElMin) looperPulseElMin.style.opacity = 0;
+}
+
+function loopProgressStep() {
+  loopProgressRAF = requestAnimationFrame(loopProgressStep);
+  if (!audioContext || !baseLoopDuration) return;
+  const now = audioContext.currentTime;
+  let elapsed = now - loopStartAbsoluteTime;
+  if (elapsed < 0) elapsed = 0;
+  let dur = baseLoopDuration;
+  if (pitchTarget === "loop") dur /= getCurrentPitchRate();
+  const progress = elapsed % dur;
+  const pct = (progress / dur) * 100;
+  const bar = Math.floor((progress / dur) * 4);
+  const beatDur = dur / 4;
+  const beatProg = elapsed % beatDur;
+  const pulse = 1 - (beatProg / beatDur);
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const active = loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i);
+    const adv = loopProgressFills[i];
+    const min = loopProgressFillsMin[i];
+    if (adv) {
+      adv.style.width = pct + '%';
+      adv.style.opacity = active ? 1 : 0;
+      Array.from(adv.parentElement.querySelectorAll('.bar-ind'))
+        .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+    }
+    if (min) {
+      min.style.width = pct + '%';
+      min.style.opacity = active ? 1 : 0;
+      Array.from(min.parentElement.querySelectorAll('.bar-ind'))
+        .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+    }
+  }
+  const showPulse = looperState === "recording" || looperState === "overdubbing";
+  if (looperPulseEl) looperPulseEl.style.opacity = showPulse ? pulse : 0;
+  if (looperPulseElMin) looperPulseElMin.style.opacity = showPulse ? pulse : 0;
+}
+
+function blinkButton(element, updateFn, color = "magenta", duration = 150) {
+  if (!element) return;
+  const prev = element.style.backgroundColor;
+  element.style.backgroundColor = color;
+  setTimeout(() => {
+    if (typeof updateFn === "function") updateFn();
+    else element.style.backgroundColor = prev;
+  }, duration);
 }
 function updateExportButtonColor() {
   if (!exportButton) return;
@@ -2370,6 +2458,7 @@ function updateMinimalLoopButtonColor(btn) {
   else if (videoLooperState === "recording") color = "red";
   else if (videoLooperState === "playing") color = "green";
   btn.style.backgroundColor = color;
+  updateLoopProgressState();
 }
 function updateMinimalExportColor(btn) {
   if (videoLooperState !== "idle" && videoPreviewURL)
@@ -2389,7 +2478,7 @@ async function ensureAudioContext() {
   if (!audioContext) {
     // Create the main AudioContext with minimal latency for responsive pads
     audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      latencyHint: 0, // lowest possible latency
+      latencyHint: "interactive", // lowest possible latency
       sampleRate: 48000
     });
     setupAudioNodes();
@@ -3167,9 +3256,9 @@ async function loadAudio(path) {
 /**************************************
  * Audio Looper
  **************************************/
-function startRecording() {
+function beginLoopRecording() {
   ensureAudioContext().then(async () => {
-    if (looperState !== "idle" || !audioContext) return;
+    if (!audioContext) return;
     bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1;
     bus2RecGain.gain.value = 1;
     bus3RecGain.gain.value = 0;
@@ -3205,6 +3294,29 @@ function startRecording() {
   });
 }
 
+function startRecording() {
+  ensureAudioContext().then(() => {
+    if (!audioContext) return;
+    if (recordingNewLoop && looperState !== "idle" && baseLoopDuration) {
+      const now = audioContext.currentTime;
+      let d = baseLoopDuration;
+      if (pitchTarget === "loop") d /= getCurrentPitchRate();
+      const elapsed = (now - loopStartAbsoluteTime) % d;
+      const remain = d - elapsed;
+      if (newLoopStartTimeout) clearTimeout(newLoopStartTimeout);
+      newLoopStartTimeout = setTimeout(() => {
+        beginLoopRecording();
+        setTimeout(() => {
+          if (looperState === "recording") stopRecordingAndPlay();
+        }, d * 1000);
+      }, remain * 1000);
+    } else {
+      if (!recordingNewLoop && looperState !== "idle") return;
+      beginLoopRecording();
+    }
+  });
+}
+
 function stopRecordingAndPlay() {
   if (loopRecorderNode) {
     loopRecorderNode.port.postMessage('stop');
@@ -3213,26 +3325,109 @@ function stopRecordingAndPlay() {
   }
 }
 
-function playLoop() {
+function playLoop(startOffset = 0, startTime = null) {
   ensureAudioContext().then(() => {
-    if (!loopBuffer || !audioContext) return;
-    stopLoopSource();
-    loopSource = audioContext.createBufferSource();
-    loopSource.buffer = loopBuffer;
-    loopSource.loop = true;
-    loopSource.playbackRate.value = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
-    loopSource.connect(loopAudioGain);
-    loopStartAbsoluteTime = audioContext.currentTime;
-    loopSource.start(0);
+    if (!audioContext) return;
+    stopAllLoopSources();
+    loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
+    audioLoopBuffers.forEach((buf, i) => {
+      if (!buf || !loopPlaying[i]) return;
+      const src = audioContext.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      let rate = audioLoopRates[i] || 1;
+      if (pitchTarget === "loop") rate *= getCurrentPitchRate();
+      src.playbackRate.value = rate;
+      src.connect(loopAudioGain);
+      loopSources[i] = src;
+    });
+    if (!loopSources.some(Boolean)) return;
+    const when = startTime ? startTime : audioContext.currentTime;
+    loopStartAbsoluteTime = when - startOffset;
+    loopSources.forEach(src => { if (src) src.start(when, startOffset); });
+    loopSource = loopSources.find(src => src) || null;
   });
 }
 
-function stopLoopSource() {
-  if (loopSource) {
-    loopSource.stop();
-    loopSource.disconnect();
-    loopSource = null;
+function playNewLoop(index) {
+  ensureAudioContext().then(() => {
+    if (!audioContext || !audioLoopBuffers[index] || !baseLoopDuration) return;
+    const buf = audioLoopBuffers[index];
+    const src = audioContext.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    let rate = audioLoopRates[index] || 1;
+    if (pitchTarget === "loop") rate *= getCurrentPitchRate();
+    src.playbackRate.value = rate;
+    src.connect(loopAudioGain);
+    let d = baseLoopDuration;
+    if (pitchTarget === "loop") d /= getCurrentPitchRate();
+    const offset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
+    src.start(0, offset);
+    loopSources[index] = src;
+    if (!loopSource) loopSource = src;
+    loopPlaying[index] = true;
+  });
+}
+
+function playSingleLoop(index, startOffset = 0, startTime = null) {
+  ensureAudioContext().then(() => {
+    if (!audioContext || !audioLoopBuffers[index]) return;
+    stopLoopSource(index);
+    const buf = audioLoopBuffers[index];
+    const src = audioContext.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    let rate = audioLoopRates[index] || 1;
+    if (pitchTarget === "loop") rate *= getCurrentPitchRate();
+    src.playbackRate.value = rate;
+    src.connect(loopAudioGain);
+    const when = startTime ? startTime : audioContext.currentTime;
+    if (!startTime && baseLoopDuration) {
+      let d = baseLoopDuration;
+      if (pitchTarget === "loop") d /= getCurrentPitchRate();
+      startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
+    }
+    src.start(when, startOffset);
+    if (!loopSource)
+      loopStartAbsoluteTime = when - startOffset;
+    loopSources[index] = src;
+    loopPlaying[index] = true;
+    if (!loopSource) loopSource = src;
+  });
+}
+
+function schedulePlayLoop(index) {
+  ensureAudioContext().then(() => {
+    if (!audioContext) return;
+    if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
+    let when = audioContext.currentTime;
+    if (baseLoopDuration && loopStartAbsoluteTime) {
+      let d = baseLoopDuration;
+      if (pitchTarget === "loop") d /= getCurrentPitchRate();
+      const now = audioContext.currentTime;
+      const cycles = Math.ceil((now - loopStartAbsoluteTime) / d);
+      when = loopStartAbsoluteTime + cycles * d;
+    }
+    playSingleLoop(index, 0, when);
+  });
+}
+
+function stopAllLoopSources() {
+  loopSources.forEach(src => { if (src) { try { src.stop(); src.disconnect(); } catch {} } });
+  loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
+  loopSource = null;
+}
+
+function stopLoopSource(index) {
+  const src = loopSources[index];
+  if (src) {
+    try { src.stop(); src.disconnect(); } catch {}
   }
+  loopSources[index] = null;
+  loopPlaying[index] = false;
+  if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
+  if (loopSource === src) loopSource = loopSources.find(s => s) || null;
 }
 
 function toggleOverdub() {
@@ -3299,6 +3494,7 @@ async function processOverdub() {
   pushUndoState();
   loopBuffer = mixBuffers(loopBuffer, overdubBuf);
   applyFadeToBuffer(loopBuffer, 0.01);
+  audioLoopBuffers[activeLoopIndex] = loopBuffer;
 
   looperState = "playing";
   playLoop();
@@ -3319,23 +3515,89 @@ function stopOverdubImmediately() {
   }
 }
 
-function stopLoop() {
-  clearOverdubTimers();
-  stopLoopSource();
-  looperState = "idle";
+function stopLoopImmediately(index) {
+  if (typeof index === "number") {
+    stopLoopSource(index);
+    if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
+  } else {
+    stopAllLoopSources();
+    loopPlaying.fill(false);
+    pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
+  }
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  if (loopPlaying.every(p => !p)) looperState = "idle"; else looperState = "playing";
   updateLooperButtonColor();
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
-function eraseAudioLoop() {
-  if (loopBuffer) pushUndoState();
+function stopLoop(index) {
   clearOverdubTimers();
-  stopLoopSource();
-  looperState = "idle";
-  loopBuffer = null;
+  if (typeof index !== "number") {
+    stopLoopImmediately();
+    return;
+  }
+  if (!baseLoopDuration || !loopSources[index]) {
+    stopLoopImmediately(index);
+    return;
+  }
+  let now = audioContext.currentTime;
+  let d = baseLoopDuration;
+  if (pitchTarget === "loop") d /= getCurrentPitchRate();
+  let elapsed = (now - loopStartAbsoluteTime) % d;
+  let remain = d - elapsed;
+  if (pendingStopTimeouts[index]) clearTimeout(pendingStopTimeouts[index]);
+  pendingStopTimeouts[index] = setTimeout(() => stopLoopImmediately(index), remain * 1000);
+}
+
+function eraseAudioLoop() {
+  const idx = activeLoopIndex;
+  if (audioLoopBuffers[idx]) pushUndoState();
+  clearOverdubTimers();
+  stopLoopSource(idx);
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  audioLoopBuffers[idx] = null;
+  if (audioLoopBuffers.every(b => !b)) {
+    loopBuffer = null;
+    baseLoopDuration = null;
+    loopsBPM = null;
+    audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
+    looperState = "idle";
+  } else {
+    if (loopBuffer === null || !audioLoopBuffers.includes(loopBuffer)) {
+      loopBuffer = audioLoopBuffers.find(b => b) || null;
+    }
+    if (loopPlaying.some(p => p)) looperState = "playing"; else looperState = "idle";
+  }
   updateExportButtonColor();
   updateLooperButtonColor();
+  blinkButton(unifiedLooperButton, updateLooperButtonColor);
+  if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
+function eraseAudioLoopAt(index) {
+  const prev = activeLoopIndex;
+  activeLoopIndex = index;
+  eraseAudioLoop();
+  activeLoopIndex = prev;
+}
+
+function eraseAllAudioLoops() {
+  if (audioLoopBuffers.some(b => b)) pushUndoState();
+  clearOverdubTimers();
+  stopAllLoopSources();
+  audioLoopBuffers.fill(null);
+  loopPlaying.fill(false);
+  audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
+  baseLoopDuration = null;
+  loopsBPM = null;
+  loopBuffer = null;
+  if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
+  pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
+  looperState = "idle";
+  updateExportButtonColor();
+  updateLooperButtonColor();
+  blinkButton(unifiedLooperButton, updateLooperButtonColor);
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
@@ -3364,8 +3626,14 @@ function onVideoLooperButtonMouseDown() {
 
 function onVideoLooperButtonMouseUp() {
   if (isDoublePressVideo) {
-    eraseVideoLoop();
+    const holdMs = doublePressHoldStartTimeVideo ? (Date.now() - doublePressHoldStartTimeVideo) : 0;
+    if (holdMs >= holdEraseDelay) {
+      eraseVideoLoop();
+    } else {
+      stopVideoLoop();
+    }
     isDoublePressVideo = false;
+    doublePressHoldStartTimeVideo = null;
   } else {
     singlePressActionVideo();
   }
@@ -3403,6 +3671,7 @@ function eraseVideoLoop() {
     videoPreviewURL = null;
   }
   updateVideoLooperButtonColor();
+  blinkButton(videoLooperButton, updateVideoLooperButtonColor);
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
@@ -3436,12 +3705,13 @@ function startVideoRecording() {
   let finalStream = new MediaStream(allTracks);
 
   let mime = "video/mp4;codecs=avc1.42E01E,mp4a.40.2";
-  try {
-    videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime });
-  } catch (e) {
+  if (!MediaRecorder.isTypeSupported(mime)) {
     mime = "video/webm;codecs=vp9,opus";
-    videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime });
+    if (!MediaRecorder.isTypeSupported(mime)) {
+      mime = "video/webm";
+    }
   }
+  videoMediaRecorder = new MediaRecorder(finalStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
 
   videoMediaRecorder.ondataavailable = e => {
     if (e.data.size > 0) videoRecordedChunks.push(e.data);
@@ -3467,7 +3737,7 @@ function startVideoRecording() {
     console.error("Video recording error:", err);
     alert("Video recording failed!");
   };
-  videoMediaRecorder.start();
+  videoMediaRecorder.start(100);
 
   videoLooperState = "recording";
   updateVideoLooperButtonColor();
@@ -4264,9 +4534,54 @@ function onKeyDown(e) {
     exportLoop();
     return;
   }
-  
-  // Declare a single lowercase key variable
+
   const k = e.key.toLowerCase();
+
+  // Option+Cmd+R erases all audio loops
+  if (e.metaKey && e.altKey && k === extensionKeys.looperA.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAllAudioLoops();
+    return;
+  }
+  // Cmd+V erases the video loop
+  if (e.metaKey && k === extensionKeys.videoLooper.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseVideoLoop();
+    return;
+  }
+  // Cmd+R/S/D/F erase loops A–D
+  if (e.metaKey && k === extensionKeys.looperA.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(0);
+    return;
+  }
+  if (e.metaKey && k === extensionKeys.looperB.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(1);
+    return;
+  }
+  if (e.metaKey && k === extensionKeys.looperC.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(2);
+    return;
+  }
+  if (e.metaKey && k === extensionKeys.looperD.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    eraseAudioLoopAt(3);
+    return;
+  }
   
   if (e.key.toLowerCase() === "i") {
   e.preventDefault();
@@ -4328,6 +4643,7 @@ function onKeyDown(e) {
   if (k === extensionKeys.compressor.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     toggleCompressor();
     return;
   }
@@ -4337,11 +4653,24 @@ function onKeyDown(e) {
     toggleEQFilter();
     return;
   }
-  if (k === extensionKeys.looper.toLowerCase()) {
-    onLooperButtonMouseDown();
-    return;
+  const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
+  for (let i = 0; i < loopKeys.length; i++) {
+    if (k === loopKeys[i].toLowerCase()) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (e.repeat) return; // ignore repeat but still consume the event
+      activeLoopIndex = i;
+      if (looperState !== "idle" && !audioLoopBuffers[i]) recordingNewLoop = true;
+      onLooperButtonMouseDown();
+      return;
+    }
   }
   if (k === extensionKeys.videoLooper.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (e.repeat) return;
     onVideoLooperButtonMouseDown();
     return;
   }
@@ -4400,16 +4729,23 @@ function onKeyUp(e) {
   if (isTypingInTextField(e)) {
   return;
 }
-  if (k === extensionKeys.looper.toLowerCase()) {
-    onLooperButtonMouseUp();
+  const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
+  for (let i = 0; i < loopKeys.length; i++) {
+    if (k === loopKeys[i].toLowerCase()) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      activeLoopIndex = i;
+      onLooperButtonMouseUp();
+    }
   }
   if (k === extensionKeys.videoLooper.toLowerCase()) {
     onVideoLooperButtonMouseUp();
   }
   // Remove the undo handling here because it's handled in onKeyDown.
 }
-addTrackedListener(document, "keydown", onKeyDown);
-addTrackedListener(document, "keyup", onKeyUp);
+addTrackedListener(document, "keydown", onKeyDown, true);
+addTrackedListener(document, "keyup", onKeyUp, true);
 
 function playSample(n) {
   ensureAudioContext().then(() => {
@@ -4462,8 +4798,10 @@ function onLooperButtonMouseDown() {
   const delta = now - lastClickTime;
   if (delta < clickDelay) {
     isDoublePress = true;
+    doublePressHoldStartTime = now;
   } else {
     isDoublePress = false;
+    doublePressHoldStartTime = null;
   }
 
   lastClickTime = now;
@@ -4475,8 +4813,8 @@ function onLooperButtonMouseUp() {
     const tFirst = pressTimes[0];
     const tLast  = pressTimes[2];
     if (tLast - tFirst < clickDelay * 2) {
-      console.log("TRIPLE PRESS => STOP AUDIO LOOP");
-      stopLoop();
+      console.log("TRIPLE PRESS => ERASE AUDIO LOOP");
+      eraseAudioLoop();
 
       // Clear out so we don't also do single/double logic
       pressTimes = [];
@@ -4487,16 +4825,22 @@ function onLooperButtonMouseUp() {
 
   // If not triple, either double or single
   if (isDoublePress) {
-    // DOUBLE PRESS => always STOP
-    console.log("DOUBLE PRESS => STOP AUDIO LOOP");
-    stopLoop();
+    const holdMs = doublePressHoldStartTime ? (Date.now() - doublePressHoldStartTime) : 0;
+    if (holdMs >= holdEraseDelay) {
+      console.log("DOUBLE PRESS HOLD => ERASE AUDIO LOOP");
+      eraseAudioLoop();
+    } else {
+      console.log("DOUBLE PRESS => STOP LOOP");
+      stopLoop(activeLoopIndex);
+    }
 
     isDoublePress = false;
     pressTimes = [];
+    doublePressHoldStartTime = null;
 
   } else {
-    // SINGLE PRESS => start or overdub
-    console.log("SINGLE PRESS => START/OVERDUB");
+    // SINGLE PRESS => start or overdub or resume playback
+    console.log("SINGLE PRESS => START/OVERDUB/PLAY");
     singlePressAudioLooperAction();
     pressTimes = [];
   }
@@ -4504,11 +4848,32 @@ function onLooperButtonMouseUp() {
 
 function singlePressAudioLooperAction() {
   if (looperState === "idle") {
-    startRecording();
+    if (audioLoopBuffers[activeLoopIndex]) {
+      looperState = "playing";
+      loopPlaying[activeLoopIndex] = true;
+      if (loopSources.some(Boolean)) {
+        playNewLoop(activeLoopIndex);
+      } else {
+        schedulePlayLoop(activeLoopIndex);
+      }
+      updateLooperButtonColor();
+      updateExportButtonColor();
+      if (window.refreshMinimalState) window.refreshMinimalState();
+    } else {
+      startRecording();
+    }
   } else if (looperState === "recording") {
     stopRecordingAndPlay();
   } else {
-    toggleOverdub();
+    if (!audioLoopBuffers[activeLoopIndex]) {
+      recordingNewLoop = true;
+      startRecording();
+    } else if (!loopPlaying[activeLoopIndex]) {
+      loopPlaying[activeLoopIndex] = true;
+      playNewLoop(activeLoopIndex);
+    } else {
+      toggleOverdub();
+    }
   }
 }
 
@@ -4541,64 +4906,53 @@ function exportLoop() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } else if (loopBuffer) {
-      let r = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
-      if (Math.abs(r - 1) < 0.01) {
-        let wav = encodeWAV(loopBuffer);
-        let url = URL.createObjectURL(wav);
-        let a = document.createElement("a");
-        a.style.display = "none";
-        a.href = url;
-        a.download = "loop.wav";
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        exportAudioWithPitch(r);
-      }
+    } else {
+      const loops = audioLoopBuffers.map((b, i) => ({ buf: b, idx: i })).filter(o => o.buf);
+      if (!loops.length) return;
+      const rBase = (pitchTarget === "loop") ? getCurrentPitchRate() : 1;
+      const pitched = Math.abs(rBase - 1) > 0.001;
+      let bpm = loopsBPM ? loopsBPM : (baseLoopDuration ? Math.round((60 * 4) / baseLoopDuration) : 0);
+      loops.forEach(({buf, idx}) => {
+        const rate = rBase * (audioLoopRates[idx] || 1);
+        const outBpm = pitched && bpm ? Math.round(bpm * rBase) : bpm;
+        const base = `loop${String.fromCharCode(65 + idx)}`;
+        const name = `${base}${pitched ? "-pitched" : ""}${outBpm ? "-" + outBpm + "bpm" : ""}.wav`;
+        if (Math.abs(rate - 1) < 0.01) {
+          const wav = encodeWAV(buf);
+          const url = URL.createObjectURL(wav);
+          let a = document.createElement("a");
+          a.style.display = "none";
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          exportAudioWithPitch(buf, rate, name);
+        }
+      });
     }
   });
 }
-async function exportAudioWithPitch(rate) {
-  if (!loopBuffer) return;
-  let dst = audioContext.createMediaStreamDestination();
-  let chunks = [];
-  let mr;
-  try {
-    mr = new MediaRecorder(dst.stream, { mimeType: "audio/webm" });
-  } catch (e) {
-    mr = new MediaRecorder(dst.stream);
-  }
-  mr.ondataavailable = e => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-  mr.onstop = async () => {
-    let blob = new Blob(chunks, { type: "audio/webm" });
-    let arr = await blob.arrayBuffer();
-    let decoded = await audioContext.decodeAudioData(arr);
-    let wav = encodeWAV(decoded);
-    let url = URL.createObjectURL(wav);
-    let a = document.createElement("a");
-    a.style.display = "none";
-    a.href = url;
-    a.download = "loop-pitched.wav";
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-  mr.start();
-
-  let src = audioContext.createBufferSource();
-  src.buffer = loopBuffer;
+async function exportAudioWithPitch(buf, rate, fileName = "loop-pitched.wav") {
+  if (!buf) return;
+  const len = Math.ceil((buf.duration / rate) * buf.sampleRate);
+  const off = new OfflineAudioContext(buf.numberOfChannels, len, buf.sampleRate);
+  const src = off.createBufferSource();
+  src.buffer = buf;
   src.playbackRate.value = rate;
-  src.connect(dst);
+  src.connect(off.destination);
   src.start();
-
-  let dur = loopBuffer.duration / rate;
-  setTimeout(() => {
-    if (mr.state === "recording") mr.stop();
-    src.stop();
-  }, dur * 1000);
+  const rendered = await off.startRendering();
+  const wav = encodeWAV(rendered);
+  const url = URL.createObjectURL(wav);
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function encodeWAV(buf) {
@@ -4834,8 +5188,21 @@ container.insertBefore(minimalUIContainer, container.firstChild);
 
   let loopBtnMin = document.createElement("button");
   loopBtnMin.className = "looper-btn";
-  loopBtnMin.innerText = "Looper(R/V)";
+  loopBtnMin.style.position = "relative";
+  loopBtnMin.innerText = "Looper(R/S/D/F/V)";
   loopBtnMin.title = "Audio/Video Looper";
+  looperPulseElMin = document.createElement('div');
+  looperPulseElMin.style.position = 'absolute';
+  looperPulseElMin.style.left = '0';
+  looperPulseElMin.style.top = '0';
+  looperPulseElMin.style.right = '0';
+  looperPulseElMin.style.bottom = '0';
+  looperPulseElMin.style.borderRadius = '3px';
+  looperPulseElMin.style.background = 'rgba(255,255,255,0.25)';
+  looperPulseElMin.style.opacity = 0;
+  looperPulseElMin.style.transition = 'opacity 0.1s';
+  looperPulseElMin.style.pointerEvents = 'none';
+  loopBtnMin.appendChild(looperPulseElMin);
   addTrackedListener(loopBtnMin, "mousedown", e => {
     ensureAudioContext().then(() => {
       if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseDown();
@@ -4848,7 +5215,57 @@ container.insertBefore(minimalUIContainer, container.firstChild);
       else onLooperButtonMouseUp();
     });
   });
-  minimalUIContainer.appendChild(loopBtnMin);
+  const pWrap = document.createElement('div');
+  pWrap.style.position = 'absolute';
+  pWrap.style.left = '0';
+  pWrap.style.right = '0';
+  pWrap.style.bottom = '-6px';
+  pWrap.style.height = '6px';
+  pWrap.style.background = '#222';
+  pWrap.style.pointerEvents = 'none';
+  pWrap.style.display = 'flex';
+  pWrap.style.flexDirection = 'column';
+  pWrap.style.justifyContent = 'space-between';
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const b = document.createElement('div');
+    b.style.position = 'relative';
+    b.style.height = '1.4px';
+    b.style.background = '#333';
+    const f = document.createElement('div');
+    f.style.position = 'absolute';
+    f.style.left = '0';
+    f.style.right = 'auto';
+    f.style.top = '0';
+    f.style.bottom = '0';
+    f.style.width = '0%';
+    f.style.opacity = 0;
+    f.style.background = LOOP_COLORS[i % 4];
+    b.appendChild(f);
+    for (let j=1;j<4;j++){
+      const di=document.createElement('div');
+      di.className='bar-ind';
+      di.style.position='absolute';
+      di.style.left=(j*25)+'%';
+      di.style.top='0';
+      di.style.bottom='0';
+      di.style.width='1px';
+      di.style.background='#555';
+      di.style.opacity=0.3;
+      b.appendChild(di);
+    }
+    pWrap.appendChild(b);
+    loopProgressFillsMin[i] = f;
+  }
+  const loopWrapMin = document.createElement('div');
+  loopWrapMin.style.position = 'relative';
+  loopWrapMin.style.display = 'flex';
+  loopWrapMin.style.overflow = 'visible';
+  loopWrapMin.style.paddingBottom = '0';
+  loopWrapMin.style.flexDirection = 'column';
+  loopWrapMin.style.alignItems = 'stretch';
+  loopWrapMin.appendChild(loopBtnMin);
+  loopWrapMin.appendChild(pWrap);
+  minimalUIContainer.appendChild(loopWrapMin);
 
   let exportBtnMin = document.createElement("button");
   exportBtnMin.className = "looper-btn";
@@ -5080,10 +5497,72 @@ function addControls() {
 
   unifiedLooperButton = document.createElement("button");
   unifiedLooperButton.className = "looper-btn";
-  unifiedLooperButton.innerText = "AudioLooper(R)";
+  unifiedLooperButton.style.position = "relative";
+  unifiedLooperButton.innerText = "AudioLoops(R/S/D/F)";
   unifiedLooperButton.addEventListener("mousedown", onLooperButtonMouseDown);
   unifiedLooperButton.addEventListener("mouseup", onLooperButtonMouseUp);
-  looperButtonRow.appendChild(unifiedLooperButton);
+  looperPulseEl = document.createElement('div');
+  looperPulseEl.style.position = 'absolute';
+  looperPulseEl.style.left = '0';
+  looperPulseEl.style.top = '0';
+  looperPulseEl.style.right = '0';
+  looperPulseEl.style.bottom = '0';
+  looperPulseEl.style.borderRadius = '4px';
+  looperPulseEl.style.background = 'rgba(255,255,255,0.25)';
+  looperPulseEl.style.opacity = 0;
+  looperPulseEl.style.transition = 'opacity 0.1s';
+  looperPulseEl.style.pointerEvents = 'none';
+  unifiedLooperButton.appendChild(looperPulseEl);
+
+  const progressWrap = document.createElement("div");
+  progressWrap.style.position = "absolute";
+  progressWrap.style.left = "0";
+  progressWrap.style.right = "0";
+  progressWrap.style.bottom = "-8px";
+  progressWrap.style.height = "8px";
+  progressWrap.style.pointerEvents = "none";
+  progressWrap.style.background = "#222";
+  progressWrap.style.display = "flex";
+  progressWrap.style.flexDirection = "column";
+  progressWrap.style.justifyContent = "space-between";
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const barBg = document.createElement('div');
+    barBg.style.position = 'relative';
+    barBg.style.height = '1.4px';
+    barBg.style.background = '#333';
+    const fill = document.createElement('div');
+    fill.style.position = 'absolute';
+    fill.style.top = '0';
+    fill.style.bottom = '0';
+    fill.style.left = '0';
+    fill.style.width = '0%';
+    fill.style.opacity = 0;
+    fill.style.background = LOOP_COLORS[i % 4];
+    barBg.appendChild(fill);
+    for (let j = 1; j < 4; j++) {
+      const ind = document.createElement('div');
+      ind.className = 'bar-ind';
+      ind.style.position = 'absolute';
+      ind.style.left = (j*25)+'%';
+      ind.style.top = '0';
+      ind.style.bottom = '0';
+      ind.style.width = '1px';
+      ind.style.background = '#555';
+      ind.style.opacity = 0.3;
+      barBg.appendChild(ind);
+    }
+    progressWrap.appendChild(barBg);
+    loopProgressFills[i] = fill;
+  }
+  const unifiedWrap = document.createElement('div');
+  unifiedWrap.style.position = 'relative';
+  unifiedWrap.style.display = 'flex';
+  unifiedWrap.style.overflow = 'visible';
+  unifiedWrap.style.flexDirection = 'column';
+  unifiedWrap.style.alignItems = 'stretch';
+  unifiedWrap.appendChild(unifiedLooperButton);
+  unifiedWrap.appendChild(progressWrap);
+  looperButtonRow.appendChild(unifiedWrap);
 
   videoLooperButton = document.createElement("button");
   videoLooperButton.className = "looper-btn";
@@ -5573,9 +6052,9 @@ function updatePitch(v) {
     }
   } else {
     // pitchTarget === "loop"
-    if (loopSource) {
-      loopSource.playbackRate.value = rate;
-    }
+    loopSources.forEach((src, i) => {
+      if (src) src.playbackRate.value = rate * (audioLoopRates[i] || 1);
+    });
     // Keep the main video at normal speed
     if (videoPreviewElement) videoPreviewElement.playbackRate = 1;
     const mv = getVideoElement();
@@ -5714,7 +6193,42 @@ function handleMIDIMessage(e) {
     if (note === midiNotes.kick) playSample("kick");
     if (note === midiNotes.hihat) playSample("hihat");
     if (note === midiNotes.snare) playSample("snare");
-    if (note === midiNotes.looper) onLooperButtonMouseDown();
+    if (note === midiNotes.looperA) {
+      activeLoopIndex = 0;
+      if (isModPressed) {
+        eraseAudioLoopAt(0);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[0]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
+    if (note === midiNotes.looperB) {
+      activeLoopIndex = 1;
+      if (isModPressed) {
+        eraseAudioLoopAt(1);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[1]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
+    if (note === midiNotes.looperC) {
+      activeLoopIndex = 2;
+      if (isModPressed) {
+        eraseAudioLoopAt(2);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[2]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
+    if (note === midiNotes.looperD) {
+      activeLoopIndex = 3;
+      if (isModPressed) {
+        eraseAudioLoopAt(3);
+      } else {
+        if (looperState !== "idle" && !audioLoopBuffers[3]) recordingNewLoop = true;
+        onLooperButtonMouseDown();
+      }
+    }
     if (note === midiNotes.undo) onUndoButtonMouseDown();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseDown();
     if (note === midiNotes.eqToggle) toggleEQFilter();
@@ -5747,7 +6261,10 @@ function handleMIDIMessage(e) {
   } else if (st === 128) {
     if (note === midiNotes.pitchDown) stopPitchDownRepeat();
     if (note === midiNotes.pitchUp) stopPitchUpRepeat();
-    if (note === midiNotes.looper) onLooperButtonMouseUp();
+    if (note === midiNotes.looperA) { activeLoopIndex = 0; if (!isModPressed) onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperB) { activeLoopIndex = 1; if (!isModPressed) onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperC) { activeLoopIndex = 2; if (!isModPressed) onLooperButtonMouseUp(); }
+    if (note === midiNotes.looperD) { activeLoopIndex = 3; if (!isModPressed) onLooperButtonMouseUp(); }
     // if (note === midiNotes.undo) onUndoButtonMouseUp();
     if (note === midiNotes.videoLooper) onVideoLooperButtonMouseUp();
   }
@@ -5957,8 +6474,20 @@ function buildKeyMapWindow() {
     </div>
     <h4>Other Keys</h4>
     <div class="keymap-row">
-      <label>Looper:</label>
-      <input data-extkey="looper" value="${escapeHtml(extensionKeys.looper)}" maxlength="1">
+      <label>Loop A:</label>
+      <input data-extkey="looperA" value="${escapeHtml(extensionKeys.looperA)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Loop B:</label>
+      <input data-extkey="looperB" value="${escapeHtml(extensionKeys.looperB)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Loop C:</label>
+      <input data-extkey="looperC" value="${escapeHtml(extensionKeys.looperC)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Loop D:</label>
+      <input data-extkey="looperD" value="${escapeHtml(extensionKeys.looperD)}" maxlength="1">
     </div>
     <div class="keymap-row">
       <label>VideoLooper:</label>
@@ -6138,9 +6667,24 @@ function buildMIDIMapWindow() {
     </div>
     <h4>Looper / Undo / VideoLooper</h4>
     <div class="midimap-row">
-      <label>Looper:</label>
-      <input data-midiname="looper" value="${escapeHtml(String(midiNotes.looper))}" type="number">
-      <button data-detect="looper" class="detect-midi-btn">Detect</button>
+      <label>Loop A:</label>
+      <input data-midiname="looperA" value="${escapeHtml(String(midiNotes.looperA))}" type="number">
+      <button data-detect="looperA" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Loop B:</label>
+      <input data-midiname="looperB" value="${escapeHtml(String(midiNotes.looperB))}" type="number">
+      <button data-detect="looperB" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Loop C:</label>
+      <input data-midiname="looperC" value="${escapeHtml(String(midiNotes.looperC))}" type="number">
+      <button data-detect="looperC" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Loop D:</label>
+      <input data-midiname="looperD" value="${escapeHtml(String(midiNotes.looperD))}" type="number">
+      <button data-detect="looperD" class="detect-midi-btn">Detect</button>
     </div>
     <div class="midimap-row">
       <label>Undo:</label>
