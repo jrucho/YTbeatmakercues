@@ -3422,12 +3422,7 @@ function scheduleResumeLoop(index) {
   ensureAudioContext().then(() => {
     if (!audioContext || !baseLoopDuration) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    let d = baseLoopDuration;
-    if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const now = audioContext.currentTime;
-    const elapsed = (now - loopStartAbsoluteTime) % d;
-    const when = now + (d - elapsed);
-    playSingleLoop(index, 0, when);
+    playSingleLoop(index);
   });
 }
 
