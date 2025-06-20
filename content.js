@@ -548,6 +548,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       pendingStopTimeouts = new Array(MAX_AUDIO_LOOPS).fill(null),
       loopsBPM = null,
       baseLoopDuration = null,
+      masterLoopIndex = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
       // Video Looper
       videoLooperState = "idle",
@@ -2006,6 +2007,7 @@ function captureAppState() {
     loopPlaying: loopPlaying.slice(),
     baseLoopDuration,
     loopsBPM,
+    masterLoopIndex,
     activeLoopIndex,
     cuePoints: JSON.parse(JSON.stringify(cuePoints)), // copy
     currentSampleIndex: { ...currentSampleIndex },
@@ -2045,6 +2047,7 @@ function restoreAppState(st) {
   loopPlaying = st.loopPlaying.slice();
   baseLoopDuration = st.baseLoopDuration;
   loopsBPM = st.loopsBPM;
+  masterLoopIndex = st.masterLoopIndex;
   activeLoopIndex = st.activeLoopIndex;
   cuePoints = JSON.parse(JSON.stringify(st.cuePoints));
   currentSampleIndex = { ...st.currentSampleIndex };
@@ -3344,6 +3347,7 @@ function playLoop(startOffset = 0, startTime = null) {
     if (!loopSources.some(Boolean)) return;
     const when = startTime ? startTime : audioContext.currentTime;
     loopStartAbsoluteTime = when - startOffset;
+    masterLoopIndex = loopPlaying.findIndex(p => p);
     loopSources.forEach(src => { if (src) src.start(when, startOffset); });
     loopSource = loopSources.find(src => src) || null;
   });
@@ -3389,8 +3393,10 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
       startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
     }
     src.start(when, startOffset);
-    if (!loopSource)
+    if (!loopSource) {
       loopStartAbsoluteTime = when - startOffset;
+      masterLoopIndex = index;
+    }
     loopSources[index] = src;
     loopPlaying[index] = true;
     if (!loopSource) loopSource = src;
@@ -3401,15 +3407,20 @@ function schedulePlayLoop(index) {
   ensureAudioContext().then(() => {
     if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    let when = audioContext.currentTime;
-    if (baseLoopDuration && loopStartAbsoluteTime) {
-      let d = baseLoopDuration;
-      if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      const now = audioContext.currentTime;
-      const cycles = Math.ceil((now - loopStartAbsoluteTime) / d);
-      when = loopStartAbsoluteTime + cycles * d;
+    if (!loopSources.some(Boolean)) {
+      masterLoopIndex = index;
+      playSingleLoop(index, 0, audioContext.currentTime);
+    } else {
+      let when = audioContext.currentTime;
+      if (baseLoopDuration && loopStartAbsoluteTime) {
+        let d = baseLoopDuration;
+        if (pitchTarget === "loop") d /= getCurrentPitchRate();
+        const now = audioContext.currentTime;
+        const cycles = Math.ceil((now - loopStartAbsoluteTime) / d);
+        when = loopStartAbsoluteTime + cycles * d;
+      }
+      playSingleLoop(index, 0, when);
     }
-    playSingleLoop(index, 0, when);
   });
 }
 
@@ -3417,6 +3428,7 @@ function stopAllLoopSources() {
   loopSources.forEach(src => { if (src) { try { src.stop(); src.disconnect(); } catch {} } });
   loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
   loopSource = null;
+  masterLoopIndex = null;
 }
 
 function stopLoopSource(index) {
@@ -3428,6 +3440,10 @@ function stopLoopSource(index) {
   loopPlaying[index] = false;
   if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
   if (loopSource === src) loopSource = loopSources.find(s => s) || null;
+  if (masterLoopIndex === index) {
+    masterLoopIndex = loopPlaying.findIndex(p => p);
+    if (masterLoopIndex === -1) masterLoopIndex = null;
+  }
 }
 
 function toggleOverdub() {
@@ -3563,11 +3579,16 @@ function eraseAudioLoop() {
     loopsBPM = null;
     audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
     looperState = "idle";
+    masterLoopIndex = null;
   } else {
     if (loopBuffer === null || !audioLoopBuffers.includes(loopBuffer)) {
       loopBuffer = audioLoopBuffers.find(b => b) || null;
     }
     if (loopPlaying.some(p => p)) looperState = "playing"; else looperState = "idle";
+    if (masterLoopIndex === idx) {
+      masterLoopIndex = loopPlaying.findIndex(p => p);
+      if (masterLoopIndex === -1) masterLoopIndex = null;
+    }
   }
   updateExportButtonColor();
   updateLooperButtonColor();
@@ -3595,6 +3616,7 @@ function eraseAllAudioLoops() {
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
   looperState = "idle";
+  masterLoopIndex = null;
   updateExportButtonColor();
   updateLooperButtonColor();
   blinkButton(unifiedLooperButton, updateLooperButtonColor);

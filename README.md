@@ -69,7 +69,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   second press a moment longer (or tap three times quickly) to erase only the
   selected loop—the button blinks briefly when this happens. Loops can be
   resumed individually with a single press; if no loops are playing they start
-  immediately, otherwise they wait for the next bar. Exporting downloads each
+  immediately, otherwise they wait for the next bar. Stopped loops always
+  re-sync to the loops that are still running, and the first loop that starts
+  becomes the master for timing—if it stops, the next active loop takes over.
+  Exporting downloads each
   active loop as its own track with the BPM rounded in the file name. If loops
   are pitched, the filenames also include `-pitched-<BPM>bpm`. Use `V` for the
   video looper. Hold Option and press **Cmd+R** to erase **all** loops. Use
