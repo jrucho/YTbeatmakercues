@@ -146,8 +146,7 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-Press **N** to open the Nova Bass window. Opening powers on your last preset, while closing turns the synth off and resets its nodes. You can still use the **Power** button to toggle it manually.
-The synth starts disabled each time you load the page and only activates once the window opens. Three built-in bass presets—Resonate, Precision and 808 Boom—provide classic boombap tones and play at **15% volume** by default.
+Press **N** or the advanced panel’s **Instrument** button to show the Nova Bass window. Opening the window activates your last preset if the synth was off; closing it powers the synth down. The minimal bar has its own Instrument button that simply toggles the synth on or off without opening the window. Three built-in bass presets—Resonate, Precision and 808 Boom—provide classic boombap tones and play at **15% volume** by default.
 While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning. All parameters are adjusted with labeled sliders so you know exactly what each one does.
 

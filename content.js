@@ -5512,7 +5512,13 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   instrumentButtonMin.innerText = "Instrument:Off";
   instrumentButtonMin.title = "Nova Bass";
   instrumentButtonMin.style.backgroundColor = "#444";
-  instrumentButtonMin.addEventListener("click", showInstrumentWindowToggle);
+  instrumentButtonMin.addEventListener("click", () => {
+    if (instrumentPreset === 0) {
+      setInstrumentPreset(instrumentLastPreset || 1);
+    } else {
+      deactivateInstrument();
+    }
+  });
   minimalUIContainer.appendChild(instrumentButtonMin);
 
   let cuesBtnMin = document.createElement("button");
@@ -7364,7 +7370,9 @@ async function showInstrumentWindowToggle() {
   } else {
     instrumentWindowContainer.style.display = "block";
     await ensureAudioContext();
-    setInstrumentPreset(instrumentLastPreset || 1);
+    if (instrumentPreset === 0) {
+      setInstrumentPreset(instrumentLastPreset || 1);
+    }
   }
 }
 
