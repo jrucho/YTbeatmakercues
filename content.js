@@ -3843,7 +3843,7 @@ function scheduleResumeLoop(index) {
     const now = audioContext.currentTime;
     const elapsed = (now - loopStartAbsoluteTime) % d;
     const when = now + PLAY_PADDING;
-    const offset = loopSource ? elapsed : 0;
+    const offset = loopSource ? (elapsed + PLAY_PADDING) % d : 0;
     playSingleLoop(index, offset, when);
   });
 }

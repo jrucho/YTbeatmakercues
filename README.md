@@ -75,7 +75,7 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   second press a moment longer (or tap three times quickly) to erase only the
   selected loop—the button blinks briefly when this happens. Loops can be
   resumed individually with a single press; they start right away in sync with
-  any loops already playing thanks to a short scheduling buffer. A stopped loop can rejoin mid‑phrase without breaking sync, just like legato mode. Sync has been refined so multiple loops stay locked together. If no loops are active they wait for the next bar
+  any loops already playing thanks to a short scheduling buffer. A stopped loop can rejoin mid‑phrase without breaking sync, just like legato mode. Resume scheduling now compensates for that buffer so loops hit exactly on time. Sync has been refined so multiple loops stay locked together. If no loops are active they wait for the next bar
   and become the new **master** automatically. Should that loop stop, the
   master role passes to the next playing loop. Exporting downloads each
   active loop as its own track with the BPM rounded in the file name. If loops
