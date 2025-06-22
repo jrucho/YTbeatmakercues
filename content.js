@@ -494,7 +494,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         // NEW: Reverb + Cassette toggles
         reverb: "q",
         cassette: "w",
-        randomCues: "-"
+        randomCues: "-",
+        instrumentToggle: "n"
       },
       midiPresets = [],
       presetSelect = null,
@@ -525,6 +526,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverbToggle: 29,
         cassetteToggle: 30,
         randomCues: 28,
+        instrumentToggle: 27,
         superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
@@ -599,6 +601,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqButtonMin = null,
       compButtonMin = null,
       micButton = null,          // <-- NEW: declare it here
+      instrumentButton = null,
+      instrumentButtonMin = null,
       detectBpmButton = null,
       minimalActive = true,
       loopProgressFills = new Array(MAX_AUDIO_LOOPS).fill(null),
@@ -650,6 +654,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       videoGain = null,
       samplesGain = null,
       loopAudioGain = null,
+      instrumentGain = null,
       bus1Gain = null,
       bus2Gain = null,
       bus3Gain = null,
@@ -664,6 +669,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       bus2RecGain = null,
       bus3RecGain = null,
       bus4RecGain = null,
+      instrumentPreset = 0,
+      instrumentVoices = {},
       // Pitch
       pitchPercentage = 0,
       pitchTarget = "video", // "video" or "loop"
@@ -684,6 +691,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqWindowContainer = null,
       eqDragHandle = null,
       eqContentWrap = null,
+      instrumentWindowContainer = null,
       // We'll keep them to identify which button is which
       reverbButton = null,
       cassetteButton = null,
@@ -706,6 +714,22 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   // progressively quicker for rapid cue movement.
   const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateSuperKnobStep();
+
+  // When the instrument is active, the number row becomes a mini keyboard
+  // using a simple C major scale starting from C3.
+  const KEYBOARD_INST_MAP = {
+    '1': 0,  // C3
+    '2': 2,  // D3
+    '3': 4,  // E3
+    '4': 5,  // F3
+    '5': 7,  // G3
+    '6': 9,  // A3
+    '7': 11, // B3
+    '8': 12, // C4
+    '9': 14, // D4
+    '0': 16  // E4
+  };
+  const INST_BASE_MIDI = 48; // C3
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -1556,6 +1580,7 @@ document.addEventListener(
     if (isTypingInTextField(e)) return;
     // Only handle plain digit keys (ignore if user holds Ctrl/Meta)
     if (!e.ctrlKey && !e.metaKey && /^[0-9]$/.test(e.key)) {
+      if (instrumentPreset > 0) return; // use number row for synth notes
       // Prevent YouTube's default cue-jump behavior
       e.preventDefault();
       e.stopPropagation();
@@ -2393,6 +2418,81 @@ function toggleCassette() {
   
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
+
+function toggleInstrument() {
+  instrumentPreset = (instrumentPreset + 1) % instrumentPresets.length;
+  if (instrumentPreset === 0) {
+    for (const n of Object.keys(instrumentVoices)) stopInstrumentNote(Number(n));
+  }
+  updateInstrumentButtonColor();
+  if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
+function updateInstrumentButtonColor() {
+  const labels = instrumentPresets.map(p => p ? p.name : "Off");
+  const colors = ["#222", "#6cf", "#fc6", "#f66", "#c6f", "#f0c", "#9cf", "#cff", "#fc9", "#9f9", "#f99"];
+  const name = labels[instrumentPreset] || "Preset";
+  const color = colors[instrumentPreset] || "#444";
+  if (instrumentButton) {
+    instrumentButton.innerText = `Instrument:${name}`;
+    instrumentButton.style.backgroundColor = color;
+  }
+  if (instrumentButtonMin) {
+    instrumentButtonMin.innerText = `Instrument:${name}`;
+    instrumentButtonMin.style.backgroundColor = color;
+  }
+}
+
+const instrumentPresets = [
+  null,
+  { name: 'Reso', oscillator: 'sawtooth', filter: 200, q: 4, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 } },
+  { name: 'Fender', oscillator: 'triangle', filter: 800, q: 1, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 } },
+  { name: '808', oscillator: 'sine', filter: 80, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 } },
+  { name: 'Organ', oscillator: 'square', filter: 1000, q: 2, env: { a: 0.02, d: 0.3, s: 0.7, r: 0.3 } },
+  { name: 'Moog', oscillator: 'sawtooth', filter: 500, q: 3, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 } },
+  { name: 'Pad', oscillator: 'triangle', filter: 1200, q: 1, env: { a: 0.3, d: 0.5, s: 0.7, r: 0.8 } },
+  { name: 'Strings', oscillator: 'sawtooth', filter: 1500, q: 2, env: { a: 0.2, d: 0.3, s: 0.9, r: 0.6 } },
+  { name: 'Keys', oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.25, s: 0.8, r: 0.4 } },
+  { name: 'Pluck', oscillator: 'square', filter: 2500, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 } },
+  { name: 'Sweep', oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 } }
+];
+
+function instrumentSettings() {
+  return instrumentPresets[instrumentPreset];
+}
+
+function playInstrumentNote(midi) {
+  if (!audioContext || instrumentPreset === 0) return;
+  const cfg = instrumentSettings();
+  if (!cfg) return;
+  const osc = audioContext.createOscillator();
+  osc.type = cfg.oscillator;
+  osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+  const f = audioContext.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = cfg.filter;
+  f.Q.value = cfg.q;
+  const g = audioContext.createGain();
+  g.gain.setValueAtTime(0, audioContext.currentTime);
+  osc.connect(f).connect(g).connect(instrumentGain);
+  osc.start();
+  const e = cfg.env;
+  let t = audioContext.currentTime;
+  g.gain.linearRampToValueAtTime(1, t + e.a);
+  g.gain.linearRampToValueAtTime(e.s, t + e.a + e.d);
+  instrumentVoices[midi] = { osc, g, env: e };
+}
+
+function stopInstrumentNote(midi) {
+  const v = instrumentVoices[midi];
+  if (!v) return;
+  const now = audioContext.currentTime;
+  v.g.gain.cancelScheduledValues(now);
+  v.g.gain.setValueAtTime(v.g.gain.value, now);
+  v.g.gain.linearRampToValueAtTime(0, now + v.env.r);
+  v.osc.stop(now + v.env.r + 0.05);
+  delete instrumentVoices[midi];
+}
 /**************************************
  * Audio Buffer Helpers
  **************************************/
@@ -2620,6 +2720,7 @@ async function setupAudioNodes() {
   antiClickGain.gain.setValueAtTime(1, audioContext.currentTime);
   samplesGain = audioContext.createGain();
   loopAudioGain = audioContext.createGain();
+  instrumentGain = audioContext.createGain();
   bus1Gain = audioContext.createGain();
   bus2Gain = audioContext.createGain();
   bus3Gain = audioContext.createGain();
@@ -2654,6 +2755,7 @@ async function setupAudioNodes() {
   videoDestination = audioContext.createMediaStreamDestination();
 
   samplesGain.connect(bus2Gain);
+  instrumentGain.connect(bus2Gain);
   loopAudioGain.connect(bus3Gain);
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
@@ -4565,6 +4667,20 @@ function onKeyDown(e) {
 
   const k = e.key.toLowerCase();
 
+  if (k === extensionKeys.instrumentToggle.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleInstrument();
+    return;
+  }
+
+  if (instrumentPreset > 0 && KEYBOARD_INST_MAP[k] !== undefined) {
+    playInstrumentNote(INST_BASE_MIDI + KEYBOARD_INST_MAP[k]);
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
   // Option+Cmd+R erases all audio loops
   if (e.metaKey && e.altKey && k === extensionKeys.looperA.toLowerCase()) {
     e.preventDefault();
@@ -4757,6 +4873,13 @@ function onKeyUp(e) {
   if (isTypingInTextField(e)) {
   return;
 }
+
+  if (instrumentPreset > 0 && KEYBOARD_INST_MAP[k] !== undefined) {
+    stopInstrumentNote(INST_BASE_MIDI + KEYBOARD_INST_MAP[k]);
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
@@ -5192,6 +5315,21 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   });
   minimalUIContainer.appendChild(cassetteButtonMin);
 
+  instrumentButtonMin = document.createElement("button");
+  instrumentButtonMin.className = "looper-btn";
+  instrumentButtonMin.innerText = "Instrument:Off";
+  instrumentButtonMin.title = "Toggle Instrument (Shift=Presets)";
+  instrumentButtonMin.style.backgroundColor = "#444";
+  instrumentButtonMin.addEventListener("click", (e) => {
+    if (e.shiftKey) {
+      showInstrumentWindowToggle();
+    } else {
+      toggleInstrument();
+      refreshMinimalState();
+    }
+  });
+  minimalUIContainer.appendChild(instrumentButtonMin);
+
   let cuesBtnMin = document.createElement("button");
   cuesBtnMin.className = "looper-btn";
   cuesBtnMin.innerText = "Cue+";
@@ -5410,6 +5548,13 @@ minimalUIContainer.appendChild(importMediaBtn);
 
     cassetteButtonMin.innerText = "Tape:" + (cassetteActive ? "On" : "Off");
     cassetteButtonMin.style.backgroundColor = cassetteActive ? "#b05af5" : "#444";
+
+    if (instrumentButtonMin) {
+      const labels = ["Off","Reso","Fender","808"];
+      const colors = ["#222","#6cf","#fc6","#f66"];
+      instrumentButtonMin.innerText = "Instrument:" + labels[instrumentPreset];
+      instrumentButtonMin.style.backgroundColor = colors[instrumentPreset];
+    }
   }
   window.refreshMinimalState = refreshMinimalState;
 }
@@ -5870,6 +6015,19 @@ function addControls() {
   });
   actionWrap.appendChild(cassetteButton);
 
+  instrumentButton = document.createElement("button");
+  instrumentButton.className = "looper-btn";
+  instrumentButton.innerText = "Instrument:Off";
+  instrumentButton.style.flex = '1 1 calc(50% - 4px)';
+  instrumentButton.addEventListener("click", (e) => {
+    if (e.shiftKey) {
+      showInstrumentWindowToggle();
+    } else {
+      toggleInstrument();
+    }
+  });
+  actionWrap.appendChild(instrumentButton);
+
   eqButton = document.createElement("button");
   eqButton.className = "looper-btn";
   eqButton.innerText = "EQ/Filter";
@@ -5942,6 +6100,7 @@ function addControls() {
   updateCompButtonColor();
   updateReverbButtonColor();
   updateCassetteButtonColor();
+  updateInstrumentButtonColor();
 }
 
 
@@ -6162,6 +6321,21 @@ function handleMIDIMessage(e) {
 
   let [st, note] = e.data;
   const command = st & 0xf0;
+
+  if (st === 144 && note === midiNotes.instrumentToggle) {
+    toggleInstrument();
+    return;
+  }
+
+  if (instrumentPreset > 0) {
+    if (command === 144 && e.data[2] > 0) {
+      playInstrumentNote(note);
+      return;
+    } else if (command === 128 || (command === 144 && e.data[2] === 0)) {
+      stopInstrumentNote(note);
+      return;
+    }
+  }
   if (command === 0xb0 && currentlyDetectingMidiControl) {
     midiNotes[currentlyDetectingMidiControl] = note;
     updateMidiMapInput(currentlyDetectingMidiControl, note);
@@ -6554,9 +6728,13 @@ function buildKeyMapWindow() {
       <input data-extkey="cassette" value="${escapeHtml(extensionKeys.cassette)}" maxlength="1">
     </div>
     <div class="keymap-row">
-  <label>RandomCues:</label>
-  <input data-extkey="randomCues" value="${escapeHtml(extensionKeys.randomCues)}" maxlength="1">
-</div>
+      <label>RandomCues:</label>
+      <input data-extkey="randomCues" value="${escapeHtml(extensionKeys.randomCues)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Instrument Toggle:</label>
+      <input data-extkey="instrumentToggle" value="${escapeHtml(extensionKeys.instrumentToggle)}" maxlength="1">
+    </div>
     <h4></h4>
     <div id="user-samples-list"></div>
     <button class="looper-keymap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
@@ -6750,6 +6928,11 @@ function buildMIDIMapWindow() {
       <input data-midiname="cassetteToggle" value="${escapeHtml(String(midiNotes.cassetteToggle))}" type="number">
       <button data-detect="cassetteToggle" class="detect-midi-btn">Detect</button>
     </div>
+    <div class="midimap-row">
+      <label>Instrument Toggle:</label>
+      <input data-midiname="instrumentToggle" value="${escapeHtml(String(midiNotes.instrumentToggle))}" type="number">
+      <button data-detect="instrumentToggle" class="detect-midi-btn">Detect</button>
+    </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
       <label>Knob:</label>
@@ -6891,6 +7074,62 @@ function syncMidiNotesFromWindow() {
       const v   = parseInt(inp.value, 10);
       if (!isNaN(v)) midiNotes.cues[cue] = v;
     });
+}
+
+/* Instrument Preset Window */
+function showInstrumentWindowToggle() {
+  if (!instrumentWindowContainer) {
+    buildInstrumentWindow();
+    instrumentWindowContainer.style.display = "block";
+  } else {
+    instrumentWindowContainer.style.display =
+      (instrumentWindowContainer.style.display === "block") ? "none" : "block";
+  }
+}
+
+function buildInstrumentWindow() {
+  instrumentWindowContainer = document.createElement("div");
+  instrumentWindowContainer.className = "looper-midimap-container";
+
+  const dh = document.createElement("div");
+  dh.className = "looper-midimap-drag-handle";
+  dh.innerText = "Nimbus Synth Presets";
+  instrumentWindowContainer.appendChild(dh);
+
+  const cw = document.createElement("div");
+  cw.className = "looper-midimap-content";
+  instrumentWindowContainer.appendChild(cw);
+
+  let html = instrumentPresets.slice(1).map((p, i) =>
+    `<div class="midimap-row"><button data-p="${i+1}" class="looper-btn">${escapeHtml(p.name)}</button></div>`
+  ).join("");
+  html += '<button class="looper-btn" id="add-instrument-preset">Add Custom Preset</button>';
+  cw.innerHTML = html;
+
+  document.body.appendChild(instrumentWindowContainer);
+  makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
+
+  cw.querySelectorAll('button[data-p]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      instrumentPreset = parseInt(btn.getAttribute('data-p'), 10);
+      updateInstrumentButtonColor();
+      instrumentWindowContainer.style.display = 'none';
+      if (window.refreshMinimalState) window.refreshMinimalState();
+    });
+  });
+
+  const addBtn = cw.querySelector('#add-instrument-preset');
+  addBtn.addEventListener('click', () => {
+    const name = prompt('Preset name?');
+    const osc = prompt('Oscillator type (sine, square, sawtooth, triangle)?', 'sine');
+    if (!name || !osc) return;
+    instrumentPresets.push({ name, oscillator: osc, filter: 800, q: 1, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 } });
+    instrumentPreset = instrumentPresets.length - 1;
+    updateInstrumentButtonColor();
+    instrumentWindowContainer.remove();
+    instrumentWindowContainer = null;
+    showInstrumentWindowToggle();
+  });
 }
 
 /* ------------------------------------------------------
