@@ -2051,10 +2051,22 @@ function finalizeLoopBuffer(buf) {
   crossfadeLoop(buf, LOOP_CROSSFADE);
 
   pushUndoState();
-  const exactDur = buf.length / buf.sampleRate;
+  let exactDur = buf.length / buf.sampleRate;
   if (!baseLoopDuration) {
     baseLoopDuration = exactDur;
     loopsBPM = Math.round((60 * 4) / baseLoopDuration);
+  } else {
+    const bars = Math.max(1, Math.round(exactDur / baseLoopDuration));
+    const target = bars * baseLoopDuration;
+    if (Math.abs(target - exactDur) > 0.0005) {
+      const frames = Math.round(target * buf.sampleRate);
+      const out = audioContext.createBuffer(buf.numberOfChannels, frames, buf.sampleRate);
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        out.getChannelData(c).set(buf.getChannelData(c).subarray(0, frames));
+      }
+      buf = out;
+    }
+    exactDur = target;
   }
   loopDurations[activeLoopIndex] = exactDur;
   audioLoopRates[activeLoopIndex] = 1;
@@ -2367,18 +2379,21 @@ function loopProgressStep() {
   const now = audioContext.currentTime;
   let elapsed = now - loopStartAbsoluteTime;
   if (elapsed < 0) elapsed = 0;
-  let dur = baseLoopDuration;
-  if (pitchTarget === "loop") dur /= getCurrentPitchRate();
-  const progress = elapsed % dur;
-  const pct = (progress / dur) * 100;
-  const bar = Math.floor((progress / dur) * 4);
-  const beatDur = dur / 4;
+  let baseDur = baseLoopDuration;
+  if (pitchTarget === "loop") baseDur /= getCurrentPitchRate();
+  const beatDur = baseDur / 4;
   const beatProg = elapsed % beatDur;
   const pulse = 1 - (beatProg / beatDur);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const active = loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i);
     const adv = loopProgressFills[i];
     const min = loopProgressFillsMin[i];
+    const ld = loopDurations[i] || baseLoopDuration;
+    let dur = ld;
+    if (pitchTarget === "loop") dur /= getCurrentPitchRate();
+    const progress = elapsed % dur;
+    const pct = (progress / dur) * 100;
+    const bar = Math.floor((progress / dur) * 4);
     if (adv) {
       adv.style.width = pct + '%';
       adv.style.opacity = active ? 1 : 0;
@@ -3727,9 +3742,6 @@ function startRecording() {
       if (newLoopStartTimeout) clearTimeout(newLoopStartTimeout);
       newLoopStartTimeout = setTimeout(() => {
         beginLoopRecording();
-        setTimeout(() => {
-          if (looperState === "recording") stopRecordingAndPlay();
-        }, d * 1000);
       }, remain * 1000);
     } else {
       if (!recordingNewLoop && looperState !== "idle") return;
@@ -3744,6 +3756,24 @@ function stopRecordingAndPlay() {
   } else if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
   }
+}
+
+function scheduleStopRecording() {
+  ensureAudioContext().then(() => {
+    if (!audioContext || looperState !== "recording") return;
+    if (!baseLoopDuration || loopStartAbsoluteTime === null) {
+      stopRecordingAndPlay();
+      return;
+    }
+    let d = baseLoopDuration;
+    if (pitchTarget === "loop") d /= getCurrentPitchRate();
+    const now = audioContext.currentTime;
+    const elapsed = (now - loopStartAbsoluteTime) % d;
+    const remain = d - elapsed;
+    setTimeout(() => {
+      if (looperState === "recording") stopRecordingAndPlay();
+    }, remain * 1000);
+  });
 }
 
 function playLoop(startTime = null) {
@@ -5342,7 +5372,7 @@ function singlePressAudioLooperAction() {
       startRecording();
     }
   } else if (looperState === "recording") {
-    stopRecordingAndPlay();
+    scheduleStopRecording();
   } else {
     if (!audioLoopBuffers[activeLoopIndex]) {
       recordingNewLoop = true;
