@@ -7,12 +7,12 @@
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
-## New in 1.6
+## New in 1.5
 * "Nova Bass" synth window with realtime controls and pitch sync to the video feed
 * Layer multiple presets or generate new ones with the **Random** button
 * Synth stays off until opened and fades out cleanly when closed
-* Improved audio loop sync for tighter performances
-* Reduced latency when triggering loops and first recordings capture the entire start
+* Loops align perfectly to the master start time for rock‑solid sync
+* Reduced latency and cleaner loop boundaries for punchier recordings
 
 ## New in 1.4
 * Four independent audio loopers with bright progress bars beneath the looper button

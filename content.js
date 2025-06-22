@@ -476,6 +476,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   **************************************/
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
   const PLAY_PADDING = 0.02; // shorter scheduling for lower latency
+  const LOOP_CROSSFADE = 0.001; // smoother boundaries without changing length
   const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
@@ -2040,15 +2041,16 @@ function finalizeLoopBuffer(buf) {
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
   // Smooth the transition between loop boundaries
-  crossfadeLoop(buf, 0.002);
+  crossfadeLoop(buf, LOOP_CROSSFADE);
 
   pushUndoState();
+  const exactDur = buf.length / buf.sampleRate;
   if (!baseLoopDuration) {
-    baseLoopDuration = buf.duration;
+    baseLoopDuration = exactDur;
     loopsBPM = Math.round((60 * 4) / baseLoopDuration);
     audioLoopRates[activeLoopIndex] = 1;
   } else {
-    audioLoopRates[activeLoopIndex] = baseLoopDuration / buf.duration;
+    audioLoopRates[activeLoopIndex] = baseLoopDuration / exactDur;
   }
   audioLoopBuffers[activeLoopIndex] = buf;
   const wasNew = recordingNewLoop;
@@ -3836,11 +3838,12 @@ function scheduleResumeLoop(index) {
   ensureAudioContext().then(() => {
     if (!audioContext || !baseLoopDuration) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    const when = audioContext.currentTime + PLAY_PADDING;
     let d = baseLoopDuration;
     if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const startOffset = (when - loopStartAbsoluteTime) % d;
-    playSingleLoop(index, startOffset, when);
+    const now = audioContext.currentTime;
+    const elapsed = (now - loopStartAbsoluteTime) % d;
+    const when = now + (d - elapsed) + PLAY_PADDING;
+    playSingleLoop(index, 0, when);
   });
 }
 
