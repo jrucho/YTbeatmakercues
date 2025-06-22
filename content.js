@@ -2505,7 +2505,7 @@ function updateInstrumentButtonColor() {
   }
 }
 
-const instrumentPresets = [
+let instrumentPresets = [
   null,
   { name: 'Reso', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 200, q: 4, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'poly' },
   { name: 'Fender', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 800, q: 1, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly' },
@@ -7526,7 +7526,7 @@ function buildInstrumentWindow() {
 
   instrumentOscSelect = document.createElement("select");
   ["sine","square","sawtooth","triangle"].forEach(t => instrumentOscSelect.add(new Option(t, t)));
-  addParamRow("Osc", instrumentOscSelect);
+  addParamRow("Oscillator", instrumentOscSelect);
   instrumentOscSelect.addEventListener("change", () => {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].oscillator = instrumentOscSelect.value;
     Object.values(instrumentVoices).forEach(v => { if (v.osc) v.osc.type = instrumentOscSelect.value; });
@@ -7577,7 +7577,7 @@ function buildInstrumentWindow() {
     Object.values(instrumentVoices).forEach(v => { if (v.filter) v.filter.Q.value = parseFloat(instrumentQSlider.value); });
     saveInstrumentStateToLocalStorage();
   });
-  addParamRow("Q", instrumentQSlider, instrumentQValue);
+  addParamRow("Resonance", instrumentQSlider, instrumentQValue);
 
   instrumentASlider = document.createElement("input");
   instrumentASlider.className = "looper-knob";
@@ -7671,7 +7671,7 @@ function buildInstrumentWindow() {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].delay = parseFloat(instrumentDelaySlider.value);
     saveInstrumentStateToLocalStorage();
   });
-  addParamRow("Delay", instrumentDelaySlider);
+  addParamRow("Delay Time", instrumentDelaySlider);
 
   instrumentDelayMixSlider = document.createElement("input");
   instrumentDelayMixSlider.className = "looper-knob";
@@ -7684,7 +7684,7 @@ function buildInstrumentWindow() {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].delayMix = parseFloat(instrumentDelayMixSlider.value);
     saveInstrumentStateToLocalStorage();
   });
-  addParamRow("D Mix", instrumentDelayMixSlider);
+  addParamRow("Delay Mix", instrumentDelayMixSlider);
 
   instrumentReverbMixSlider = document.createElement("input");
   instrumentReverbMixSlider.className = "looper-knob";
@@ -7697,7 +7697,7 @@ function buildInstrumentWindow() {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].reverbMix = parseFloat(instrumentReverbMixSlider.value);
     saveInstrumentStateToLocalStorage();
   });
-  addParamRow("R Mix", instrumentReverbMixSlider);
+  addParamRow("Reverb Mix", instrumentReverbMixSlider);
 
   instrumentLfoRateSlider = document.createElement("input");
   instrumentLfoRateSlider.className = "looper-knob";
@@ -7710,7 +7710,7 @@ function buildInstrumentWindow() {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].lfoRate = parseFloat(instrumentLfoRateSlider.value);
     saveInstrumentStateToLocalStorage();
   });
-  addParamRow("LFO Hz", instrumentLfoRateSlider);
+  addParamRow("LFO Rate", instrumentLfoRateSlider);
 
   instrumentLfoDepthSlider = document.createElement("input");
   instrumentLfoDepthSlider.className = "looper-knob";
@@ -7723,7 +7723,7 @@ function buildInstrumentWindow() {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].lfoDepth = parseFloat(instrumentLfoDepthSlider.value);
     saveInstrumentStateToLocalStorage();
   });
-  addParamRow("LFO Amt", instrumentLfoDepthSlider);
+  addParamRow("LFO Depth", instrumentLfoDepthSlider);
 
   const sampRow = document.createElement("div");
   sampRow.style.gridColumn = "1 / span 3";
