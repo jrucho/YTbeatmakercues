@@ -2485,6 +2485,17 @@ function setInstrumentPreset(idx) {
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
+function deactivateInstrument() {
+  setInstrumentPreset(0);
+  instrumentVoices = {};
+  if (instDelayNode) instDelayNode.delayTime.value = 0.25;
+  if (instDelayMix) instDelayMix.gain.value = 0.3;
+  if (instReverbMix) instReverbMix.gain.value = 0.3;
+  if (instVolumeNode) instVolumeNode.gain.value = 1;
+  if (instLfoOsc) instLfoOsc.frequency.value = 5;
+  if (instLfoGain) instLfoGain.gain.value = 0;
+}
+
 function updateInstrumentButtonColor() {
   let name = "Off";
   let color = "#444";
@@ -2853,7 +2864,7 @@ async function setupAudioNodes() {
   instrumentGain = audioContext.createGain(); // voice mix
   const instDelay = audioContext.createDelay();
   instDelay.delayTime.value = 0.25;
-  const instDelayMix = audioContext.createGain();
+  instDelayMix = audioContext.createGain();
   instDelayMix.gain.value = 0.3;
   const instReverb = audioContext.createConvolver();
   instReverb.buffer = generateSimpleReverbIR(audioContext);
@@ -2916,7 +2927,6 @@ async function setupAudioNodes() {
   instComp.connect(instLimiter).connect(instVolume).connect(bus2Gain);
 
   instDelayNode = instDelay;
-  instDelayMix = instDelayMix;
   instReverbNode = instReverb;
   instReverbMix = instRevMix;
   instCompNode = instComp;
@@ -7326,16 +7336,18 @@ function syncMidiNotesFromWindow() {
 }
 
 /* Instrument Preset Window */
-function showInstrumentWindowToggle() {
+async function showInstrumentWindowToggle() {
   if (!instrumentWindowContainer) {
     buildInstrumentWindow();
   }
   const showing = instrumentWindowContainer.style.display === "block";
   if (showing) {
     instrumentWindowContainer.style.display = "none";
-    setInstrumentPreset(0);
+    deactivateInstrument();
   } else {
     instrumentWindowContainer.style.display = "block";
+    await ensureAudioContext();
+    setInstrumentPreset(instrumentLastPreset || 1);
   }
 }
 
@@ -7901,7 +7913,7 @@ function loadInstrumentStateFromLocalStorage() {
       });
     }
     if (typeof obj.octave === 'number') instrumentOctave = obj.octave;
-    if (typeof obj.preset === 'number') instrumentPreset = obj.preset;
+    if (typeof obj.preset === 'number') instrumentLastPreset = obj.preset;
     if (typeof obj.pitch === 'number') {
       instrumentPitchSemitone = obj.pitch;
       instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);

@@ -146,7 +146,8 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-Press **N** to open the Nimbus Synth window. Use the **Power** button to enable or disable the synth.
+Press **N** to open the Nimbus Synth window. Opening automatically turns on your last preset, while closing powers the synth down and resets its nodes. You can still use the **Power** button to toggle it manually.
+The synth starts disabled each time you load the page and only activates once the window is opened.
 While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning. All parameters are adjusted with labeled sliders so you know exactly what each one does.
 
