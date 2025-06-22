@@ -681,6 +681,21 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       instrumentPitchSyncCheck = null,
       instrumentTransposeSlider = null,
       instrumentTransposeValueLabel = null,
+      instrumentOscSelect = null,
+      instrumentEngineSelect = null,
+      instrumentFilterSlider = null,
+      instrumentQSlider = null,
+      instrumentASlider = null,
+      instrumentDSlider = null,
+      instrumentSSlider = null,
+      instrumentRSlider = null,
+      instrumentSampleLabel = null,
+      instrumentFilterValue = null,
+      instrumentQValue = null,
+      instrumentAValue = null,
+      instrumentDValue = null,
+      instrumentSValue = null,
+      instrumentRValue = null,
       // Pitch
       pitchPercentage = 0,
       pitchTarget = "video", // "video" or "loop"
@@ -722,6 +737,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 10;
   const PRESET_COLORS = ["#6cf","#fc6","#f66","#c6f","#f0c","#9cf","#cff","#fc9","#9f9","#f99"];
+  const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
+  const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
+  const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
   function randomPresetColor() {
     const hue = Math.floor(Math.random() * 360);
     return `hsl(${hue},70%,60%)`;
@@ -2446,6 +2464,7 @@ function setInstrumentPreset(idx) {
     for (const n of Object.keys(instrumentVoices)) stopInstrumentNote(Number(n));
   }
   updateInstrumentButtonColor();
+  refreshInstrumentEditFields();
   saveInstrumentStateToLocalStorage();
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
@@ -6355,6 +6374,39 @@ function updateInstrumentPitchUI() {
   if (instrumentTransposeValueLabel) {
     instrumentTransposeValueLabel.innerText = instrumentTranspose + ' st';
   }
+  refreshInstrumentEditFields();
+}
+
+function refreshInstrumentEditFields() {
+  const cfg = instrumentPreset > 0 ? instrumentPresets[instrumentPreset] : null;
+  if (!cfg) return;
+  if (instrumentOscSelect) instrumentOscSelect.value = cfg.oscillator || 'sine';
+  if (instrumentEngineSelect) instrumentEngineSelect.value = cfg.engine || 'analog';
+  if (instrumentFilterSlider) {
+    instrumentFilterSlider.value = cfg.filter || 800;
+    if (instrumentFilterValue) instrumentFilterValue.textContent = instrumentFilterSlider.value;
+  }
+  if (instrumentQSlider) {
+    instrumentQSlider.value = cfg.q || 1;
+    if (instrumentQValue) instrumentQValue.textContent = instrumentQSlider.value;
+  }
+  if (instrumentASlider) {
+    instrumentASlider.value = (cfg.env?.a ?? 0.01);
+    if (instrumentAValue) instrumentAValue.textContent = instrumentASlider.value;
+  }
+  if (instrumentDSlider) {
+    instrumentDSlider.value = (cfg.env?.d ?? 0.2);
+    if (instrumentDValue) instrumentDValue.textContent = instrumentDSlider.value;
+  }
+  if (instrumentSSlider) {
+    instrumentSSlider.value = (cfg.env?.s ?? 0.8);
+    if (instrumentSValue) instrumentSValue.textContent = instrumentSSlider.value;
+  }
+  if (instrumentRSlider) {
+    instrumentRSlider.value = (cfg.env?.r ?? 0.3);
+    if (instrumentRValue) instrumentRValue.textContent = instrumentRSlider.value;
+  }
+  if (instrumentSampleLabel) instrumentSampleLabel.textContent = cfg.sample ? 'Loaded' : 'None';
 }
 
 
@@ -7120,10 +7172,7 @@ function updateMidiMapInput(name, val) {
    =====================================================*/
 
 /* ⚙️  Config */
-const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
-const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
 let   currentMidiPresetName   = null;   // which preset is ‘active’
-const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
 
 /* ------------------------------------------------------
    0.  helper – pull values from the MIDI‑mapping window
@@ -7318,6 +7367,194 @@ function buildInstrumentWindow() {
     saveInstrumentStateToLocalStorage();
   });
 
+  const paramWrap = document.createElement("div");
+  paramWrap.style.marginTop = "8px";
+  paramWrap.style.display = "grid";
+  paramWrap.style.gridTemplateColumns = "80px 1fr 40px";
+  paramWrap.style.rowGap = "4px";
+  cw.appendChild(paramWrap);
+
+  function addParamRow(labelText, inputEl, valueEl) {
+    const lbl = document.createElement("span");
+    lbl.textContent = labelText;
+    paramWrap.appendChild(lbl);
+    paramWrap.appendChild(inputEl);
+    paramWrap.appendChild(valueEl || document.createElement("span"));
+  }
+
+  instrumentOscSelect = document.createElement("select");
+  ["sine","square","sawtooth","triangle"].forEach(t => instrumentOscSelect.add(new Option(t, t)));
+  addParamRow("Osc", instrumentOscSelect);
+
+  instrumentEngineSelect = document.createElement("select");
+  ["analog","fm","wavetable","sampler"].forEach(t => instrumentEngineSelect.add(new Option(t, t)));
+  addParamRow("Engine", instrumentEngineSelect);
+
+  instrumentFilterSlider = document.createElement("input");
+  instrumentFilterSlider.type = "range";
+  instrumentFilterSlider.min = 50;
+  instrumentFilterSlider.max = 8000;
+  instrumentFilterSlider.step = 1;
+  instrumentFilterValue = document.createElement("span");
+  instrumentFilterSlider.addEventListener("input", () => {
+    instrumentFilterValue.textContent = instrumentFilterSlider.value;
+  });
+  addParamRow("Filter", instrumentFilterSlider, instrumentFilterValue);
+
+  instrumentQSlider = document.createElement("input");
+  instrumentQSlider.type = "range";
+  instrumentQSlider.min = 0;
+  instrumentQSlider.max = 10;
+  instrumentQSlider.step = 0.1;
+  instrumentQValue = document.createElement("span");
+  instrumentQSlider.addEventListener("input", () => {
+    instrumentQValue.textContent = instrumentQSlider.value;
+  });
+  addParamRow("Q", instrumentQSlider, instrumentQValue);
+
+  instrumentASlider = document.createElement("input");
+  instrumentASlider.type = "range";
+  instrumentASlider.min = 0;
+  instrumentASlider.max = 1;
+  instrumentASlider.step = 0.01;
+  instrumentAValue = document.createElement("span");
+  instrumentASlider.addEventListener("input", () => {
+    instrumentAValue.textContent = instrumentASlider.value;
+  });
+  addParamRow("Attack", instrumentASlider, instrumentAValue);
+
+  instrumentDSlider = document.createElement("input");
+  instrumentDSlider.type = "range";
+  instrumentDSlider.min = 0;
+  instrumentDSlider.max = 1;
+  instrumentDSlider.step = 0.01;
+  instrumentDValue = document.createElement("span");
+  instrumentDSlider.addEventListener("input", () => {
+    instrumentDValue.textContent = instrumentDSlider.value;
+  });
+  addParamRow("Decay", instrumentDSlider, instrumentDValue);
+
+  instrumentSSlider = document.createElement("input");
+  instrumentSSlider.type = "range";
+  instrumentSSlider.min = 0;
+  instrumentSSlider.max = 1;
+  instrumentSSlider.step = 0.01;
+  instrumentSValue = document.createElement("span");
+  instrumentSSlider.addEventListener("input", () => {
+    instrumentSValue.textContent = instrumentSSlider.value;
+  });
+  addParamRow("Sustain", instrumentSSlider, instrumentSValue);
+
+  instrumentRSlider = document.createElement("input");
+  instrumentRSlider.type = "range";
+  instrumentRSlider.min = 0;
+  instrumentRSlider.max = 2;
+  instrumentRSlider.step = 0.01;
+  instrumentRValue = document.createElement("span");
+  instrumentRSlider.addEventListener("input", () => {
+    instrumentRValue.textContent = instrumentRSlider.value;
+  });
+  addParamRow("Release", instrumentRSlider, instrumentRValue);
+
+  const sampRow = document.createElement("div");
+  sampRow.style.gridColumn = "1 / span 3";
+  sampRow.style.display = "flex";
+  sampRow.style.alignItems = "center";
+  sampRow.style.gap = "4px";
+  instrumentSampleLabel = document.createElement("span");
+  instrumentSampleLabel.textContent = "None";
+  const loadBtn = document.createElement("button");
+  loadBtn.className = "looper-btn";
+  loadBtn.textContent = "Load Sample";
+  loadBtn.addEventListener("click", async () => {
+    const file = await pickPresetFile();
+    if (!file) return;
+    const arr = await file.arrayBuffer();
+    await ensureAudioContext();
+    const buf = await audioContext.decodeAudioData(arr);
+    const cfg = instrumentPresets[instrumentPreset];
+    cfg.sample = buf;
+    instrumentSampleLabel.textContent = "Loaded";
+    saveInstrumentStateToLocalStorage();
+  });
+  sampRow.appendChild(loadBtn);
+  sampRow.appendChild(instrumentSampleLabel);
+  paramWrap.appendChild(sampRow);
+
+  function collectSettingsFromUI() {
+    return {
+      oscillator: instrumentOscSelect.value,
+      engine: instrumentEngineSelect.value,
+      filter: parseFloat(instrumentFilterSlider.value),
+      q: parseFloat(instrumentQSlider.value),
+      env: {
+        a: parseFloat(instrumentASlider.value),
+        d: parseFloat(instrumentDSlider.value),
+        s: parseFloat(instrumentSSlider.value),
+        r: parseFloat(instrumentRSlider.value)
+      },
+      sample: instrumentPresets[instrumentPreset]?.sample || null
+    };
+  }
+
+  const btnRow = document.createElement("div");
+  btnRow.style.display = "flex";
+  btnRow.style.gap = "4px";
+  btnRow.style.marginTop = "8px";
+  cw.appendChild(btnRow);
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "looper-btn";
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", () => {
+    const settings = collectSettingsFromUI();
+    let idx = instrumentPreset;
+    if (idx <= BUILTIN_PRESET_COUNT) {
+      const name = prompt("Preset name?", "Custom");
+      if (!name) return;
+      instrumentPresets.push({ ...settings, name, color: randomPresetColor() });
+      idx = instrumentPresets.length - 1;
+      setInstrumentPreset(idx);
+      refreshPresetSelect();
+    } else {
+      Object.assign(instrumentPresets[idx], settings);
+    }
+    saveInstrumentStateToLocalStorage();
+  });
+  btnRow.appendChild(saveBtn);
+
+  const delBtn = document.createElement("button");
+  delBtn.className = "looper-btn";
+  delBtn.textContent = "Delete";
+  delBtn.addEventListener("click", () => {
+    const idx = instrumentPreset;
+    if (idx <= BUILTIN_PRESET_COUNT) { alert("Cannot delete built-in presets"); return; }
+    if (!confirm("Delete preset?")) return;
+    instrumentPresets.splice(idx,1);
+    setInstrumentPreset(0);
+    refreshPresetSelect();
+    saveInstrumentStateToLocalStorage();
+  });
+  btnRow.appendChild(delBtn);
+
+  const exportBtn = document.createElement("button");
+  exportBtn.className = "looper-btn";
+  exportBtn.textContent = "Export";
+  exportBtn.addEventListener("click", () => {
+    const p = instrumentPresets[instrumentPreset];
+    if (!p) return;
+    const exp = Object.assign({}, p);
+    delete exp.sample;
+    const blob = new Blob([JSON.stringify(exp)],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (p.name || 'preset') + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  btnRow.appendChild(exportBtn);
+
   document.body.appendChild(instrumentWindowContainer);
   makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
   updateInstrumentPitchUI();
@@ -7385,6 +7622,7 @@ function loadInstrumentStateFromLocalStorage() {
       instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
     }
     updateInstrumentPitchUI();
+    refreshInstrumentEditFields();
   } catch (err) {
     console.warn("Failed loading instrument state", err);
   }
@@ -7645,6 +7883,23 @@ async function pickSampleFiles(promptText) {
       resolve(files);
     }, { once: true });
     alert(promptText);
+    input.click();
+  });
+}
+
+async function pickPresetFile() {
+  return new Promise(resolve => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json, audio/*";
+    input.multiple = false;
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", () => {
+      const file = input.files ? input.files[0] : null;
+      document.body.removeChild(input);
+      resolve(file);
+    }, { once: true });
     input.click();
   });
 }

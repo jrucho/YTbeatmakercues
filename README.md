@@ -150,6 +150,8 @@ Press **N** to open the Nimbus Synth window. Choose a preset or create your own.
 While the synth is active, the number keys play notes (C‑major starting from the selected octave).
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it separately and use the transpose slider for coarse tuning.
 
+Each preset stores oscillator type, engine (analog, FM, wavetable or sampler), filter cutoff/Q and ADSR envelope. Use **Save** to store changes or **Delete** to remove custom presets. **Export** saves the current preset as JSON so you can share it.
+
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 Holding the MIDI Shift note while pressing a loop note erases that loop.
 
