@@ -709,6 +709,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       instrumentLfoDepthSlider = null,
       instrumentVoiceModeSelect = null,
       instrumentScaleSelect = null,
+      instrumentTuneSlider = null,
+      instrumentTuneValue = null,
       instrumentScale = 'chromatic',
       instDelayNode = null,
       instDelayMix = null,
@@ -2590,18 +2592,18 @@ function updateInstrumentButtonColor() {
 
 let instrumentPresets = [
   null,
-  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 120, q: 4, env: { a: 0.005, d: 0.1, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 250, q: 2, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'organ', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'bright', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Sample Tone', color: PRESET_COLORS[11], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'sampler', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, sample: null },
+  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 120, q: 4, env: { a: 0.005, d: 0.1, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 250, q: 2, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'organ', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'bright', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Sample Tone', color: PRESET_COLORS[11], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'sampler', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, sample: null, tune: 0 },
 ];
 
 function randomizeInstrumentPreset() {
@@ -2613,6 +2615,7 @@ function randomizeInstrumentPreset() {
   p.engine = engines[Math.floor(Math.random()*engines.length)];
   p.filter = 200 + Math.random()*2000;
   p.q = Math.random()*4;
+  p.tune = [-24,-12,0,12,24][Math.floor(Math.random()*5)];
   p.env = { a: Math.random()*0.2, d: 0.1+Math.random()*0.3, s: 0.5+Math.random()*0.5, r: 0.2+Math.random()*0.6 };
   if (instDelayNode) instDelayNode.delayTime.value = Math.random()*0.5;
   if (instDelayMix) instDelayMix.gain.value = Math.random()*0.5;
@@ -2634,11 +2637,13 @@ function playInstrumentNote(midi) {
   if (!audioContext || instrumentLayers.length === 0) return;
   const baseMidi = midi + instrumentTranspose;
   const freqRatio = instrumentPitchRatio;
+  const noteForPreset = (cfg) => baseMidi + (cfg.tune || 0);
   if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
 
   instrumentLayers.forEach(idx => {
     const cfg = instrumentPresets[idx];
     if (!cfg) return;
+    const noteMidi = noteForPreset(cfg);
 
     if (cfg.mode === 'legato') {
       let found = null, foundKey = null;
@@ -2649,9 +2654,9 @@ function playInstrumentNote(midi) {
         if (found) break;
       }
       if (found) {
-        const freq = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+        const freq = 440 * Math.pow(2, (noteMidi - 69) / 12) * freqRatio;
         if (found.osc) found.osc.frequency.setValueAtTime(freq, audioContext.currentTime);
-        if (found.mod) found.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio, audioContext.currentTime);
+        if (found.mod) found.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (noteMidi - 69) / 12) * freqRatio, audioContext.currentTime);
         instrumentVoices[foundKey] = instrumentVoices[foundKey].filter(v => v !== found);
         if (!instrumentVoices[foundKey].length) delete instrumentVoices[foundKey];
         if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
@@ -2673,7 +2678,7 @@ function playInstrumentNote(midi) {
     if (cfg.engine === 'sampler' && cfg.sample) {
       const src = audioContext.createBufferSource();
       src.buffer = cfg.sample;
-      src.playbackRate.value = Math.pow(2, (baseMidi - 60) / 12) * freqRatio;
+      src.playbackRate.value = Math.pow(2, (noteMidi - 60) / 12) * freqRatio;
       const g = audioContext.createGain();
       src.connect(g).connect(instrumentGain);
       src.start();
@@ -2687,7 +2692,7 @@ function playInstrumentNote(midi) {
     } else {
       osc.type = cfg.oscillator || 'sine';
     }
-    osc.frequency.value = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+    osc.frequency.value = 440 * Math.pow(2, (noteMidi - 69) / 12) * freqRatio;
     instLfoGain.connect(osc.frequency);
 
     let mod = null;
@@ -2695,7 +2700,7 @@ function playInstrumentNote(midi) {
       mod = audioContext.createOscillator();
       const modGain = audioContext.createGain();
       modGain.gain.value = cfg.modIndex || 50;
-      mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+      mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (noteMidi - 69) / 12) * freqRatio;
       mod.connect(modGain).connect(osc.frequency);
       mod.start();
     }
@@ -6632,6 +6637,10 @@ function refreshInstrumentEditFields() {
     instrumentRSlider.value = (cfg.env?.r ?? 0.3);
     if (instrumentRValue) instrumentRValue.textContent = instrumentRSlider.value;
   }
+  if (instrumentTuneSlider) {
+    instrumentTuneSlider.value = cfg.tune || 0;
+    if (instrumentTuneValue) instrumentTuneValue.textContent = instrumentTuneSlider.value;
+  }
   if (instrumentScaleSelect) instrumentScaleSelect.value = instrumentScale;
   if (instrumentVolumeSlider && instVolumeNode) {
     instrumentVolumeSlider.value = instVolumeNode.gain.value;
@@ -7710,6 +7719,20 @@ function buildInstrumentWindow() {
     saveInstrumentStateToLocalStorage();
   });
 
+  instrumentTuneSlider = document.createElement("input");
+  instrumentTuneSlider.className = "looper-knob";
+  instrumentTuneSlider.type = "range";
+  instrumentTuneSlider.min = -24;
+  instrumentTuneSlider.max = 24;
+  instrumentTuneSlider.step = 12;
+  instrumentTuneValue = document.createElement("span");
+  instrumentTuneSlider.addEventListener("input", () => {
+    instrumentTuneValue.textContent = instrumentTuneSlider.value;
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].tune = parseInt(instrumentTuneSlider.value,10);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Tune", instrumentTuneSlider, instrumentTuneValue);
+
   instrumentFilterSlider = document.createElement("input");
   instrumentFilterSlider.className = "looper-knob";
   instrumentFilterSlider.type = "range";
@@ -7951,6 +7974,7 @@ function buildInstrumentWindow() {
       volume: parseFloat(instrumentVolumeSlider.value),
       lfoRate: parseFloat(instrumentLfoRateSlider.value),
       lfoDepth: parseFloat(instrumentLfoDepthSlider.value),
+      tune: parseInt(instrumentTuneSlider.value, 10),
       scale: instrumentScaleSelect.value,
       mode: instrumentVoiceModeSelect.value,
       env: {
