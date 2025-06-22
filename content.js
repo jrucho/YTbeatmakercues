@@ -2742,7 +2742,7 @@ function stopInstrumentVoice(v) {
   const stopAt = now + Math.max(0.02, v.env.r || 0) + 0.05;
   if (v.mod) v.mod.stop(stopAt);
   if (v.osc) v.osc.stop(stopAt);
-  if (v.src) v.src.stop();
+  if (v.src) v.src.stop(stopAt);
 }
 
 function stopInstrumentVoiceInstant(v) {
