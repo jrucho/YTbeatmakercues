@@ -758,7 +758,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const BUILTIN_PRESET_COUNT = 11;
+  const BUILTIN_PRESET_COUNT = 12;
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -775,9 +775,39 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
   const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
   const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
+  let WAVETABLES = {};
+  let defaultSampleBuffer = null;
   function randomPresetColor() {
     const hue = Math.floor(Math.random() * 360);
     return `hsl(${hue},70%,60%)`;
+  }
+
+  function createWavetable(harmonics) {
+    const len = harmonics.length + 1;
+    const real = new Float32Array(len);
+    const imag = new Float32Array(len);
+    for (let i = 1; i < len; i++) imag[i] = harmonics[i - 1];
+    return audioContext.createPeriodicWave(real, imag);
+  }
+
+  function generateDefaultSample(ctx) {
+    const len = ctx.sampleRate;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = Math.sin(2 * Math.PI * 220 * i / ctx.sampleRate) * Math.exp(-3 * i / len);
+    }
+    return buf;
+  }
+
+  function initInstrumentAssets() {
+    if (!audioContext) return;
+    WAVETABLES.organ = createWavetable([0, 1, 0.5, 0.25, 0.1]);
+    WAVETABLES.bright = createWavetable([1, 0.8, 0.6, 0.4, 0.2]);
+    defaultSampleBuffer = generateDefaultSample(audioContext);
+    instrumentPresets.forEach(p => {
+      if (p && p.engine === 'sampler' && !p.sample) p.sample = defaultSampleBuffer;
+    });
   }
   // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
   // progressively quicker for rapid cue movement.
@@ -2565,17 +2595,18 @@ let instrumentPresets = [
   { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
   { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
   { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
-  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'organ', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'bright', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
   { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
   { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
   { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
   { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Sample Tone', color: PRESET_COLORS[11], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'sampler', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, sample: null },
 ];
 
 function randomizeInstrumentPreset() {
-  const oscTypes = ['sine','square','sawtooth','triangle'];
-  const engines = ['analog','fm','wavetable'];
+  const oscTypes = ['sine','square','sawtooth','triangle','organ','bright'];
+  const engines = ['analog','fm','wavetable','sampler'];
   const p = instrumentPresets[instrumentPreset];
   if (!p) return;
   p.oscillator = oscTypes[Math.floor(Math.random()*oscTypes.length)];
@@ -2609,19 +2640,33 @@ function playInstrumentNote(midi) {
     const cfg = instrumentPresets[idx];
     if (!cfg) return;
 
-    if (cfg.mode === 'legato' && instrumentVoices[midi] && instrumentVoices[midi].length > 0) {
-      const v = instrumentVoices[midi][0];
-      const freq = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
-      if (v.osc) v.osc.frequency.setValueAtTime(freq, audioContext.currentTime);
-      if (v.mod) v.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio, audioContext.currentTime);
-      return;
+    if (cfg.mode === 'legato') {
+      let found = null, foundKey = null;
+      for (const [k, arr] of Object.entries(instrumentVoices)) {
+        for (const v of arr) {
+          if (v.preset === idx) { found = v; foundKey = k; break; }
+        }
+        if (found) break;
+      }
+      if (found) {
+        const freq = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+        if (found.osc) found.osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+        if (found.mod) found.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio, audioContext.currentTime);
+        instrumentVoices[foundKey] = instrumentVoices[foundKey].filter(v => v !== found);
+        if (!instrumentVoices[foundKey].length) delete instrumentVoices[foundKey];
+        if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
+        instrumentVoices[midi].push(found);
+        return;
+      }
     }
 
     if (cfg.mode === 'mono') {
-      if (instrumentVoices[midi]) {
-        instrumentVoices[midi].forEach(v => {
-          if (v.preset === idx) stopInstrumentVoice(v);
+      for (const key of Object.keys(instrumentVoices)) {
+        instrumentVoices[key] = instrumentVoices[key].filter(v => {
+          if (v.preset === idx) { stopInstrumentVoice(v); return false; }
+          return true;
         });
+        if (!instrumentVoices[key].length) delete instrumentVoices[key];
       }
     }
 
@@ -2637,7 +2682,11 @@ function playInstrumentNote(midi) {
     }
 
     const osc = audioContext.createOscillator();
-    osc.type = cfg.oscillator || 'sine';
+    if (cfg.engine === 'wavetable' && WAVETABLES[cfg.oscillator]) {
+      osc.setPeriodicWave(WAVETABLES[cfg.oscillator]);
+    } else {
+      osc.type = cfg.oscillator || 'sine';
+    }
     osc.frequency.value = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
     instLfoGain.connect(osc.frequency);
 
@@ -2776,6 +2825,7 @@ async function ensureAudioContext() {
       sampleRate: 48000
     });
     setupAudioNodes();
+    initInstrumentAssets();
     await loadDefaultSamples();
     await loadUserSamplesFromStorage();
     let vid = getVideoElement();
@@ -7628,11 +7678,19 @@ function buildInstrumentWindow() {
   }
 
   instrumentOscSelect = document.createElement("select");
-  ["sine","square","sawtooth","triangle"].forEach(t => instrumentOscSelect.add(new Option(t, t)));
+  ["sine","square","sawtooth","triangle","organ","bright"].forEach(t => instrumentOscSelect.add(new Option(t, t)));
   addParamRow("Oscillator", instrumentOscSelect);
   instrumentOscSelect.addEventListener("change", () => {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].oscillator = instrumentOscSelect.value;
-    Object.values(instrumentVoices).flat().forEach(v => { if (v.osc) v.osc.type = instrumentOscSelect.value; });
+    Object.values(instrumentVoices).flat().forEach(v => {
+      if (v.osc) {
+        if (WAVETABLES[instrumentOscSelect.value]) {
+          v.osc.setPeriodicWave(WAVETABLES[instrumentOscSelect.value]);
+        } else {
+          v.osc.type = instrumentOscSelect.value;
+        }
+      }
+    });
     saveInstrumentStateToLocalStorage();
   });
 
