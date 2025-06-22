@@ -477,7 +477,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
   const PLAY_PADDING = 0.02; // shorter scheduling for lower latency
   const LOOP_CROSSFADE = 0.001; // smoother boundaries without changing length
-  const STOP_FADE = 0.005; // fade-out time when stopping loops
   const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
@@ -4010,9 +4009,6 @@ function stopLoop(index) {
     if (g) {
       g.gain.cancelScheduledValues(now);
       g.gain.setValueAtTime(g.gain.value, now);
-      const fadeStart = now + Math.max(0, remain - STOP_FADE);
-      g.gain.linearRampToValueAtTime(g.gain.value, fadeStart);
-      g.gain.linearRampToValueAtTime(0, now + remain);
     }
     src.stop(now + remain);
   }
