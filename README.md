@@ -7,6 +7,16 @@
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+## New in 1.5
+* "Nova Bass" synth window with realtime controls and pitch sync to the video feed
+* Layer multiple presets or generate new ones with the **Random** button
+* Synth stays off until opened and fades out cleanly when closed
+* Loops align perfectly to the master start time for rock‑solid sync
+* Progress bars track each loop's own start so visuals line up every time
+* The longest clip becomes the reference so loops of different lengths stay in phase
+* Newly recorded loops begin playing on the very next bar for snappier response
+* Reduced latency and cleaner loop boundaries for punchier recordings
+
 ## New in 1.4
 * Four independent audio loopers with bright progress bars beneath the looper button
 * Each bar shows four tick marks so you can follow the beat
@@ -59,29 +69,18 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 🔁 **Audio & Video Loopers**
   Record loops in sync with video or audio. Use `R`, `S`, `D`, or `F` to control
-  up to four separate audio loops. The first loop sets the tempo automatically;
-  additional loops stay synced to that BPM. Recording a new loop while others
-  play adds it seamlessly without restarting. Press another loop key during
-  playback to queue a new recording for the next bar. Loops keep the exact length you
-  recorded—automatic trimming has been removed to avoid cutting short sounds.
-  Double press a loop key to stop **that** loop at the end of the bar. Hold the
-  second press a moment longer (or tap three times quickly) to erase only the
-  selected loop—the button blinks briefly when this happens. Loops can be
-  resumed individually with a single press; they start right away in sync with
-  any loops already playing thanks to a short scheduling buffer. If no loops are active they wait for the next bar
-  and become the new **master** automatically. Should that loop stop, the
-  master role passes to the next playing loop. Exporting downloads each
-  active loop as its own track with the BPM rounded in the file name. If loops
-  are pitched, the filenames also include `-pitched-<BPM>bpm`. Use `V` for the
-  video looper. Hold Option and press **Cmd+R** to erase **all** loops. Use
-  Cmd+R/S/D/F individually to erase loops A–D or Cmd+V for the video loop. Each
-  looper button now has a compact progress bar tucked beneath it with four tick
-marks showing the current bar, and the button itself pulses in time while
-recording. Loopers A–C use cyan, magenta and yellow bars, while Looper D uses
-orange. All four progress bars are a bright 1.4 px thick for better visibility.
-Hold the mapped **MIDI Shift** note while pressing any loop note to erase that
-loop instantly. The progress bars speed up or slow down when loops are pitched
-so the visuals stay in sync.
+  up to four separate audio loops. The first loop defines the bar length and tempo.
+  Additional loops of any bar count launch on the next bar so everything stays aligned.
+  Loops keep the exact length you recorded with no trimming. Press the loop key again
+  to finish recording on the next bar. Double press a loop key to mute that loop at
+  the bar boundary and single press to unmute instantly—just like legato mode. Double
+  press twice more to erase it. Loops rejoin mid‑phrase so sync stays tight even when
+  loops have different lengths. Exporting downloads each active loop with the rounded
+  BPM in the file name. Use `V` for the video looper and double press to erase it.
+  Hold Option + **Cmd+R** to erase all loops. Each looper button shows a slim progress
+  bar that pulses while recording. Hold the mapped **MIDI Shift** note while pressing
+  any loop key to erase that loop instantly. Progress bars speed up or slow down when
+  loops are pitched so the visuals stay in sync.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback. When targeting loops,
@@ -142,8 +141,19 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Export | Ctrl/Cmd + Enter |
 | Pitch Down / Up | `,` / `.` |
 | Random Cue | `-` |
+| Nova Bass | N |
 | Blind Mode | B |
 | Show Advanced Panel | A |
+
+Press **N** or the advanced panel’s **Instrument** button to show the Nova Bass window. Opening the window activates your last preset if the synth was off; closing it powers the synth down. The minimal bar has its own Instrument button that simply toggles the synth on or off without opening the window. Twelve built-in presets—Resonate, Precision, 808 Boom, Warm Organ, Moog Thump, Soft Pad, String Ensemble, FM Keys, Pluck, Sweep Lead, Bass Cut and Sample Tone—cover a wide range of classic tones and play at **15% volume** by default. You can layer multiple presets together just like sample packs. Compression and limiter sliders make it easy to tame levels.
+The popup hides detailed controls until you click **Advanced**, keeping the interface clean.
+While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
+The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning. A dedicated **Tune** slider lets you shift each preset in 12‑step increments from −24 to +24 semitones, and the value is stored per preset. All parameters are adjusted with labeled sliders so you know exactly what each one does.
+
+Moving any knob instantly updates the current preset. Built‑in presets cannot be deleted but you can save your tweaks as new ones. Each preset stores oscillator type, engine (analog, FM, wavetable or sampler), filter, ADSR, effects and **Mode** (poly, mono or legato). Example wavetables and a sample tone demonstrate these engines.
+In mono mode, triggering a new note now cuts the previous one immediately so bass lines stay tight.
+
+Each preset stores oscillator type, engine, filter settings, ADSR envelope and effect parameters (delay, reverb, compression, limiter, volume and LFO). Use **Save** to keep changes, **Delete** to remove custom presets or **Export** to share them. The **Random** button quickly generates a usable sound.
 
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 Holding the MIDI Shift note while pressing a loop note erases that loop.

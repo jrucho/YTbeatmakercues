@@ -475,7 +475,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   * Global Variables
   **************************************/
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
-  const PLAY_PADDING = 0.05; // schedule slightly ahead for stable sync
+  const PLAY_PADDING = 0.02; // shorter scheduling for lower latency
+  const LOOP_CROSSFADE = 0.001; // smoother boundaries without changing length
   const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
@@ -494,7 +495,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         // NEW: Reverb + Cassette toggles
         reverb: "q",
         cassette: "w",
-        randomCues: "-"
+        randomCues: "-",
+        instrumentToggle: "n"
       },
       midiPresets = [],
       presetSelect = null,
@@ -525,6 +527,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverbToggle: 29,
         cassetteToggle: 30,
         randomCues: 28,
+        instrumentToggle: 27,
         superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
@@ -542,14 +545,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       audioLoopBuffers = new Array(MAX_AUDIO_LOOPS).fill(null),
       activeLoopIndex = 0,
       loopSources = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopGainNodes = new Array(MAX_AUDIO_LOOPS).fill(null),
       loopPlaying = new Array(MAX_AUDIO_LOOPS).fill(false),
       recordingNewLoop = false,
       newLoopStartTimeout = null,
       pendingPlayTimeout = null,
       pendingStopTimeouts = new Array(MAX_AUDIO_LOOPS).fill(null),
+      scheduledStopTime = null,
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
+      loopDurations = new Array(MAX_AUDIO_LOOPS).fill(0),
+      loopStartOffsets = new Array(MAX_AUDIO_LOOPS).fill(0),
       masterLoopIndex = null,
       // Video Looper
       videoLooperState = "idle",
@@ -599,6 +606,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqButtonMin = null,
       compButtonMin = null,
       micButton = null,          // <-- NEW: declare it here
+      instrumentButton = null,
+      instrumentButtonMin = null,
+      instrumentPowerButton = null,
       detectBpmButton = null,
       minimalActive = true,
       loopProgressFills = new Array(MAX_AUDIO_LOOPS).fill(null),
@@ -617,7 +627,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       doublePressHoldStartTime = null,
       lastClickTimeVideo = 0,
       isDoublePressVideo = false,
-      doublePressHoldStartTimeVideo = null,
       // Undo double-press
       undoLastClickTime = 0,
       undoIsDoublePress = false,
@@ -650,6 +659,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       videoGain = null,
       samplesGain = null,
       loopAudioGain = null,
+      instrumentGain = null,
       bus1Gain = null,
       bus2Gain = null,
       bus3Gain = null,
@@ -664,6 +674,57 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       bus2RecGain = null,
       bus3RecGain = null,
       bus4RecGain = null,
+      instrumentPreset = 0,
+      instrumentLastPreset = 1,
+      instrumentLayers = [1],
+      instrumentOctave = 3,
+      instrumentVoices = {},
+      instrumentPitchSemitone = 0,
+      instrumentPitchFollowVideo = true,
+      instrumentTranspose = 0,
+      instrumentPitchRatio = 1,
+      instrumentPitchSlider = null,
+      instrumentPitchValueLabel = null,
+      instrumentPitchSyncCheck = null,
+      instrumentTransposeSlider = null,
+      instrumentTransposeValueLabel = null,
+      instrumentOscSelect = null,
+      instrumentEngineSelect = null,
+      instrumentFilterSlider = null,
+      instrumentQSlider = null,
+      instrumentASlider = null,
+      instrumentDSlider = null,
+      instrumentSSlider = null,
+      instrumentRSlider = null,
+      instrumentSampleLabel = null,
+      instrumentFilterValue = null,
+      instrumentQValue = null,
+      instrumentAValue = null,
+      instrumentDValue = null,
+      instrumentSValue = null,
+      instrumentRValue = null,
+      instrumentVolumeSlider = null,
+      instrumentDelaySlider = null,
+      instrumentDelayMixSlider = null,
+      instrumentReverbMixSlider = null,
+      instrumentCompThreshSlider = null,
+      instrumentLimiterThreshSlider = null,
+      instrumentLfoRateSlider = null,
+      instrumentLfoDepthSlider = null,
+      instrumentVoiceModeSelect = null,
+      instrumentScaleSelect = null,
+      instrumentTuneSlider = null,
+      instrumentTuneValue = null,
+      instrumentScale = 'chromatic',
+      instDelayNode = null,
+      instDelayMix = null,
+      instReverbNode = null,
+      instReverbMix = null,
+      instCompNode = null,
+      instLimiterNode = null,
+      instVolumeNode = null,
+      instLfoOsc = null,
+      instLfoGain = null,
       // Pitch
       pitchPercentage = 0,
       pitchTarget = "video", // "video" or "loop"
@@ -684,6 +745,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqWindowContainer = null,
       eqDragHandle = null,
       eqContentWrap = null,
+      instrumentWindowContainer = null,
       // We'll keep them to identify which button is which
       reverbButton = null,
       cassetteButton = null,
@@ -702,10 +764,78 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
+  const BUILTIN_PRESET_COUNT = 12;
+  const PRESET_COLORS = [
+    "#52a3cc",
+    "#cca352",
+    "#cc5252",
+    "#a352cc",
+    "#cc00a3",
+    "#7aa3cc",
+    "#a3cccc",
+    "#cca37a",
+    "#7acc7a",
+    "#cc7a7a",
+    "#7a7acc"
+  ];
+  const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
+  const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
+  const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
+  let WAVETABLES = {};
+  let defaultSampleBuffer = null;
+  function randomPresetColor() {
+    const hue = Math.floor(Math.random() * 360);
+    return `hsl(${hue},70%,60%)`;
+  }
+
+  function createWavetable(harmonics) {
+    const len = harmonics.length + 1;
+    const real = new Float32Array(len);
+    const imag = new Float32Array(len);
+    for (let i = 1; i < len; i++) imag[i] = harmonics[i - 1];
+    return audioContext.createPeriodicWave(real, imag);
+  }
+
+  function generateDefaultSample(ctx) {
+    const len = ctx.sampleRate;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = Math.sin(2 * Math.PI * 220 * i / ctx.sampleRate) * Math.exp(-3 * i / len);
+    }
+    return buf;
+  }
+
+  function initInstrumentAssets() {
+    if (!audioContext) return;
+    WAVETABLES.organ = createWavetable([0, 1, 0.5, 0.25, 0.1]);
+    WAVETABLES.bright = createWavetable([1, 0.8, 0.6, 0.4, 0.2]);
+    defaultSampleBuffer = generateDefaultSample(audioContext);
+    instrumentPresets.forEach(p => {
+      if (p && p.engine === 'sampler' && !p.sample) p.sample = defaultSampleBuffer;
+    });
+  }
   // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
   // progressively quicker for rapid cue movement.
-  const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
+const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateSuperKnobStep();
+
+  // When the instrument is active, the number row becomes a mini keyboard
+  // using twelve keys for chromatic notes starting from the selected octave.
+  const KEYBOARD_INST_KEYS = ['1','2','3','4','5','6','7','8','9','0','-','='];
+  function getScaleOffset(index) {
+    if (instrumentScale === 'major') {
+      const major = [0,2,4,5,7,9,11,12,14,16,17,19];
+      return major[index];
+    } else if (instrumentScale === 'minor') {
+      const minor = [0,2,3,5,7,8,10,12,14,15,17,19];
+      return minor[index];
+    }
+    return index; // chromatic
+  }
+  function getInstBaseMidi() {
+    return instrumentOctave * 12 + instrumentTranspose;
+  }
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -1556,6 +1686,7 @@ document.addEventListener(
     if (isTypingInTextField(e)) return;
     // Only handle plain digit keys (ignore if user holds Ctrl/Meta)
     if (!e.ctrlKey && !e.metaKey && /^[0-9]$/.test(e.key)) {
+      if (instrumentPreset > 0) return; // use number row for synth notes
       // Prevent YouTube's default cue-jump behavior
       e.preventDefault();
       e.stopPropagation();
@@ -1879,6 +2010,13 @@ function crossfadeLoop(buffer, fadeTime) {
   }
 }
 
+function getNextBarTime(afterTime) {
+  if (loopStartAbsoluteTime === null) return afterTime;
+  const cycle = Math.max(baseLoopDuration || 0, ...loopDurations);
+  if (!cycle) return afterTime;
+  return loopStartAbsoluteTime + Math.ceil((afterTime - loopStartAbsoluteTime) / cycle) * cycle;
+}
+
 
 async function processLoopFromBlob() {
   if (looperState !== "recording") return;
@@ -1913,28 +2051,47 @@ function finalizeLoopBuffer(buf) {
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
   // Smooth the transition between loop boundaries
-  crossfadeLoop(buf, 0.005);
+  crossfadeLoop(buf, LOOP_CROSSFADE);
 
   pushUndoState();
+  let exactDur = buf.length / buf.sampleRate;
   if (!baseLoopDuration) {
-    baseLoopDuration = buf.duration;
+    baseLoopDuration = exactDur;
     loopsBPM = Math.round((60 * 4) / baseLoopDuration);
-    audioLoopRates[activeLoopIndex] = 1;
   } else {
-    audioLoopRates[activeLoopIndex] = baseLoopDuration / buf.duration;
+    const bars = Math.max(1, Math.round(exactDur / baseLoopDuration));
+    const target = bars * baseLoopDuration;
+    if (Math.abs(target - exactDur) > 0.0005) {
+      const frames = Math.round(target * buf.sampleRate);
+      const out = audioContext.createBuffer(buf.numberOfChannels, frames, buf.sampleRate);
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        out.getChannelData(c).set(buf.getChannelData(c).subarray(0, frames));
+      }
+      buf = out;
+    }
+    exactDur = target;
   }
+  loopDurations[activeLoopIndex] = exactDur;
+  audioLoopRates[activeLoopIndex] = 1;
   audioLoopBuffers[activeLoopIndex] = buf;
   const wasNew = recordingNewLoop;
   recordingNewLoop = false;
   loopBuffer = buf;
   loopPlaying[activeLoopIndex] = true;
+  updateMasterLoopIndex();
 
   looperState = "playing";
   if (wasNew && loopSources.some(Boolean)) {
-    playNewLoop(activeLoopIndex);
+    const when = audioContext.currentTime + PLAY_PADDING;
+    let offset = 0;
+    if (scheduledStopTime !== null) {
+      offset = Math.max(0, audioContext.currentTime - scheduledStopTime);
+    }
+    playSingleLoop(activeLoopIndex, when, offset);
   } else {
     playLoop();
   }
+  scheduledStopTime = null;
   updateLooperButtonColor();
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
@@ -2232,18 +2389,23 @@ function loopProgressStep() {
   const now = audioContext.currentTime;
   let elapsed = now - loopStartAbsoluteTime;
   if (elapsed < 0) elapsed = 0;
-  let dur = baseLoopDuration;
-  if (pitchTarget === "loop") dur /= getCurrentPitchRate();
-  const progress = elapsed % dur;
-  const pct = (progress / dur) * 100;
-  const bar = Math.floor((progress / dur) * 4);
-  const beatDur = dur / 4;
+  let baseDur = baseLoopDuration;
+  if (pitchTarget === "loop") baseDur /= getCurrentPitchRate();
+  const beatDur = baseDur / 4;
   const beatProg = elapsed % beatDur;
   const pulse = 1 - (beatProg / beatDur);
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const active = loopPlaying[i] || (looperState !== "idle" && activeLoopIndex === i);
     const adv = loopProgressFills[i];
     const min = loopProgressFillsMin[i];
+    const ld = loopDurations[i] || baseLoopDuration;
+    let dur = ld;
+    if (pitchTarget === "loop") dur /= getCurrentPitchRate();
+    const offset = loopStartOffsets[i] || 0;
+    const progress = (elapsed - offset) % dur;
+    const adj = progress < 0 ? progress + dur : progress;
+    const pct = (adj / dur) * 100;
+    const bar = Math.floor((adj / dur) * 4);
     if (adv) {
       adv.style.width = pct + '%';
       adv.style.opacity = active ? 1 : 0;
@@ -2393,6 +2555,249 @@ function toggleCassette() {
   
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
+
+function setInstrumentPreset(idx) {
+  instrumentPreset = idx;
+  instrumentLayers = idx > 0 ? [idx] : [];
+  if (instrumentPreset > 0) instrumentLastPreset = instrumentPreset;
+  if (instrumentPreset === 0) {
+    for (const n of Object.keys(instrumentVoices)) stopInstrumentNote(Number(n));
+  }
+  const cfg = instrumentPresets[instrumentPreset];
+  if (cfg) {
+    if (instVolumeNode && typeof cfg.volume === 'number') instVolumeNode.gain.value = cfg.volume;
+    if (instCompNode && typeof cfg.compThresh === 'number') instCompNode.threshold.value = cfg.compThresh;
+    if (instLimiterNode && typeof cfg.limitThresh === 'number') instLimiterNode.threshold.value = cfg.limitThresh;
+  }
+  updateInstrumentButtonColor();
+  refreshInstrumentEditFields();
+  saveInstrumentStateToLocalStorage();
+  if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
+function setInstrumentLayers(indices) {
+  instrumentLayers = indices.filter(i => i > 0 && i < instrumentPresets.length);
+  if (instrumentLayers.length > 0) {
+    instrumentPreset = instrumentLayers[0];
+    instrumentLastPreset = instrumentPreset;
+  } else {
+    instrumentPreset = 0;
+  }
+  updateInstrumentButtonColor();
+  refreshInstrumentEditFields();
+  saveInstrumentStateToLocalStorage();
+  if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
+function deactivateInstrument() {
+  if (audioContext && instVolumeNode) {
+    const now = audioContext.currentTime;
+    instVolumeNode.gain.cancelScheduledValues(now);
+    instVolumeNode.gain.setValueAtTime(instVolumeNode.gain.value, now);
+    instVolumeNode.gain.linearRampToValueAtTime(0, now + 0.03);
+  }
+  Object.values(instrumentVoices).flat().forEach(v => stopInstrumentVoiceInstant(v));
+  instrumentVoices = {};
+  setInstrumentPreset(0);
+  if (instDelayNode) instDelayNode.delayTime.value = 0;
+  if (instDelayMix) instDelayMix.gain.value = 0;
+  if (instReverbMix) instReverbMix.gain.value = 0;
+  if (instVolumeNode) instVolumeNode.gain.setValueAtTime(0.15, (audioContext||{currentTime:0}).currentTime + 0.05);
+  if (instLfoOsc) instLfoOsc.frequency.value = 5;
+  if (instLfoGain) instLfoGain.gain.value = 0;
+}
+
+function updateInstrumentButtonColor() {
+  let name = "Off";
+  let color = "#444";
+  const firstIdx = instrumentLayers[0] || 0;
+  if (firstIdx > 0) {
+    const p = instrumentPresets[firstIdx];
+    if (p) {
+      name = p.name;
+      color = p.color || PRESET_COLORS[(firstIdx - 1) % PRESET_COLORS.length];
+    }
+  }
+  if (instrumentButton) {
+    instrumentButton.innerText = `Instrument:${name}`;
+    instrumentButton.style.backgroundColor = color;
+  }
+  if (instrumentButtonMin) {
+    instrumentButtonMin.innerText = `Instrument:${name}`;
+    instrumentButtonMin.style.backgroundColor = color;
+  }
+  if (instrumentPowerButton) {
+    instrumentPowerButton.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+    instrumentPowerButton.style.backgroundColor = color;
+  }
+}
+
+let instrumentPresets = [
+  null,
+  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 120, q: 4, env: { a: 0.005, d: 0.1, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 250, q: 2, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'organ', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'bright', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass', volume: 0.15, compThresh: -20, limitThresh: -3, tune: 0 },
+  { name: 'Sample Tone', color: PRESET_COLORS[11], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'sampler', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3, sample: null, tune: 0 },
+];
+
+function randomizeInstrumentPreset() {
+  const oscTypes = ['sine','square','sawtooth','triangle','organ','bright'];
+  const engines = ['analog','fm','wavetable','sampler'];
+  const p = instrumentPresets[instrumentPreset];
+  if (!p) return;
+  p.oscillator = oscTypes[Math.floor(Math.random()*oscTypes.length)];
+  p.engine = engines[Math.floor(Math.random()*engines.length)];
+  p.filter = 200 + Math.random()*2000;
+  p.q = Math.random()*4;
+  p.tune = [-24,-12,0,12,24][Math.floor(Math.random()*5)];
+  p.env = { a: Math.random()*0.2, d: 0.1+Math.random()*0.3, s: 0.5+Math.random()*0.5, r: 0.2+Math.random()*0.6 };
+  if (instDelayNode) instDelayNode.delayTime.value = Math.random()*0.5;
+  if (instDelayMix) instDelayMix.gain.value = Math.random()*0.5;
+  if (instReverbMix) instReverbMix.gain.value = 0.2+Math.random()*0.4;
+  if (instVolumeNode) instVolumeNode.gain.value = 0.7+Math.random()*0.6;
+  if (instCompNode) instCompNode.threshold.value = -30 + Math.random()*20;
+  if (instLimiterNode) instLimiterNode.threshold.value = -12 + Math.random()*6;
+  if (instLfoOsc) instLfoOsc.frequency.value = 2+Math.random()*4;
+  if (instLfoGain) instLfoGain.gain.value = Math.random()*20;
+  refreshInstrumentEditFields();
+  saveInstrumentStateToLocalStorage();
+}
+
+function instrumentSettings() {
+  return instrumentPresets[instrumentPreset];
+}
+
+function playInstrumentNote(midi) {
+  if (!audioContext || instrumentLayers.length === 0) return;
+  const baseMidi = midi + instrumentTranspose;
+  const freqRatio = instrumentPitchRatio;
+  const noteForPreset = (cfg) => baseMidi + (cfg.tune || 0);
+  if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
+
+  instrumentLayers.forEach(idx => {
+    const cfg = instrumentPresets[idx];
+    if (!cfg) return;
+    const noteMidi = noteForPreset(cfg);
+
+    if (cfg.mode === 'legato') {
+      let found = null, foundKey = null;
+      for (const [k, arr] of Object.entries(instrumentVoices)) {
+        for (const v of arr) {
+          if (v.preset === idx) { found = v; foundKey = k; break; }
+        }
+        if (found) break;
+      }
+      if (found) {
+        const freq = 440 * Math.pow(2, (noteMidi - 69) / 12) * freqRatio;
+        if (found.osc) found.osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+        if (found.mod) found.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (noteMidi - 69) / 12) * freqRatio, audioContext.currentTime);
+        instrumentVoices[foundKey] = instrumentVoices[foundKey].filter(v => v !== found);
+        if (!instrumentVoices[foundKey].length) delete instrumentVoices[foundKey];
+        if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
+        instrumentVoices[midi].push(found);
+        return;
+      }
+    }
+
+    if (cfg.mode === 'mono') {
+      for (const key of Object.keys(instrumentVoices)) {
+        instrumentVoices[key] = instrumentVoices[key].filter(v => {
+          if (v.preset === idx) { stopInstrumentVoiceInstant(v); return false; }
+          return true;
+        });
+        if (!instrumentVoices[key].length) delete instrumentVoices[key];
+      }
+    }
+
+    if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
+
+    if (cfg.engine === 'sampler' && cfg.sample) {
+      const src = audioContext.createBufferSource();
+      src.buffer = cfg.sample;
+      src.playbackRate.value = Math.pow(2, (noteMidi - 60) / 12) * freqRatio;
+      const g = audioContext.createGain();
+      src.connect(g).connect(instrumentGain);
+      src.start();
+      instrumentVoices[midi].push({ src, g, env: { r: cfg.env?.r || 0 }, preset: idx });
+      return;
+    }
+
+    const osc = audioContext.createOscillator();
+    if (cfg.engine === 'wavetable' && WAVETABLES[cfg.oscillator]) {
+      osc.setPeriodicWave(WAVETABLES[cfg.oscillator]);
+    } else {
+      osc.type = cfg.oscillator || 'sine';
+    }
+    osc.frequency.value = 440 * Math.pow(2, (noteMidi - 69) / 12) * freqRatio;
+    instLfoGain.connect(osc.frequency);
+
+    let mod = null;
+    if (cfg.engine === 'fm') {
+      mod = audioContext.createOscillator();
+      const modGain = audioContext.createGain();
+      modGain.gain.value = cfg.modIndex || 50;
+      mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (noteMidi - 69) / 12) * freqRatio;
+      mod.connect(modGain).connect(osc.frequency);
+      mod.start();
+    }
+
+    const f = audioContext.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cfg.filter;
+    f.Q.value = cfg.q;
+    const g = audioContext.createGain();
+    const startT = audioContext.currentTime + 0.003;
+    g.gain.setValueAtTime(0, audioContext.currentTime);
+    osc.connect(f).connect(g).connect(instrumentGain);
+    osc.start(startT);
+    const e = cfg.env;
+    let t = startT;
+    g.gain.linearRampToValueAtTime(1, t + e.a);
+    g.gain.linearRampToValueAtTime(e.s, t + e.a + e.d);
+    instrumentVoices[midi].push({ osc, mod, filter: f, g, env: e, preset: idx });
+  });
+}
+
+function stopInstrumentVoice(v) {
+  const now = audioContext.currentTime;
+  if (v.g) {
+    v.g.gain.cancelScheduledValues(now);
+    v.g.gain.setValueAtTime(v.g.gain.value, now);
+    const rel = Math.max(0.02, v.env.r || 0);
+    v.g.gain.linearRampToValueAtTime(0, now + rel);
+  }
+  const stopAt = now + Math.max(0.02, v.env.r || 0) + 0.05;
+  if (v.mod) v.mod.stop(stopAt);
+  if (v.osc) v.osc.stop(stopAt);
+  if (v.src) v.src.stop(stopAt);
+}
+
+function stopInstrumentVoiceInstant(v) {
+  const now = audioContext.currentTime;
+  if (v.g) {
+    v.g.gain.cancelScheduledValues(now);
+    v.g.gain.setTargetAtTime(0, now, 0.005);
+  }
+  const stopAt = now + 0.01;
+  if (v.mod) v.mod.stop(stopAt);
+  if (v.osc) v.osc.stop(stopAt);
+  if (v.src) v.src.stop();
+}
+
+function stopInstrumentNote(midi) {
+  const voices = instrumentVoices[midi];
+  if (!voices) return;
+  voices.forEach(v => stopInstrumentVoice(v));
+  delete instrumentVoices[midi];
+}
 /**************************************
  * Audio Buffer Helpers
  **************************************/
@@ -2484,6 +2889,7 @@ async function ensureAudioContext() {
       sampleRate: 48000
     });
     setupAudioNodes();
+    initInstrumentAssets();
     await loadDefaultSamples();
     await loadUserSamplesFromStorage();
     let vid = getVideoElement();
@@ -2504,6 +2910,9 @@ async function ensureAudioContext() {
   await applySavedOutputDevice();
   if (created) {
     applyMonitorSelection();
+    loadInstrumentStateFromLocalStorage();
+    updateInstrumentPitchUI();
+    updateInstrumentButtonColor();
   }
   return audioContext;
 }
@@ -2620,6 +3029,30 @@ async function setupAudioNodes() {
   antiClickGain.gain.setValueAtTime(1, audioContext.currentTime);
   samplesGain = audioContext.createGain();
   loopAudioGain = audioContext.createGain();
+  instrumentGain = audioContext.createGain(); // voice mix
+  const instDelay = audioContext.createDelay();
+  instDelay.delayTime.value = 0;
+  instDelayMix = audioContext.createGain();
+  instDelayMix.gain.value = 0;
+  const instReverb = audioContext.createConvolver();
+  instReverb.buffer = generateSimpleReverbIR(audioContext);
+  const instRevMix = audioContext.createGain();
+  instRevMix.gain.value = 0;
+  const instComp = audioContext.createDynamicsCompressor();
+  instComp.threshold.value = -20;
+  instComp.ratio.value = 4;
+  const instLimiter = audioContext.createDynamicsCompressor();
+  instLimiter.threshold.value = -3;
+  instLimiter.ratio.value = 20;
+  const instVolume = audioContext.createGain();
+  instVolume.gain.value = 0.15; // default 15% volume
+  instLfoOsc = audioContext.createOscillator();
+  instLfoGain = audioContext.createGain();
+  instLfoOsc.type = 'sine';
+  instLfoOsc.frequency.value = 5;
+  instLfoGain.gain.value = 0;
+  instLfoOsc.connect(instLfoGain);
+  instLfoOsc.start();
   bus1Gain = audioContext.createGain();
   bus2Gain = audioContext.createGain();
   bus3Gain = audioContext.createGain();
@@ -2654,6 +3087,19 @@ async function setupAudioNodes() {
   videoDestination = audioContext.createMediaStreamDestination();
 
   samplesGain.connect(bus2Gain);
+  instrumentGain.connect(instDelay);
+  instrumentGain.connect(instReverb);
+  instrumentGain.connect(instComp);
+  instDelay.connect(instDelayMix).connect(instComp);
+  instReverb.connect(instRevMix).connect(instComp);
+  instComp.connect(instLimiter).connect(instVolume).connect(bus2Gain);
+
+  instDelayNode = instDelay;
+  instReverbNode = instReverb;
+  instReverbMix = instRevMix;
+  instCompNode = instComp;
+  instLimiterNode = instLimiter;
+  instVolumeNode = instVolume;
   loopAudioGain.connect(bus3Gain);
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
@@ -3261,6 +3707,7 @@ async function loadAudio(path) {
 function beginLoopRecording() {
   ensureAudioContext().then(async () => {
     if (!audioContext) return;
+    scheduledStopTime = null;
     bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1;
     bus2RecGain.gain.value = 1;
     bus3RecGain.gain.value = 0;
@@ -3308,9 +3755,6 @@ function startRecording() {
       if (newLoopStartTimeout) clearTimeout(newLoopStartTimeout);
       newLoopStartTimeout = setTimeout(() => {
         beginLoopRecording();
-        setTimeout(() => {
-          if (looperState === "recording") stopRecordingAndPlay();
-        }, d * 1000);
       }, remain * 1000);
     } else {
       if (!recordingNewLoop && looperState !== "idle") return;
@@ -3327,7 +3771,26 @@ function stopRecordingAndPlay() {
   }
 }
 
-function playLoop(startOffset = 0, startTime = null) {
+function scheduleStopRecording() {
+  ensureAudioContext().then(() => {
+    if (!audioContext || looperState !== "recording") return;
+    if (!baseLoopDuration || loopStartAbsoluteTime === null) {
+      stopRecordingAndPlay();
+      return;
+    }
+    let d = baseLoopDuration;
+    if (pitchTarget === "loop") d /= getCurrentPitchRate();
+    const now = audioContext.currentTime;
+    const elapsed = (now - loopStartAbsoluteTime) % d;
+    const remain = d - elapsed;
+    scheduledStopTime = now + remain;
+    setTimeout(() => {
+      if (looperState === "recording") stopRecordingAndPlay();
+    }, remain * 1000);
+  });
+}
+
+function playLoop(startTime = null) {
   ensureAudioContext().then(() => {
     if (!audioContext) return;
     stopAllLoopSources();
@@ -3344,9 +3807,14 @@ function playLoop(startOffset = 0, startTime = null) {
       loopSources[i] = src;
     });
     if (!loopSources.some(Boolean)) return;
-    const when = startTime ? startTime : audioContext.currentTime;
-    loopStartAbsoluteTime = when - startOffset;
-    loopSources.forEach(src => { if (src) src.start(when, startOffset); });
+    const when = startTime !== null ? startTime : audioContext.currentTime;
+    loopStartAbsoluteTime = when;
+    loopSources.forEach((src, i) => {
+      if (src) {
+        src.start(when);
+        loopStartOffsets[i] = 0;
+      }
+    });
     loopSource = loopSources.find(src => src) || null;
     masterLoopIndex = loopSources.findIndex(src => src);
     if (masterLoopIndex === -1) masterLoopIndex = null;
@@ -3360,23 +3828,25 @@ function playNewLoop(index) {
     const src = audioContext.createBufferSource();
     src.buffer = buf;
     src.loop = true;
+    const g = audioContext.createGain();
+    g.gain.value = 1;
+    loopGainNodes[index] = g;
     let rate = audioLoopRates[index] || 1;
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
-    src.connect(loopAudioGain);
-    let d = baseLoopDuration;
-    if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const when = audioContext.currentTime + PLAY_PADDING;
-    const offset = (when - loopStartAbsoluteTime) % d;
-    src.start(when, offset);
+    src.connect(g).connect(loopAudioGain);
+    const when = loopSource ? getNextBarTime(audioContext.currentTime + PLAY_PADDING) : (audioContext.currentTime + PLAY_PADDING);
+    src.start(when);
+    if (!loopSource) loopStartAbsoluteTime = when;
     loopSources[index] = src;
     if (!loopSource) loopSource = src;
     loopPlaying[index] = true;
+    loopStartOffsets[index] = when - loopStartAbsoluteTime;
     if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
 
-function playSingleLoop(index, startOffset = 0, startTime = null) {
+function playSingleLoop(index, startTime = null, offset = 0) {
   ensureAudioContext().then(() => {
     if (!audioContext || !audioLoopBuffers[index]) return;
     stopLoopSource(index);
@@ -3384,23 +3854,23 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
     const src = audioContext.createBufferSource();
     src.buffer = buf;
     src.loop = true;
+    const g = audioContext.createGain();
+    g.gain.value = 1;
+    loopGainNodes[index] = g;
     let rate = audioLoopRates[index] || 1;
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
-    src.connect(loopAudioGain);
-    const when = startTime ? startTime : audioContext.currentTime;
-    if (!startTime && baseLoopDuration) {
-      let d = baseLoopDuration;
-      if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
-    }
-    src.start(when, startOffset);
+    src.connect(g).connect(loopAudioGain);
+    const when = startTime !== null ? startTime : (loopSource ? getNextBarTime(audioContext.currentTime + PLAY_PADDING) : audioContext.currentTime);
+    const off = Math.max(0, offset % (audioLoopBuffers[index].duration || 1e-6));
+    src.start(when, off);
     if (!loopSource) {
-      loopStartAbsoluteTime = when - startOffset;
+      loopStartAbsoluteTime = when;
       masterLoopIndex = index;
     }
     loopSources[index] = src;
     loopPlaying[index] = true;
+    loopStartOffsets[index] = when - loopStartAbsoluteTime - off;
     if (!loopSource) loopSource = src;
   });
 }
@@ -3410,30 +3880,40 @@ function schedulePlayLoop(index) {
     if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
     let when = audioContext.currentTime + PLAY_PADDING;
-    if (baseLoopDuration) {
-      let d = baseLoopDuration;
-      if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      when = Math.ceil(when / d) * d;
+    if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
+      when = getNextBarTime(when);
     }
-    playSingleLoop(index, 0, when);
+    playSingleLoop(index, when, 0);
     if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
 
 function scheduleResumeLoop(index) {
   ensureAudioContext().then(() => {
-    if (!audioContext || !baseLoopDuration) return;
-    if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
+    if (!audioContext) return;
+    if (pendingStopTimeouts[index]) {
+      clearTimeout(pendingStopTimeouts[index]);
+      pendingStopTimeouts[index] = null;
+    }
     const when = audioContext.currentTime + PLAY_PADDING;
-    let d = baseLoopDuration;
-    if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const startOffset = (when - loopStartAbsoluteTime) % d;
-    playSingleLoop(index, startOffset, when);
+    const dur = loopDurations[index] || baseLoopDuration;
+    let offset = 0;
+    if (dur && loopStartAbsoluteTime !== null) {
+      const elapsed = when - loopStartAbsoluteTime - loopStartOffsets[index];
+      offset = ((elapsed % dur) + dur) % dur;
+    }
+    playSingleLoop(index, when, offset);
   });
 }
 
 function stopAllLoopSources() {
-  loopSources.forEach(src => { if (src) { try { src.stop(); src.disconnect(); } catch {} } });
+  loopSources.forEach((src, i) => {
+    const g = loopGainNodes[i];
+    if (src) { try { src.stop(); src.disconnect(); } catch {} }
+    if (g) { try { g.disconnect(); } catch {} }
+    loopGainNodes[i] = null;
+    loopStartOffsets[i] = 0;
+  });
   loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
   loopSource = null;
   masterLoopIndex = null;
@@ -3444,8 +3924,14 @@ function stopLoopSource(index) {
   if (src) {
     try { src.stop(); src.disconnect(); } catch {}
   }
+  const g = loopGainNodes[index];
+  if (g) {
+    try { g.disconnect(); } catch {}
+  }
   loopSources[index] = null;
+  loopGainNodes[index] = null;
   loopPlaying[index] = false;
+  loopStartOffsets[index] = 0;
   if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
   if (loopSource === src) loopSource = loopSources.find(s => s) || null;
   if (index === masterLoopIndex) {
@@ -3572,10 +4058,25 @@ function stopLoop(index) {
   let remain = d - elapsed;
   const src = loopSources[index];
   if (src) {
+    const g = loopGainNodes[index];
+    if (g) {
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+    }
     src.stop(now + remain);
   }
   if (pendingStopTimeouts[index]) clearTimeout(pendingStopTimeouts[index]);
   pendingStopTimeouts[index] = setTimeout(() => stopLoopImmediately(index), (remain + 0.05) * 1000);
+}
+
+function updateMasterLoopIndex() {
+  let longest = 0;
+  let idx = null;
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const dur = audioLoopBuffers[i] ? loopDurations[i] : 0;
+    if (dur > longest) { longest = dur; idx = i; }
+  }
+  masterLoopIndex = idx;
 }
 
 function eraseAudioLoop() {
@@ -3585,6 +4086,9 @@ function eraseAudioLoop() {
   stopLoopSource(idx);
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   audioLoopBuffers[idx] = null;
+  loopDurations[idx] = 0;
+  loopStartOffsets[idx] = 0;
+  audioLoopRates[idx] = 1;
   if (audioLoopBuffers.every(b => !b)) {
     loopBuffer = null;
     baseLoopDuration = null;
@@ -3597,6 +4101,7 @@ function eraseAudioLoop() {
     }
     if (loopPlaying.some(p => p)) looperState = "playing"; else looperState = "idle";
   }
+  updateMasterLoopIndex();
   updateExportButtonColor();
   updateLooperButtonColor();
   blinkButton(unifiedLooperButton, updateLooperButtonColor);
@@ -3617,12 +4122,15 @@ function eraseAllAudioLoops() {
   audioLoopBuffers.fill(null);
   loopPlaying.fill(false);
   audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
+  loopDurations.fill(0);
+  loopStartOffsets.fill(0);
   baseLoopDuration = null;
   loopsBPM = null;
   loopBuffer = null;
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
   looperState = "idle";
+  updateMasterLoopIndex();
   updateExportButtonColor();
   updateLooperButtonColor();
   blinkButton(unifiedLooperButton, updateLooperButtonColor);
@@ -3645,7 +4153,6 @@ function onVideoLooperButtonMouseDown() {
   let delta = now - lastClickTimeVideo;
   if (delta < clickDelay) {
     isDoublePressVideo = true;
-    doublePressHoldStartTimeVideo = now;
   } else {
     isDoublePressVideo = false;
   }
@@ -3654,14 +4161,8 @@ function onVideoLooperButtonMouseDown() {
 
 function onVideoLooperButtonMouseUp() {
   if (isDoublePressVideo) {
-    const holdMs = doublePressHoldStartTimeVideo ? (Date.now() - doublePressHoldStartTimeVideo) : 0;
-    if (holdMs >= holdEraseDelay) {
-      eraseVideoLoop();
-    } else {
-      stopVideoLoop();
-    }
+    eraseVideoLoop();
     isDoublePressVideo = false;
-    doublePressHoldStartTimeVideo = null;
   } else {
     singlePressActionVideo();
   }
@@ -4565,6 +5066,23 @@ function onKeyDown(e) {
 
   const k = e.key.toLowerCase();
 
+  if (k === extensionKeys.instrumentToggle.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    showInstrumentWindowToggle();
+    return;
+  }
+
+  if (instrumentPreset > 0) {
+    const idx = KEYBOARD_INST_KEYS.indexOf(k);
+    if (idx !== -1) {
+      playInstrumentNote(getInstBaseMidi() + getScaleOffset(idx));
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
+
   // Option+Cmd+R erases all audio loops
   if (e.metaKey && e.altKey && k === extensionKeys.looperA.toLowerCase()) {
     e.preventDefault();
@@ -4757,6 +5275,16 @@ function onKeyUp(e) {
   if (isTypingInTextField(e)) {
   return;
 }
+
+  if (instrumentPreset > 0) {
+    const idx = KEYBOARD_INST_KEYS.indexOf(k);
+    if (idx !== -1) {
+      stopInstrumentNote(getInstBaseMidi() + getScaleOffset(idx));
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
     if (k === loopKeys[i].toLowerCase()) {
@@ -4891,7 +5419,7 @@ function singlePressAudioLooperAction() {
       startRecording();
     }
   } else if (looperState === "recording") {
-    stopRecordingAndPlay();
+    scheduleStopRecording();
   } else {
     if (!audioLoopBuffers[activeLoopIndex]) {
       recordingNewLoop = true;
@@ -5192,6 +5720,20 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   });
   minimalUIContainer.appendChild(cassetteButtonMin);
 
+  instrumentButtonMin = document.createElement("button");
+  instrumentButtonMin.className = "looper-btn";
+  instrumentButtonMin.innerText = "Instrument:Off";
+  instrumentButtonMin.title = "Nova Bass";
+  instrumentButtonMin.style.backgroundColor = "#444";
+  instrumentButtonMin.addEventListener("click", () => {
+    if (instrumentPreset === 0) {
+      setInstrumentPreset(instrumentLastPreset || 1);
+    } else {
+      deactivateInstrument();
+    }
+  });
+  minimalUIContainer.appendChild(instrumentButtonMin);
+
   let cuesBtnMin = document.createElement("button");
   cuesBtnMin.className = "looper-btn";
   cuesBtnMin.innerText = "Cue+";
@@ -5410,6 +5952,20 @@ minimalUIContainer.appendChild(importMediaBtn);
 
     cassetteButtonMin.innerText = "Tape:" + (cassetteActive ? "On" : "Off");
     cassetteButtonMin.style.backgroundColor = cassetteActive ? "#b05af5" : "#444";
+
+    if (instrumentButtonMin) {
+      let name = "Off";
+      let color = "#222";
+      if (instrumentPreset > 0) {
+        const p = instrumentPresets[instrumentPreset];
+        if (p) {
+          name = p.name;
+          color = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
+        }
+      }
+      instrumentButtonMin.innerText = "Instrument:" + name;
+      instrumentButtonMin.style.backgroundColor = color;
+    }
   }
   window.refreshMinimalState = refreshMinimalState;
 }
@@ -5870,6 +6426,14 @@ function addControls() {
   });
   actionWrap.appendChild(cassetteButton);
 
+  instrumentButton = document.createElement("button");
+  instrumentButton.className = "looper-btn";
+  instrumentButton.innerText = "Instrument:Off";
+  instrumentButton.style.flex = '1 1 calc(50% - 4px)';
+  instrumentButton.title = "Nova Bass";
+  instrumentButton.addEventListener("click", showInstrumentWindowToggle);
+  actionWrap.appendChild(instrumentButton);
+
   eqButton = document.createElement("button");
   eqButton.className = "looper-btn";
   eqButton.innerText = "EQ/Filter";
@@ -5942,6 +6506,7 @@ function addControls() {
   updateCompButtonColor();
   updateReverbButtonColor();
   updateCassetteButtonColor();
+  updateInstrumentButtonColor();
 }
 
 
@@ -6098,6 +6663,7 @@ function updatePitch(v) {
   if (advancedPitchLabel)  advancedPitchLabel.innerText = v + "%";
   if (minimalPitchLabel)   minimalPitchLabel.innerText  = v + "%";
   if (window.refreshMinimalState) window.refreshMinimalState();
+  applyInstrumentPitchSync();
 }
 function getCurrentPitchRate() {
   return 1 + pitchPercentage / 100;
@@ -6114,6 +6680,106 @@ function togglePitchTarget() {
     pitchPercentage = videoPitchPercentage;
     updatePitch(pitchPercentage);
   }
+}
+
+function getGlobalPitchSemitone() {
+  return 12 * Math.log2(getCurrentPitchRate());
+}
+
+function applyInstrumentPitchSync() {
+  if (!instrumentPitchFollowVideo) return;
+  instrumentPitchSemitone = getGlobalPitchSemitone();
+  instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+  if (instrumentPitchSlider) {
+    instrumentPitchSlider.value = instrumentPitchSemitone.toFixed(2);
+    instrumentPitchSlider.disabled = true;
+  }
+  if (instrumentPitchValueLabel) {
+    instrumentPitchValueLabel.innerText = instrumentPitchSemitone.toFixed(2) + ' st';
+  }
+  if (instrumentPitchSyncCheck) instrumentPitchSyncCheck.checked = true;
+}
+
+function updateInstrumentPitchUI() {
+  if (instrumentPitchSlider) {
+    instrumentPitchSlider.value = instrumentPitchSemitone.toFixed(2);
+    instrumentPitchSlider.disabled = instrumentPitchFollowVideo;
+  }
+  if (instrumentPitchValueLabel) {
+    instrumentPitchValueLabel.innerText = instrumentPitchSemitone.toFixed(2) + ' st';
+  }
+  if (instrumentPitchSyncCheck) {
+    instrumentPitchSyncCheck.checked = instrumentPitchFollowVideo;
+  }
+  if (instrumentTransposeSlider) {
+    instrumentTransposeSlider.value = instrumentTranspose;
+  }
+  if (instrumentTransposeValueLabel) {
+    instrumentTransposeValueLabel.innerText = instrumentTranspose + ' st';
+  }
+  refreshInstrumentEditFields();
+}
+
+function refreshInstrumentEditFields() {
+  const cfg = instrumentPreset > 0 ? instrumentPresets[instrumentPreset] : null;
+  if (!cfg) return;
+  if (instrumentOscSelect) instrumentOscSelect.value = cfg.oscillator || 'sine';
+  if (instrumentEngineSelect) instrumentEngineSelect.value = cfg.engine || 'analog';
+  if (instrumentVoiceModeSelect) instrumentVoiceModeSelect.value = cfg.mode || 'poly';
+  if (instrumentFilterSlider) {
+    instrumentFilterSlider.value = cfg.filter || 800;
+    if (instrumentFilterValue) instrumentFilterValue.textContent = instrumentFilterSlider.value;
+  }
+  if (instrumentQSlider) {
+    instrumentQSlider.value = cfg.q || 1;
+    if (instrumentQValue) instrumentQValue.textContent = instrumentQSlider.value;
+  }
+  if (instrumentASlider) {
+    instrumentASlider.value = (cfg.env?.a ?? 0.01);
+    if (instrumentAValue) instrumentAValue.textContent = instrumentASlider.value;
+  }
+  if (instrumentDSlider) {
+    instrumentDSlider.value = (cfg.env?.d ?? 0.2);
+    if (instrumentDValue) instrumentDValue.textContent = instrumentDSlider.value;
+  }
+  if (instrumentSSlider) {
+    instrumentSSlider.value = (cfg.env?.s ?? 0.8);
+    if (instrumentSValue) instrumentSValue.textContent = instrumentSSlider.value;
+  }
+  if (instrumentRSlider) {
+    instrumentRSlider.value = (cfg.env?.r ?? 0.3);
+    if (instrumentRValue) instrumentRValue.textContent = instrumentRSlider.value;
+  }
+  if (instrumentTuneSlider) {
+    instrumentTuneSlider.value = cfg.tune || 0;
+    if (instrumentTuneValue) instrumentTuneValue.textContent = instrumentTuneSlider.value;
+  }
+  if (instrumentScaleSelect) instrumentScaleSelect.value = instrumentScale;
+  if (instrumentVolumeSlider && instVolumeNode) {
+    instrumentVolumeSlider.value = instVolumeNode.gain.value;
+  }
+  if (instrumentDelaySlider && instDelayNode) {
+    instrumentDelaySlider.value = instDelayNode.delayTime.value;
+  }
+  if (instrumentDelayMixSlider && instDelayMix) {
+    instrumentDelayMixSlider.value = instDelayMix.gain.value;
+  }
+  if (instrumentReverbMixSlider && instReverbMix) {
+    instrumentReverbMixSlider.value = instReverbMix.gain.value;
+  }
+  if (instrumentCompThreshSlider && instCompNode) {
+    instrumentCompThreshSlider.value = instCompNode.threshold.value;
+  }
+  if (instrumentLimiterThreshSlider && instLimiterNode) {
+    instrumentLimiterThreshSlider.value = instLimiterNode.threshold.value;
+  }
+  if (instrumentLfoRateSlider && instLfoOsc) {
+    instrumentLfoRateSlider.value = instLfoOsc.frequency.value;
+  }
+  if (instrumentLfoDepthSlider && instLfoGain) {
+    instrumentLfoDepthSlider.value = instLfoGain.gain.value;
+  }
+  if (instrumentSampleLabel) instrumentSampleLabel.textContent = cfg.sample ? 'Loaded' : 'None';
 }
 
 
@@ -6162,6 +6828,21 @@ function handleMIDIMessage(e) {
 
   let [st, note] = e.data;
   const command = st & 0xf0;
+
+  if (st === 144 && note === midiNotes.instrumentToggle) {
+    showInstrumentWindowToggle();
+    return;
+  }
+
+  if (instrumentPreset > 0) {
+    if (command === 144 && e.data[2] > 0) {
+      playInstrumentNote(note);
+      return;
+    } else if (command === 128 || (command === 144 && e.data[2] === 0)) {
+      stopInstrumentNote(note);
+      return;
+    }
+  }
   if (command === 0xb0 && currentlyDetectingMidiControl) {
     midiNotes[currentlyDetectingMidiControl] = note;
     updateMidiMapInput(currentlyDetectingMidiControl, note);
@@ -6554,9 +7235,13 @@ function buildKeyMapWindow() {
       <input data-extkey="cassette" value="${escapeHtml(extensionKeys.cassette)}" maxlength="1">
     </div>
     <div class="keymap-row">
-  <label>RandomCues:</label>
-  <input data-extkey="randomCues" value="${escapeHtml(extensionKeys.randomCues)}" maxlength="1">
-</div>
+      <label>RandomCues:</label>
+      <input data-extkey="randomCues" value="${escapeHtml(extensionKeys.randomCues)}" maxlength="1">
+    </div>
+    <div class="keymap-row">
+      <label>Instrument Toggle:</label>
+      <input data-extkey="instrumentToggle" value="${escapeHtml(extensionKeys.instrumentToggle)}" maxlength="1">
+    </div>
     <h4></h4>
     <div id="user-samples-list"></div>
     <button class="looper-keymap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
@@ -6750,6 +7435,11 @@ function buildMIDIMapWindow() {
       <input data-midiname="cassetteToggle" value="${escapeHtml(String(midiNotes.cassetteToggle))}" type="number">
       <button data-detect="cassetteToggle" class="detect-midi-btn">Detect</button>
     </div>
+    <div class="midimap-row">
+      <label>Instrument Toggle:</label>
+      <input data-midiname="instrumentToggle" value="${escapeHtml(String(midiNotes.instrumentToggle))}" type="number">
+      <button data-detect="instrumentToggle" class="detect-midi-btn">Detect</button>
+    </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
       <label>Knob:</label>
@@ -6855,9 +7545,7 @@ function updateMidiMapInput(name, val) {
    =====================================================*/
 
 /* ⚙️  Config */
-const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
 let   currentMidiPresetName   = null;   // which preset is ‘active’
-const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
 
 /* ------------------------------------------------------
    0.  helper – pull values from the MIDI‑mapping window
@@ -6893,6 +7581,597 @@ function syncMidiNotesFromWindow() {
     });
 }
 
+/* Instrument Preset Window */
+async function showInstrumentWindowToggle() {
+  if (!instrumentWindowContainer) {
+    buildInstrumentWindow();
+  }
+  const showing = instrumentWindowContainer.style.display === "block";
+  if (showing) {
+    instrumentWindowContainer.style.display = "none";
+    deactivateInstrument();
+  } else {
+    instrumentWindowContainer.style.display = "block";
+    await ensureAudioContext();
+    if (instrumentPreset === 0) {
+      setInstrumentPreset(instrumentLastPreset || 1);
+    }
+  }
+}
+
+function buildInstrumentWindow() {
+  instrumentWindowContainer = document.createElement("div");
+  instrumentWindowContainer.className = "looper-midimap-container";
+
+  const dh = document.createElement("div");
+  dh.className = "looper-midimap-drag-handle";
+  dh.innerText = "Nova Bass";
+  instrumentWindowContainer.appendChild(dh);
+
+  const cw = document.createElement("div");
+  cw.className = "looper-midimap-content";
+  instrumentWindowContainer.appendChild(cw);
+
+  const topRow = document.createElement("div");
+  topRow.style.display = "flex";
+  topRow.style.gap = "4px";
+  topRow.style.marginBottom = "8px";
+  cw.appendChild(topRow);
+
+  const powerBtn = document.createElement("button");
+  powerBtn.className = "looper-btn";
+  instrumentPowerButton = powerBtn;
+  powerBtn.addEventListener("click", () => {
+    setInstrumentPreset(instrumentPreset === 0 ? instrumentLastPreset : 0);
+    updateInstrumentButtonColor();
+  });
+  topRow.appendChild(powerBtn);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "looper-btn";
+  closeBtn.innerText = "Close";
+  closeBtn.addEventListener("click", () => {
+    instrumentWindowContainer.style.display = "none";
+    setInstrumentPreset(0);
+  });
+  topRow.appendChild(closeBtn);
+
+  const presetSelect = document.createElement("select");
+  presetSelect.multiple = true;
+  presetSelect.size = 5;
+  function refreshPresetSelect() {
+    presetSelect.innerHTML = "";
+    instrumentPresets.slice(1).forEach((p, i) => {
+      const opt = new Option(p.name, String(i+1), false, instrumentLayers.includes(i+1));
+      presetSelect.add(opt);
+    });
+  }
+  refreshPresetSelect();
+  presetSelect.addEventListener("change", () => {
+    const indices = Array.from(presetSelect.selectedOptions).map(o => parseInt(o.value,10));
+    setInstrumentLayers(indices);
+    updateInstrumentPitchUI();
+  });
+  cw.appendChild(presetSelect);
+
+  const addPresetBtn = document.createElement("button");
+  addPresetBtn.className = "looper-btn";
+  addPresetBtn.textContent = "Add";
+  addPresetBtn.addEventListener("click", () => {
+    const name = prompt("Preset name?");
+    const osc = prompt("Oscillator type (sine, square, sawtooth, triangle)?", "sine");
+    if (!name || !osc) return;
+    instrumentPresets.push({ name, oscillator: osc, filter: 800, q: 1, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, color: randomPresetColor() });
+    saveInstrumentStateToLocalStorage();
+    refreshPresetSelect();
+  });
+  cw.appendChild(addPresetBtn);
+
+  const octaveSelect = document.createElement("select");
+  for (let o = 1; o <= 7; o++) {
+    const opt = new Option("Oct " + o, String(o), false, o === instrumentOctave);
+    octaveSelect.add(opt);
+  }
+  octaveSelect.addEventListener("change", () => {
+    instrumentOctave = parseInt(octaveSelect.value, 10);
+    saveInstrumentStateToLocalStorage();
+  });
+  cw.appendChild(octaveSelect);
+
+  const scaleRow = document.createElement("div");
+  scaleRow.style.display = "flex";
+  scaleRow.style.gap = "4px";
+  scaleRow.style.marginTop = "4px";
+  const scLbl = document.createElement("span");
+  scLbl.textContent = "Scale";
+  scLbl.style.width = "40px";
+  instrumentScaleSelect = document.createElement("select");
+  ["chromatic","major","minor"].forEach(s => instrumentScaleSelect.add(new Option(s, s, false, s===instrumentScale)));
+  instrumentScaleSelect.addEventListener("change", () => {
+    instrumentScale = instrumentScaleSelect.value;
+    saveInstrumentStateToLocalStorage();
+  });
+  scaleRow.appendChild(scLbl);
+  scaleRow.appendChild(instrumentScaleSelect);
+  cw.appendChild(scaleRow);
+
+  const pitchRow = document.createElement("div");
+  pitchRow.style.display = "flex";
+  pitchRow.style.alignItems = "center";
+  pitchRow.style.gap = "4px";
+  pitchRow.style.marginTop = "8px";
+  cw.appendChild(pitchRow);
+
+  const pitchLabel = document.createElement("span");
+  pitchLabel.textContent = "Pitch";
+  pitchLabel.style.width = "40px";
+  pitchRow.appendChild(pitchLabel);
+
+  instrumentPitchSlider = document.createElement("input");
+  instrumentPitchSlider.className = "looper-knob";
+  instrumentPitchSlider.type = "range";
+  instrumentPitchSlider.min = -12;
+  instrumentPitchSlider.max = 12;
+  instrumentPitchSlider.step = 0.1;
+  pitchRow.appendChild(instrumentPitchSlider);
+
+  instrumentPitchValueLabel = document.createElement("span");
+  instrumentPitchValueLabel.style.width = "50px";
+  pitchRow.appendChild(instrumentPitchValueLabel);
+
+  instrumentPitchSyncCheck = document.createElement("input");
+  instrumentPitchSyncCheck.type = "checkbox";
+  instrumentPitchSyncCheck.style.marginLeft = "4px";
+  pitchRow.appendChild(instrumentPitchSyncCheck);
+  const syncLbl = document.createElement("span");
+  syncLbl.textContent = "Sync Video";
+  pitchRow.appendChild(syncLbl);
+
+  instrumentPitchSlider.addEventListener("input", () => {
+    instrumentPitchSemitone = parseFloat(instrumentPitchSlider.value);
+    instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+    updateInstrumentPitchUI();
+    saveInstrumentStateToLocalStorage();
+  });
+
+  instrumentPitchSyncCheck.addEventListener("change", () => {
+    instrumentPitchFollowVideo = instrumentPitchSyncCheck.checked;
+    if (instrumentPitchFollowVideo) applyInstrumentPitchSync();
+    updateInstrumentPitchUI();
+    saveInstrumentStateToLocalStorage();
+  });
+
+  const transRow = document.createElement("div");
+  transRow.style.display = "flex";
+  transRow.style.alignItems = "center";
+  transRow.style.gap = "4px";
+  transRow.style.marginTop = "8px";
+  cw.appendChild(transRow);
+
+  const tLabel = document.createElement("span");
+  tLabel.textContent = "Transpose";
+  tLabel.style.width = "70px";
+  transRow.appendChild(tLabel);
+
+  instrumentTransposeSlider = document.createElement("input");
+  instrumentTransposeSlider.className = "looper-knob";
+  instrumentTransposeSlider.type = "range";
+  instrumentTransposeSlider.min = -24;
+  instrumentTransposeSlider.max = 24;
+  instrumentTransposeSlider.step = 1;
+  transRow.appendChild(instrumentTransposeSlider);
+
+  instrumentTransposeValueLabel = document.createElement("span");
+  instrumentTransposeValueLabel.style.width = "40px";
+  transRow.appendChild(instrumentTransposeValueLabel);
+
+  instrumentTransposeSlider.addEventListener("input", () => {
+    instrumentTranspose = parseInt(instrumentTransposeSlider.value, 10);
+    updateInstrumentPitchUI();
+    saveInstrumentStateToLocalStorage();
+  });
+
+  const advToggle = document.createElement("button");
+  advToggle.className = "looper-btn";
+  advToggle.textContent = "Advanced ▶";
+  let advancedWrap = document.createElement("div");
+  advancedWrap.className = "instrument-advanced";
+  advToggle.addEventListener("click", () => {
+    const open = advancedWrap.style.display === "block";
+    advancedWrap.style.display = open ? "none" : "block";
+    advToggle.textContent = open ? "Advanced ▶" : "Advanced ▼";
+  });
+  cw.appendChild(advToggle);
+  cw.appendChild(advancedWrap);
+
+  const paramWrap = document.createElement("div");
+  paramWrap.style.marginTop = "8px";
+  paramWrap.style.display = "grid";
+  paramWrap.style.gridTemplateColumns = "80px 1fr 40px";
+  paramWrap.style.rowGap = "4px";
+  advancedWrap.appendChild(paramWrap);
+
+  function addParamRow(labelText, inputEl, valueEl) {
+    const lbl = document.createElement("span");
+    lbl.textContent = labelText;
+    paramWrap.appendChild(lbl);
+    paramWrap.appendChild(inputEl);
+    paramWrap.appendChild(valueEl || document.createElement("span"));
+  }
+
+  instrumentOscSelect = document.createElement("select");
+  ["sine","square","sawtooth","triangle","organ","bright"].forEach(t => instrumentOscSelect.add(new Option(t, t)));
+  addParamRow("Oscillator", instrumentOscSelect);
+  instrumentOscSelect.addEventListener("change", () => {
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].oscillator = instrumentOscSelect.value;
+    Object.values(instrumentVoices).flat().forEach(v => {
+      if (v.osc) {
+        if (WAVETABLES[instrumentOscSelect.value]) {
+          v.osc.setPeriodicWave(WAVETABLES[instrumentOscSelect.value]);
+        } else {
+          v.osc.type = instrumentOscSelect.value;
+        }
+      }
+    });
+    saveInstrumentStateToLocalStorage();
+  });
+
+  instrumentEngineSelect = document.createElement("select");
+  ["analog","fm","wavetable","sampler"].forEach(t => instrumentEngineSelect.add(new Option(t, t)));
+  addParamRow("Engine", instrumentEngineSelect);
+  instrumentEngineSelect.addEventListener("change", () => {
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].engine = instrumentEngineSelect.value;
+    saveInstrumentStateToLocalStorage();
+  });
+
+  instrumentVoiceModeSelect = document.createElement("select");
+  ["poly","mono","legato"].forEach(m => instrumentVoiceModeSelect.add(new Option(m, m)));
+  addParamRow("Mode", instrumentVoiceModeSelect);
+  instrumentVoiceModeSelect.addEventListener("change", () => {
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].mode = instrumentVoiceModeSelect.value;
+    saveInstrumentStateToLocalStorage();
+  });
+
+  instrumentTuneSlider = document.createElement("input");
+  instrumentTuneSlider.className = "looper-knob";
+  instrumentTuneSlider.type = "range";
+  instrumentTuneSlider.min = -24;
+  instrumentTuneSlider.max = 24;
+  instrumentTuneSlider.step = 12;
+  instrumentTuneValue = document.createElement("span");
+  instrumentTuneSlider.addEventListener("input", () => {
+    instrumentTuneValue.textContent = instrumentTuneSlider.value;
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].tune = parseInt(instrumentTuneSlider.value,10);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Tune", instrumentTuneSlider, instrumentTuneValue);
+
+  instrumentFilterSlider = document.createElement("input");
+  instrumentFilterSlider.className = "looper-knob";
+  instrumentFilterSlider.type = "range";
+  instrumentFilterSlider.min = 50;
+  instrumentFilterSlider.max = 8000;
+  instrumentFilterSlider.step = 1;
+  instrumentFilterValue = document.createElement("span");
+  instrumentFilterSlider.addEventListener("input", () => {
+    instrumentFilterValue.textContent = instrumentFilterSlider.value;
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].filter = parseFloat(instrumentFilterSlider.value);
+    Object.values(instrumentVoices).flat().forEach(v => { if (v.filter) v.filter.frequency.value = parseFloat(instrumentFilterSlider.value); });
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Filter", instrumentFilterSlider, instrumentFilterValue);
+
+  instrumentQSlider = document.createElement("input");
+  instrumentQSlider.className = "looper-knob";
+  instrumentQSlider.type = "range";
+  instrumentQSlider.min = 0;
+  instrumentQSlider.max = 10;
+  instrumentQSlider.step = 0.1;
+  instrumentQValue = document.createElement("span");
+  instrumentQSlider.addEventListener("input", () => {
+    instrumentQValue.textContent = instrumentQSlider.value;
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].q = parseFloat(instrumentQSlider.value);
+    Object.values(instrumentVoices).flat().forEach(v => { if (v.filter) v.filter.Q.value = parseFloat(instrumentQSlider.value); });
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Resonance", instrumentQSlider, instrumentQValue);
+
+  instrumentASlider = document.createElement("input");
+  instrumentASlider.className = "looper-knob";
+  instrumentASlider.type = "range";
+  instrumentASlider.min = 0;
+  instrumentASlider.max = 1;
+  instrumentASlider.step = 0.01;
+  instrumentAValue = document.createElement("span");
+  instrumentASlider.addEventListener("input", () => {
+    instrumentAValue.textContent = instrumentASlider.value;
+    if (instrumentPreset > 0) {
+      instrumentPresets[instrumentPreset].env = instrumentPresets[instrumentPreset].env || {};
+      instrumentPresets[instrumentPreset].env.a = parseFloat(instrumentASlider.value);
+    }
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Attack", instrumentASlider, instrumentAValue);
+
+  instrumentDSlider = document.createElement("input");
+  instrumentDSlider.className = "looper-knob";
+  instrumentDSlider.type = "range";
+  instrumentDSlider.min = 0;
+  instrumentDSlider.max = 1;
+  instrumentDSlider.step = 0.01;
+  instrumentDValue = document.createElement("span");
+  instrumentDSlider.addEventListener("input", () => {
+    instrumentDValue.textContent = instrumentDSlider.value;
+    if (instrumentPreset > 0) {
+      instrumentPresets[instrumentPreset].env = instrumentPresets[instrumentPreset].env || {};
+      instrumentPresets[instrumentPreset].env.d = parseFloat(instrumentDSlider.value);
+    }
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Decay", instrumentDSlider, instrumentDValue);
+
+  instrumentSSlider = document.createElement("input");
+  instrumentSSlider.className = "looper-knob";
+  instrumentSSlider.type = "range";
+  instrumentSSlider.min = 0;
+  instrumentSSlider.max = 1;
+  instrumentSSlider.step = 0.01;
+  instrumentSValue = document.createElement("span");
+  instrumentSSlider.addEventListener("input", () => {
+    instrumentSValue.textContent = instrumentSSlider.value;
+    if (instrumentPreset > 0) {
+      instrumentPresets[instrumentPreset].env = instrumentPresets[instrumentPreset].env || {};
+      instrumentPresets[instrumentPreset].env.s = parseFloat(instrumentSSlider.value);
+    }
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Sustain", instrumentSSlider, instrumentSValue);
+
+  instrumentRSlider = document.createElement("input");
+  instrumentRSlider.className = "looper-knob";
+  instrumentRSlider.type = "range";
+  instrumentRSlider.min = 0;
+  instrumentRSlider.max = 2;
+  instrumentRSlider.step = 0.01;
+  instrumentRValue = document.createElement("span");
+  instrumentRSlider.addEventListener("input", () => {
+    instrumentRValue.textContent = instrumentRSlider.value;
+    if (instrumentPreset > 0) {
+      instrumentPresets[instrumentPreset].env = instrumentPresets[instrumentPreset].env || {};
+      instrumentPresets[instrumentPreset].env.r = parseFloat(instrumentRSlider.value);
+    }
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Release", instrumentRSlider, instrumentRValue);
+
+  instrumentVolumeSlider = document.createElement("input");
+  instrumentVolumeSlider.className = "looper-knob";
+  instrumentVolumeSlider.type = "range";
+  instrumentVolumeSlider.min = 0;
+  instrumentVolumeSlider.max = 2;
+  instrumentVolumeSlider.step = 0.01;
+  instrumentVolumeSlider.addEventListener("input", () => {
+    if (instVolumeNode) instVolumeNode.gain.value = parseFloat(instrumentVolumeSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].volume = parseFloat(instrumentVolumeSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Volume", instrumentVolumeSlider);
+
+  instrumentDelaySlider = document.createElement("input");
+  instrumentDelaySlider.className = "looper-knob";
+  instrumentDelaySlider.type = "range";
+  instrumentDelaySlider.min = 0;
+  instrumentDelaySlider.max = 1;
+  instrumentDelaySlider.step = 0.01;
+  instrumentDelaySlider.addEventListener("input", () => {
+    if (instDelayNode) instDelayNode.delayTime.value = parseFloat(instrumentDelaySlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].delay = parseFloat(instrumentDelaySlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Delay Time", instrumentDelaySlider);
+
+  instrumentDelayMixSlider = document.createElement("input");
+  instrumentDelayMixSlider.className = "looper-knob";
+  instrumentDelayMixSlider.type = "range";
+  instrumentDelayMixSlider.min = 0;
+  instrumentDelayMixSlider.max = 1;
+  instrumentDelayMixSlider.step = 0.01;
+  instrumentDelayMixSlider.addEventListener("input", () => {
+    if (instDelayMix) instDelayMix.gain.value = parseFloat(instrumentDelayMixSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].delayMix = parseFloat(instrumentDelayMixSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Delay Mix", instrumentDelayMixSlider);
+
+  instrumentReverbMixSlider = document.createElement("input");
+  instrumentReverbMixSlider.className = "looper-knob";
+  instrumentReverbMixSlider.type = "range";
+  instrumentReverbMixSlider.min = 0;
+  instrumentReverbMixSlider.max = 1;
+  instrumentReverbMixSlider.step = 0.01;
+  instrumentReverbMixSlider.addEventListener("input", () => {
+    if (instReverbMix) instReverbMix.gain.value = parseFloat(instrumentReverbMixSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].reverbMix = parseFloat(instrumentReverbMixSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Reverb Mix", instrumentReverbMixSlider);
+
+  instrumentCompThreshSlider = document.createElement("input");
+  instrumentCompThreshSlider.className = "looper-knob";
+  instrumentCompThreshSlider.type = "range";
+  instrumentCompThreshSlider.min = -60;
+  instrumentCompThreshSlider.max = 0;
+  instrumentCompThreshSlider.step = 1;
+  instrumentCompThreshSlider.addEventListener("input", () => {
+    if (instCompNode) instCompNode.threshold.value = parseFloat(instrumentCompThreshSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].compThresh = parseFloat(instrumentCompThreshSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Comp Thresh", instrumentCompThreshSlider);
+
+  instrumentLimiterThreshSlider = document.createElement("input");
+  instrumentLimiterThreshSlider.className = "looper-knob";
+  instrumentLimiterThreshSlider.type = "range";
+  instrumentLimiterThreshSlider.min = -20;
+  instrumentLimiterThreshSlider.max = 0;
+  instrumentLimiterThreshSlider.step = 1;
+  instrumentLimiterThreshSlider.addEventListener("input", () => {
+    if (instLimiterNode) instLimiterNode.threshold.value = parseFloat(instrumentLimiterThreshSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].limitThresh = parseFloat(instrumentLimiterThreshSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Limit Thresh", instrumentLimiterThreshSlider);
+
+  instrumentLfoRateSlider = document.createElement("input");
+  instrumentLfoRateSlider.className = "looper-knob";
+  instrumentLfoRateSlider.type = "range";
+  instrumentLfoRateSlider.min = 0.1;
+  instrumentLfoRateSlider.max = 10;
+  instrumentLfoRateSlider.step = 0.1;
+  instrumentLfoRateSlider.addEventListener("input", () => {
+    if (instLfoOsc) instLfoOsc.frequency.value = parseFloat(instrumentLfoRateSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].lfoRate = parseFloat(instrumentLfoRateSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("LFO Rate", instrumentLfoRateSlider);
+
+  instrumentLfoDepthSlider = document.createElement("input");
+  instrumentLfoDepthSlider.className = "looper-knob";
+  instrumentLfoDepthSlider.type = "range";
+  instrumentLfoDepthSlider.min = 0;
+  instrumentLfoDepthSlider.max = 50;
+  instrumentLfoDepthSlider.step = 1;
+  instrumentLfoDepthSlider.addEventListener("input", () => {
+    if (instLfoGain) instLfoGain.gain.value = parseFloat(instrumentLfoDepthSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].lfoDepth = parseFloat(instrumentLfoDepthSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("LFO Depth", instrumentLfoDepthSlider);
+
+  const sampRow = document.createElement("div");
+  sampRow.style.gridColumn = "1 / span 3";
+  sampRow.style.display = "flex";
+  sampRow.style.alignItems = "center";
+  sampRow.style.gap = "4px";
+  instrumentSampleLabel = document.createElement("span");
+  instrumentSampleLabel.textContent = "None";
+  const loadBtn = document.createElement("button");
+  loadBtn.className = "looper-btn";
+  loadBtn.textContent = "Load Sample";
+  loadBtn.addEventListener("click", async () => {
+    const file = await pickPresetFile();
+    if (!file) return;
+    const arr = await file.arrayBuffer();
+    await ensureAudioContext();
+    const buf = await audioContext.decodeAudioData(arr);
+    const cfg = instrumentPresets[instrumentPreset];
+    cfg.sample = buf;
+    instrumentSampleLabel.textContent = "Loaded";
+    saveInstrumentStateToLocalStorage();
+  });
+  sampRow.appendChild(loadBtn);
+  sampRow.appendChild(instrumentSampleLabel);
+  paramWrap.appendChild(sampRow);
+
+  function collectSettingsFromUI() {
+    return {
+      oscillator: instrumentOscSelect.value,
+      engine: instrumentEngineSelect.value,
+      filter: parseFloat(instrumentFilterSlider.value),
+      q: parseFloat(instrumentQSlider.value),
+      delay: parseFloat(instrumentDelaySlider.value),
+      delayMix: parseFloat(instrumentDelayMixSlider.value),
+      reverbMix: parseFloat(instrumentReverbMixSlider.value),
+      compThresh: parseFloat(instrumentCompThreshSlider.value),
+      limitThresh: parseFloat(instrumentLimiterThreshSlider.value),
+      volume: parseFloat(instrumentVolumeSlider.value),
+      lfoRate: parseFloat(instrumentLfoRateSlider.value),
+      lfoDepth: parseFloat(instrumentLfoDepthSlider.value),
+      tune: parseInt(instrumentTuneSlider.value, 10),
+      scale: instrumentScaleSelect.value,
+      mode: instrumentVoiceModeSelect.value,
+      env: {
+        a: parseFloat(instrumentASlider.value),
+        d: parseFloat(instrumentDSlider.value),
+        s: parseFloat(instrumentSSlider.value),
+        r: parseFloat(instrumentRSlider.value)
+      },
+      sample: instrumentPresets[instrumentPreset]?.sample || null
+    };
+  }
+
+  const btnRow = document.createElement("div");
+  btnRow.style.display = "flex";
+  btnRow.style.gap = "4px";
+  btnRow.style.marginTop = "8px";
+  cw.appendChild(btnRow);
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "looper-btn";
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", () => {
+    const settings = collectSettingsFromUI();
+    let idx = instrumentPreset;
+    if (idx <= BUILTIN_PRESET_COUNT) {
+      const name = prompt("Preset name?", "Custom");
+      if (!name) return;
+      instrumentPresets.push({ ...settings, name, color: randomPresetColor() });
+      idx = instrumentPresets.length - 1;
+      setInstrumentLayers([idx]);
+      refreshPresetSelect();
+    } else {
+      Object.assign(instrumentPresets[idx], settings);
+    }
+    saveInstrumentStateToLocalStorage();
+  });
+  btnRow.appendChild(saveBtn);
+
+  const delBtn = document.createElement("button");
+  delBtn.className = "looper-btn";
+  delBtn.textContent = "Delete";
+  delBtn.addEventListener("click", () => {
+    const idx = instrumentPreset;
+    if (idx <= BUILTIN_PRESET_COUNT) { alert("Cannot delete built-in presets"); return; }
+    if (!confirm("Delete preset?")) return;
+    instrumentPresets.splice(idx,1);
+    setInstrumentLayers([]);
+    refreshPresetSelect();
+    saveInstrumentStateToLocalStorage();
+  });
+  btnRow.appendChild(delBtn);
+
+  const exportBtn = document.createElement("button");
+  exportBtn.className = "looper-btn";
+  exportBtn.textContent = "Export";
+  exportBtn.addEventListener("click", () => {
+    const p = instrumentPresets[instrumentPreset];
+    if (!p) return;
+    const exp = Object.assign({}, p);
+    delete exp.sample;
+    const blob = new Blob([JSON.stringify(exp)],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (p.name || 'preset') + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  btnRow.appendChild(exportBtn);
+
+  const randBtn = document.createElement("button");
+  randBtn.className = "looper-btn";
+  randBtn.textContent = "Random";
+  randBtn.addEventListener("click", () => {
+    randomizeInstrumentPreset();
+  });
+  btnRow.appendChild(randBtn);
+
+  document.body.appendChild(instrumentWindowContainer);
+  makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
+  updateInstrumentButtonColor();
+  updateInstrumentPitchUI();
+}
+
 /* ------------------------------------------------------
    1.  Persistence
    ---------------------------------------------------- */
@@ -6911,6 +8190,76 @@ function saveMidiPresetsToLocalStorage() {
     localStorage.setItem(MIDI_PRESET_STORAGE_KEY, JSON.stringify(midiPresets));
   } catch (err) {
     console.error("Failed saving MIDI presets:", err);
+  }
+}
+
+function saveInstrumentStateToLocalStorage() {
+  try {
+    const obj = {
+      preset: instrumentPreset,
+      octave: instrumentOctave,
+      custom: instrumentPresets.slice(BUILTIN_PRESET_COUNT + 1),
+      pitch: instrumentPitchSemitone,
+      transpose: instrumentTranspose,
+      followVideo: instrumentPitchFollowVideo,
+      scale: instrumentScale,
+      delay: instDelayNode ? instDelayNode.delayTime.value : 0,
+      delayMix: instDelayMix ? instDelayMix.gain.value : 0,
+      reverbMix: instReverbMix ? instReverbMix.gain.value : 0,
+      compThresh: instCompNode ? instCompNode.threshold.value : -20,
+      limitThresh: instLimiterNode ? instLimiterNode.threshold.value : -3,
+      volume: instVolumeNode ? instVolumeNode.gain.value : 1,
+      lfoRate: instLfoOsc ? instLfoOsc.frequency.value : 5,
+      lfoDepth: instLfoGain ? instLfoGain.gain.value : 0,
+      layers: instrumentLayers
+    };
+    localStorage.setItem(INSTRUMENT_STATE_KEY, JSON.stringify(obj));
+  } catch (err) {
+    console.warn("Failed saving instrument state", err);
+  }
+}
+
+function loadInstrumentStateFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(INSTRUMENT_STATE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (Array.isArray(obj.custom)) {
+      obj.custom.forEach(p => {
+        if (!p.color) p.color = randomPresetColor();
+        instrumentPresets.push(p);
+      });
+    }
+    if (typeof obj.octave === 'number') instrumentOctave = obj.octave;
+    if (Array.isArray(obj.layers)) {
+      instrumentLayers = obj.layers.filter(i => i > 0 && i < instrumentPresets.length);
+      instrumentLastPreset = instrumentLayers[0] || 1;
+    }
+    if (typeof obj.preset === 'number') instrumentLastPreset = obj.preset;
+    if (typeof obj.pitch === 'number') {
+      instrumentPitchSemitone = obj.pitch;
+      instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+    }
+    if (typeof obj.transpose === 'number') instrumentTranspose = obj.transpose;
+    if (typeof obj.followVideo === 'boolean') instrumentPitchFollowVideo = obj.followVideo;
+    if (typeof obj.scale === 'string') instrumentScale = obj.scale;
+    if (typeof obj.delay === 'number' && instDelayNode) instDelayNode.delayTime.value = obj.delay;
+    if (typeof obj.delayMix === 'number' && instDelayMix) instDelayMix.gain.value = obj.delayMix;
+    if (typeof obj.reverbMix === 'number' && instReverbMix) instReverbMix.gain.value = obj.reverbMix;
+    if (typeof obj.compThresh === 'number' && instCompNode) instCompNode.threshold.value = obj.compThresh;
+    if (typeof obj.limitThresh === 'number' && instLimiterNode) instLimiterNode.threshold.value = obj.limitThresh;
+    if (typeof obj.volume === 'number' && instVolumeNode) instVolumeNode.gain.value = obj.volume;
+    if (typeof obj.lfoRate === 'number' && instLfoOsc) instLfoOsc.frequency.value = obj.lfoRate;
+    if (typeof obj.lfoDepth === 'number' && instLfoGain) instLfoGain.gain.value = obj.lfoDepth;
+    if (instrumentPitchFollowVideo) {
+      applyInstrumentPitchSync();
+    } else {
+      instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+    }
+    updateInstrumentPitchUI();
+    refreshInstrumentEditFields();
+  } catch (err) {
+    console.warn("Failed loading instrument state", err);
   }
 }
 
@@ -7169,6 +8518,23 @@ async function pickSampleFiles(promptText) {
       resolve(files);
     }, { once: true });
     alert(promptText);
+    input.click();
+  });
+}
+
+async function pickPresetFile() {
+  return new Promise(resolve => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json, audio/*";
+    input.multiple = false;
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", () => {
+      const file = input.files ? input.files[0] : null;
+      document.body.removeChild(input);
+      resolve(file);
+    }, { once: true });
     input.click();
   });
 }
