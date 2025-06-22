@@ -703,6 +703,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       instrumentDelaySlider = null,
       instrumentDelayMixSlider = null,
       instrumentReverbMixSlider = null,
+      instrumentCompThreshSlider = null,
+      instrumentLimiterThreshSlider = null,
       instrumentLfoRateSlider = null,
       instrumentLfoDepthSlider = null,
       instrumentVoiceModeSelect = null,
@@ -2494,6 +2496,12 @@ function setInstrumentPreset(idx) {
   if (instrumentPreset === 0) {
     for (const n of Object.keys(instrumentVoices)) stopInstrumentNote(Number(n));
   }
+  const cfg = instrumentPresets[instrumentPreset];
+  if (cfg) {
+    if (instVolumeNode && typeof cfg.volume === 'number') instVolumeNode.gain.value = cfg.volume;
+    if (instCompNode && typeof cfg.compThresh === 'number') instCompNode.threshold.value = cfg.compThresh;
+    if (instLimiterNode && typeof cfg.limitThresh === 'number') instLimiterNode.threshold.value = cfg.limitThresh;
+  }
   updateInstrumentButtonColor();
   refreshInstrumentEditFields();
   saveInstrumentStateToLocalStorage();
@@ -2552,17 +2560,17 @@ function updateInstrumentButtonColor() {
 
 let instrumentPresets = [
   null,
-  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 120, q: 4, env: { a: 0.005, d: 0.1, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono', filterType: 'lowpass' },
-  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 250, q: 2, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly', filterType: 'lowpass' },
-  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass' },
-  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass' },
-  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass' },
-  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass' },
-  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass' },
-  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass' },
-  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass' },
-  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass' },
-  { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass' },
+  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 120, q: 4, env: { a: 0.005, d: 0.1, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 250, q: 2, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
+  { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass', volume: 0.15, compThresh: -20, limitThresh: -3 },
 ];
 
 function randomizeInstrumentPreset() {
@@ -2579,6 +2587,8 @@ function randomizeInstrumentPreset() {
   if (instDelayMix) instDelayMix.gain.value = Math.random()*0.5;
   if (instReverbMix) instReverbMix.gain.value = 0.2+Math.random()*0.4;
   if (instVolumeNode) instVolumeNode.gain.value = 0.7+Math.random()*0.6;
+  if (instCompNode) instCompNode.threshold.value = -30 + Math.random()*20;
+  if (instLimiterNode) instLimiterNode.threshold.value = -12 + Math.random()*6;
   if (instLfoOsc) instLfoOsc.frequency.value = 2+Math.random()*4;
   if (instLfoGain) instLfoGain.gain.value = Math.random()*20;
   refreshInstrumentEditFields();
@@ -6585,6 +6595,12 @@ function refreshInstrumentEditFields() {
   if (instrumentReverbMixSlider && instReverbMix) {
     instrumentReverbMixSlider.value = instReverbMix.gain.value;
   }
+  if (instrumentCompThreshSlider && instCompNode) {
+    instrumentCompThreshSlider.value = instCompNode.threshold.value;
+  }
+  if (instrumentLimiterThreshSlider && instLimiterNode) {
+    instrumentLimiterThreshSlider.value = instLimiterNode.threshold.value;
+  }
   if (instrumentLfoRateSlider && instLfoOsc) {
     instrumentLfoRateSlider.value = instLfoOsc.frequency.value;
   }
@@ -7786,6 +7802,32 @@ function buildInstrumentWindow() {
   });
   addParamRow("Reverb Mix", instrumentReverbMixSlider);
 
+  instrumentCompThreshSlider = document.createElement("input");
+  instrumentCompThreshSlider.className = "looper-knob";
+  instrumentCompThreshSlider.type = "range";
+  instrumentCompThreshSlider.min = -60;
+  instrumentCompThreshSlider.max = 0;
+  instrumentCompThreshSlider.step = 1;
+  instrumentCompThreshSlider.addEventListener("input", () => {
+    if (instCompNode) instCompNode.threshold.value = parseFloat(instrumentCompThreshSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].compThresh = parseFloat(instrumentCompThreshSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Comp Thresh", instrumentCompThreshSlider);
+
+  instrumentLimiterThreshSlider = document.createElement("input");
+  instrumentLimiterThreshSlider.className = "looper-knob";
+  instrumentLimiterThreshSlider.type = "range";
+  instrumentLimiterThreshSlider.min = -20;
+  instrumentLimiterThreshSlider.max = 0;
+  instrumentLimiterThreshSlider.step = 1;
+  instrumentLimiterThreshSlider.addEventListener("input", () => {
+    if (instLimiterNode) instLimiterNode.threshold.value = parseFloat(instrumentLimiterThreshSlider.value);
+    if (instrumentPreset > 0) instrumentPresets[instrumentPreset].limitThresh = parseFloat(instrumentLimiterThreshSlider.value);
+    saveInstrumentStateToLocalStorage();
+  });
+  addParamRow("Limit Thresh", instrumentLimiterThreshSlider);
+
   instrumentLfoRateSlider = document.createElement("input");
   instrumentLfoRateSlider.className = "looper-knob";
   instrumentLfoRateSlider.type = "range";
@@ -7846,6 +7888,8 @@ function buildInstrumentWindow() {
       delay: parseFloat(instrumentDelaySlider.value),
       delayMix: parseFloat(instrumentDelayMixSlider.value),
       reverbMix: parseFloat(instrumentReverbMixSlider.value),
+      compThresh: parseFloat(instrumentCompThreshSlider.value),
+      limitThresh: parseFloat(instrumentLimiterThreshSlider.value),
       volume: parseFloat(instrumentVolumeSlider.value),
       lfoRate: parseFloat(instrumentLfoRateSlider.value),
       lfoDepth: parseFloat(instrumentLfoDepthSlider.value),
@@ -7967,6 +8011,8 @@ function saveInstrumentStateToLocalStorage() {
       delay: instDelayNode ? instDelayNode.delayTime.value : 0,
       delayMix: instDelayMix ? instDelayMix.gain.value : 0,
       reverbMix: instReverbMix ? instReverbMix.gain.value : 0,
+      compThresh: instCompNode ? instCompNode.threshold.value : -20,
+      limitThresh: instLimiterNode ? instLimiterNode.threshold.value : -3,
       volume: instVolumeNode ? instVolumeNode.gain.value : 1,
       lfoRate: instLfoOsc ? instLfoOsc.frequency.value : 5,
       lfoDepth: instLfoGain ? instLfoGain.gain.value : 0,
@@ -8005,6 +8051,8 @@ function loadInstrumentStateFromLocalStorage() {
     if (typeof obj.delay === 'number' && instDelayNode) instDelayNode.delayTime.value = obj.delay;
     if (typeof obj.delayMix === 'number' && instDelayMix) instDelayMix.gain.value = obj.delayMix;
     if (typeof obj.reverbMix === 'number' && instReverbMix) instReverbMix.gain.value = obj.reverbMix;
+    if (typeof obj.compThresh === 'number' && instCompNode) instCompNode.threshold.value = obj.compThresh;
+    if (typeof obj.limitThresh === 'number' && instLimiterNode) instLimiterNode.threshold.value = obj.limitThresh;
     if (typeof obj.volume === 'number' && instVolumeNode) instVolumeNode.gain.value = obj.volume;
     if (typeof obj.lfoRate === 'number' && instLfoOsc) instLfoOsc.frequency.value = obj.lfoRate;
     if (typeof obj.lfoDepth === 'number' && instLfoGain) instLfoGain.gain.value = obj.lfoDepth;

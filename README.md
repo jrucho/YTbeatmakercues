@@ -146,14 +146,14 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-Press **N** or the advanced panel’s **Instrument** button to show the Nova Bass window. Opening the window activates your last preset if the synth was off; closing it powers the synth down. The minimal bar has its own Instrument button that simply toggles the synth on or off without opening the window. Eleven built-in presets—Resonate, Precision, 808 Boom, Warm Organ, Moog Thump, Soft Pad, String Ensemble, FM Keys, Pluck and Sweep Lead, Bass Cut—cover a wide range of classic tones and play at **15% volume** by default. You can select multiple presets at once to layer them together just like sample packs.
+Press **N** or the advanced panel’s **Instrument** button to show the Nova Bass window. Opening the window activates your last preset if the synth was off; closing it powers the synth down. The minimal bar has its own Instrument button that simply toggles the synth on or off without opening the window. Eleven built-in presets—Resonate, Precision, 808 Boom, Warm Organ, Moog Thump, Soft Pad, String Ensemble, FM Keys, Pluck and Sweep Lead, Bass Cut—cover a wide range of classic tones and play at **15% volume** by default. You can select multiple presets at once to layer them together just like sample packs. Compression and limiter sliders make it easy to tame levels.
 The popup hides detailed controls until you click **Advanced**, keeping the interface clean.
 While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning. All parameters are adjusted with labeled sliders so you know exactly what each one does.
 
 Moving any knob instantly updates the current preset. Built‑in presets cannot be deleted but you can save your tweaks as new ones. Each preset stores oscillator type, engine, filter, ADSR, effects and **Mode** (poly, mono or legato).
 
-Each preset stores oscillator type, engine, filter settings, ADSR envelope and effect parameters (delay, reverb, volume and LFO). Use **Save** to keep changes, **Delete** to remove custom presets or **Export** to share them. The **Random** button quickly generates a usable sound.
+Each preset stores oscillator type, engine, filter settings, ADSR envelope and effect parameters (delay, reverb, compression, limiter, volume and LFO). Use **Save** to keep changes, **Delete** to remove custom presets or **Export** to share them. The **Random** button quickly generates a usable sound.
 
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 Holding the MIDI Shift note while pressing a loop note erases that loop.
