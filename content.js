@@ -755,7 +755,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const BUILTIN_PRESET_COUNT = 10;
+  const BUILTIN_PRESET_COUNT = 11;
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -766,7 +766,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     "#a3cccc",
     "#cca37a",
     "#7acc7a",
-    "#cc7a7a"
+    "#cc7a7a",
+    "#7a7acc"
   ];
   const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
   const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
@@ -2501,8 +2502,8 @@ function deactivateInstrument() {
   setInstrumentPreset(0);
   instrumentVoices = {};
   if (instDelayNode) instDelayNode.delayTime.value = 0.25;
-  if (instDelayMix) instDelayMix.gain.value = 0.3;
-  if (instReverbMix) instReverbMix.gain.value = 0.3;
+  if (instDelayMix) instDelayMix.gain.value = 0;
+  if (instReverbMix) instReverbMix.gain.value = 0;
   if (instVolumeNode) instVolumeNode.gain.value = 1;
   if (instLfoOsc) instLfoOsc.frequency.value = 5;
   if (instLfoGain) instLfoGain.gain.value = 0;
@@ -2534,16 +2535,17 @@ function updateInstrumentButtonColor() {
 
 let instrumentPresets = [
   null,
-  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 150, q: 3, env: { a: 0.01, d: 0.15, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono' },
-  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 700, q: 1, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly' },
-  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 60, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono' },
-  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 1000, q: 2, env: { a: 0.02, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly' },
-  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 500, q: 3, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly' },
-  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 1200, q: 1, env: { a: 0.3, d: 0.5, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly' },
-  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 1500, q: 2, env: { a: 0.2, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly' },
-  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly' },
-  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 2500, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly' },
-  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly' }
+  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 120, q: 4, env: { a: 0.005, d: 0.1, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono', filterType: 'lowpass' },
+  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 250, q: 2, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly', filterType: 'lowpass' },
+  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.005, d: 0.25, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono', filterType: 'lowpass' },
+  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 400, q: 2, env: { a: 0.01, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'lowpass' },
+  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 300, q: 2.5, env: { a: 0.005, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly', filterType: 'lowpass' },
+  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 600, q: 1, env: { a: 0.05, d: 0.4, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass' },
+  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 900, q: 1.5, env: { a: 0.05, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly', filterType: 'lowpass' },
+  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 500, q: 0.5, env: { a: 0.005, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly', filterType: 'lowpass' },
+  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 1200, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly', filterType: 'lowpass' },
+  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 1500, q: 5, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly', filterType: 'lowpass' },
+  { name: 'Bass Cut', color: PRESET_COLORS[10], oscillator: 'sine', filter: 150, q: 0, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.3 }, engine: 'analog', mode: 'poly', filterType: 'highpass' },
 ];
 
 function randomizeInstrumentPreset() {
@@ -2879,13 +2881,13 @@ async function setupAudioNodes() {
   loopAudioGain = audioContext.createGain();
   instrumentGain = audioContext.createGain(); // voice mix
   const instDelay = audioContext.createDelay();
-  instDelay.delayTime.value = 0.25;
+  instDelay.delayTime.value = 0;
   instDelayMix = audioContext.createGain();
-  instDelayMix.gain.value = 0.3;
+  instDelayMix.gain.value = 0;
   const instReverb = audioContext.createConvolver();
   instReverb.buffer = generateSimpleReverbIR(audioContext);
   const instRevMix = audioContext.createGain();
-  instRevMix.gain.value = 0.3;
+  instRevMix.gain.value = 0;
   const instComp = audioContext.createDynamicsCompressor();
   instComp.threshold.value = -20;
   instComp.ratio.value = 4;
@@ -7934,9 +7936,9 @@ function saveInstrumentStateToLocalStorage() {
       transpose: instrumentTranspose,
       followVideo: instrumentPitchFollowVideo,
       scale: instrumentScale,
-      delay: instDelayNode ? instDelayNode.delayTime.value : 0.25,
-      delayMix: instDelayMix ? instDelayMix.gain.value : 0.3,
-      reverbMix: instReverbMix ? instReverbMix.gain.value : 0.3,
+      delay: instDelayNode ? instDelayNode.delayTime.value : 0,
+      delayMix: instDelayMix ? instDelayMix.gain.value : 0,
+      reverbMix: instReverbMix ? instReverbMix.gain.value : 0,
       volume: instVolumeNode ? instVolumeNode.gain.value : 1,
       lfoRate: instLfoOsc ? instLfoOsc.frequency.value : 5,
       lfoDepth: instLfoGain ? instLfoGain.gain.value : 0
