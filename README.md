@@ -142,11 +142,11 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Export | Ctrl/Cmd + Enter |
 | Pitch Down / Up | `,` / `.` |
 | Random Cue | `-` |
-| Noble Bass | N |
+| Nova Bass | N |
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-Press **N** to open the Noble Bass window. Opening powers on your last preset, while closing turns the synth off and resets its nodes. You can still use the **Power** button to toggle it manually.
+Press **N** to open the Nova Bass window. Opening powers on your last preset, while closing turns the synth off and resets its nodes. You can still use the **Power** button to toggle it manually.
 The synth starts disabled each time you load the page and only activates once the window opens. Three built-in bass presets—Resonate, Precision and 808 Boom—provide classic boombap tones.
 While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning. All parameters are adjusted with labeled sliders so you know exactly what each one does.

@@ -5493,7 +5493,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   instrumentButtonMin = document.createElement("button");
   instrumentButtonMin.className = "looper-btn";
   instrumentButtonMin.innerText = "Instrument:Off";
-  instrumentButtonMin.title = "Noble Bass";
+  instrumentButtonMin.title = "Nova Bass";
   instrumentButtonMin.style.backgroundColor = "#444";
   instrumentButtonMin.addEventListener("click", showInstrumentWindowToggle);
   minimalUIContainer.appendChild(instrumentButtonMin);
@@ -6187,7 +6187,7 @@ function addControls() {
   instrumentButton.className = "looper-btn";
   instrumentButton.innerText = "Instrument:Off";
   instrumentButton.style.flex = '1 1 calc(50% - 4px)';
-  instrumentButton.title = "Noble Bass";
+  instrumentButton.title = "Nova Bass";
   instrumentButton.addEventListener("click", showInstrumentWindowToggle);
   actionWrap.appendChild(instrumentButton);
 
@@ -7350,7 +7350,7 @@ function buildInstrumentWindow() {
 
   const dh = document.createElement("div");
   dh.className = "looper-midimap-drag-handle";
-  dh.innerText = "Noble Bass";
+  dh.innerText = "Nova Bass";
   instrumentWindowContainer.appendChild(dh);
 
   const cw = document.createElement("div");
