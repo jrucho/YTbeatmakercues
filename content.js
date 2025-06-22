@@ -2675,6 +2675,8 @@ function playInstrumentNote(midi) {
       }
     }
 
+    if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
+
     if (cfg.engine === 'sampler' && cfg.sample) {
       const src = audioContext.createBufferSource();
       src.buffer = cfg.sample;
