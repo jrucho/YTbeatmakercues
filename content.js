@@ -3891,11 +3891,11 @@ function schedulePlayLoop(index) {
 function scheduleResumeLoop(index) {
   ensureAudioContext().then(() => {
     if (!audioContext) return;
-    if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    let when = audioContext.currentTime + PLAY_PADDING;
-    if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
-      when = getNextBarTime(when);
+    if (pendingStopTimeouts[index]) {
+      clearTimeout(pendingStopTimeouts[index]);
+      pendingStopTimeouts[index] = null;
     }
+    const when = audioContext.currentTime + PLAY_PADDING;
     const dur = loopDurations[index] || baseLoopDuration;
     let offset = 0;
     if (dur && loopStartAbsoluteTime !== null) {

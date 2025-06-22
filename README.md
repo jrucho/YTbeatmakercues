@@ -72,9 +72,9 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
   up to four separate audio loops. The first loop defines the bar length and tempo.
   Additional loops of any bar count launch on the next bar so everything stays aligned.
   Loops keep the exact length you recorded with no trimming. Press the loop key again
-  to finish recording on the next bar; double press a loop key to stop that loop on
-  the next bar and press twice more to erase it. Stopped loops
-  restart from the beginning when triggered again, and sync stays tight even when
+  to finish recording on the next bar. Double press a loop key to mute that loop at
+  the bar boundary and single press to unmute instantly—just like legato mode. Double
+  press twice more to erase it. Loops rejoin mid‑phrase so sync stays tight even when
   loops have different lengths. Exporting downloads each active loop with the rounded
   BPM in the file name. Use `V` for the video looper and double press to erase it.
   Hold Option + **Cmd+R** to erase all loops. Each looper button shows a slim progress
