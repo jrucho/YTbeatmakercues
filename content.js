@@ -754,7 +754,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const BUILTIN_PRESET_COUNT = 10;
+  const BUILTIN_PRESET_COUNT = 3;
   const PRESET_COLORS = ["#6cf","#fc6","#f66","#c6f","#f0c","#9cf","#cff","#fc9","#9f9","#f99"];
   const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
   const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
@@ -2518,16 +2518,9 @@ function updateInstrumentButtonColor() {
 
 let instrumentPresets = [
   null,
-  { name: 'Reso', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 200, q: 4, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'poly' },
-  { name: 'Fender', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 800, q: 1, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly' },
-  { name: '808', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono' },
-  { name: 'Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 1000, q: 2, env: { a: 0.02, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly' },
-  { name: 'Moog', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 500, q: 3, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly' },
-  { name: 'Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 1200, q: 1, env: { a: 0.3, d: 0.5, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly' },
-  { name: 'Strings', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 1500, q: 2, env: { a: 0.2, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly' },
-  { name: 'Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly' },
-  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 2500, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly' },
-  { name: 'Sweep', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly' }
+  { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 150, q: 3, env: { a: 0.01, d: 0.15, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono' },
+  { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 700, q: 1, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly' },
+  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 60, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono' }
 ];
 
 function randomizeInstrumentPreset() {
@@ -5500,7 +5493,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   instrumentButtonMin = document.createElement("button");
   instrumentButtonMin.className = "looper-btn";
   instrumentButtonMin.innerText = "Instrument:Off";
-  instrumentButtonMin.title = "Nimbus Synth";
+  instrumentButtonMin.title = "Noble Bass";
   instrumentButtonMin.style.backgroundColor = "#444";
   instrumentButtonMin.addEventListener("click", showInstrumentWindowToggle);
   minimalUIContainer.appendChild(instrumentButtonMin);
@@ -6194,7 +6187,7 @@ function addControls() {
   instrumentButton.className = "looper-btn";
   instrumentButton.innerText = "Instrument:Off";
   instrumentButton.style.flex = '1 1 calc(50% - 4px)';
-  instrumentButton.title = "Nimbus Synth";
+  instrumentButton.title = "Noble Bass";
   instrumentButton.addEventListener("click", showInstrumentWindowToggle);
   actionWrap.appendChild(instrumentButton);
 
@@ -7357,7 +7350,7 @@ function buildInstrumentWindow() {
 
   const dh = document.createElement("div");
   dh.className = "looper-midimap-drag-handle";
-  dh.innerText = "Nimbus Synth";
+  dh.innerText = "Noble Bass";
   instrumentWindowContainer.appendChild(dh);
 
   const cw = document.createElement("div");
