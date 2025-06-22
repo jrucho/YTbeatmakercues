@@ -765,9 +765,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   // progressively quicker for rapid cue movement.
 const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateSuperKnobStep();
-  loadInstrumentStateFromLocalStorage();
-  updateInstrumentPitchUI();
-  updateInstrumentButtonColor();
 
   // When the instrument is active, the number row becomes a mini keyboard
   // using twelve keys for chromatic notes starting from the selected octave.
@@ -2716,6 +2713,9 @@ async function ensureAudioContext() {
   await applySavedOutputDevice();
   if (created) {
     applyMonitorSelection();
+    loadInstrumentStateFromLocalStorage();
+    updateInstrumentPitchUI();
+    updateInstrumentButtonColor();
   }
   return audioContext;
 }
