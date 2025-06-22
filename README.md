@@ -17,7 +17,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Newly recorded loops begin playing on the very next bar for snappier response
 * Reduced latency and cleaner loop boundaries for punchier recordings
 
-## New in 1.4
+## Update 1.4
 * Four independent audio loopers with bright progress bars beneath the looper button
 * Each bar shows four tick marks so you can follow the beat
 * Progress bars are a uniform 1.4 px thick
@@ -25,7 +25,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Pitching loops renames files with `-pitched-<BPM>bpm`
 
 
-## New in 1.3
+## Update 1.3
 * Works inside the YouTube iframe on [Samplette.io](https://samplette.io) and other `youtube-nocookie.com` embeds, even when the referrer is hidden. The toolbar becomes scrollable and MIDI features are disabled there.
 * Minimal bar and advanced window become scrollable when space is limited
 * Route audio to any available output device via the **Audio Out** dropdown ("Default output" preselected)
