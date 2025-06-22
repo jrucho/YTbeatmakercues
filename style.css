@@ -30,3 +30,7 @@ input.looper-knob::-moz-range-thumb {
   background: #fff;
   cursor: pointer;
 }
+
+.instrument-advanced {
+  display: none;
+}

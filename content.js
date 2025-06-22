@@ -7546,12 +7546,25 @@ function buildInstrumentWindow() {
     saveInstrumentStateToLocalStorage();
   });
 
+  const advToggle = document.createElement("button");
+  advToggle.className = "looper-btn";
+  advToggle.textContent = "Advanced ▶";
+  let advancedWrap = document.createElement("div");
+  advancedWrap.className = "instrument-advanced";
+  advToggle.addEventListener("click", () => {
+    const open = advancedWrap.style.display === "block";
+    advancedWrap.style.display = open ? "none" : "block";
+    advToggle.textContent = open ? "Advanced ▶" : "Advanced ▼";
+  });
+  cw.appendChild(advToggle);
+  cw.appendChild(advancedWrap);
+
   const paramWrap = document.createElement("div");
   paramWrap.style.marginTop = "8px";
   paramWrap.style.display = "grid";
   paramWrap.style.gridTemplateColumns = "80px 1fr 40px";
   paramWrap.style.rowGap = "4px";
-  cw.appendChild(paramWrap);
+  advancedWrap.appendChild(paramWrap);
 
   function addParamRow(labelText, inputEl, valueEl) {
     const lbl = document.createElement("span");
