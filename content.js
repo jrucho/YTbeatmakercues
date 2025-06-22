@@ -696,6 +696,23 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       instrumentDValue = null,
       instrumentSValue = null,
       instrumentRValue = null,
+      instrumentVolumeSlider = null,
+      instrumentDelaySlider = null,
+      instrumentDelayMixSlider = null,
+      instrumentReverbMixSlider = null,
+      instrumentLfoRateSlider = null,
+      instrumentLfoDepthSlider = null,
+      instrumentScaleSelect = null,
+      instrumentScale = 'chromatic',
+      instDelayNode = null,
+      instDelayMix = null,
+      instReverbNode = null,
+      instReverbMix = null,
+      instCompNode = null,
+      instLimiterNode = null,
+      instVolumeNode = null,
+      instLfoOsc = null,
+      instLfoGain = null,
       // Pitch
       pitchPercentage = 0,
       pitchTarget = "video", // "video" or "loop"
@@ -753,19 +770,18 @@ const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateInstrumentButtonColor();
 
   // When the instrument is active, the number row becomes a mini keyboard
-  // using a simple C major scale starting from C3.
-  const KEYBOARD_INST_MAP = {
-    '1': 0,  // C3
-    '2': 2,  // D3
-    '3': 4,  // E3
-    '4': 5,  // F3
-    '5': 7,  // G3
-    '6': 9,  // A3
-    '7': 11, // B3
-    '8': 12, // C4
-    '9': 14, // D4
-    '0': 16  // E4
-  };
+  // using twelve keys for chromatic notes starting from the selected octave.
+  const KEYBOARD_INST_KEYS = ['1','2','3','4','5','6','7','8','9','0','-','='];
+  function getScaleOffset(index) {
+    if (instrumentScale === 'major') {
+      const major = [0,2,4,5,7,9,11,12,14,16,17,19];
+      return major[index];
+    } else if (instrumentScale === 'minor') {
+      const minor = [0,2,3,5,7,8,10,12,14,15,17,19];
+      return minor[index];
+    }
+    return index; // chromatic
+  }
   function getInstBaseMidi() {
     return instrumentOctave * 12 + instrumentTranspose;
   }
@@ -2503,6 +2519,26 @@ const instrumentPresets = [
   { name: 'Sweep', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm' }
 ];
 
+function randomizeInstrumentPreset() {
+  const oscTypes = ['sine','square','sawtooth','triangle'];
+  const engines = ['analog','fm','wavetable'];
+  const p = instrumentPresets[instrumentPreset];
+  if (!p) return;
+  p.oscillator = oscTypes[Math.floor(Math.random()*oscTypes.length)];
+  p.engine = engines[Math.floor(Math.random()*engines.length)];
+  p.filter = 200 + Math.random()*2000;
+  p.q = Math.random()*4;
+  p.env = { a: Math.random()*0.2, d: 0.1+Math.random()*0.3, s: 0.5+Math.random()*0.5, r: 0.2+Math.random()*0.6 };
+  if (instDelayNode) instDelayNode.delayTime.value = Math.random()*0.5;
+  if (instDelayMix) instDelayMix.gain.value = Math.random()*0.5;
+  if (instReverbMix) instReverbMix.gain.value = 0.2+Math.random()*0.4;
+  if (instVolumeNode) instVolumeNode.gain.value = 0.7+Math.random()*0.6;
+  if (instLfoOsc) instLfoOsc.frequency.value = 2+Math.random()*4;
+  if (instLfoGain) instLfoGain.gain.value = Math.random()*20;
+  refreshInstrumentEditFields();
+  saveInstrumentStateToLocalStorage();
+}
+
 function instrumentSettings() {
   return instrumentPresets[instrumentPreset];
 }
@@ -2528,6 +2564,7 @@ function playInstrumentNote(midi) {
   const osc = audioContext.createOscillator();
   osc.type = cfg.oscillator || 'sine';
   osc.frequency.value = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+  instLfoGain.connect(osc.frequency);
 
   let mod = null;
   if (cfg.engine === 'fm') {
@@ -2795,7 +2832,30 @@ async function setupAudioNodes() {
   antiClickGain.gain.setValueAtTime(1, audioContext.currentTime);
   samplesGain = audioContext.createGain();
   loopAudioGain = audioContext.createGain();
-  instrumentGain = audioContext.createGain();
+  instrumentGain = audioContext.createGain(); // voice mix
+  const instDelay = audioContext.createDelay();
+  instDelay.delayTime.value = 0.25;
+  const instDelayMix = audioContext.createGain();
+  instDelayMix.gain.value = 0.3;
+  const instReverb = audioContext.createConvolver();
+  instReverb.buffer = generateSimpleReverbIR(audioContext);
+  const instRevMix = audioContext.createGain();
+  instRevMix.gain.value = 0.3;
+  const instComp = audioContext.createDynamicsCompressor();
+  instComp.threshold.value = -20;
+  instComp.ratio.value = 4;
+  const instLimiter = audioContext.createDynamicsCompressor();
+  instLimiter.threshold.value = -3;
+  instLimiter.ratio.value = 20;
+  const instVolume = audioContext.createGain();
+  instVolume.gain.value = 1;
+  instLfoOsc = audioContext.createOscillator();
+  instLfoGain = audioContext.createGain();
+  instLfoOsc.type = 'sine';
+  instLfoOsc.frequency.value = 5;
+  instLfoGain.gain.value = 0;
+  instLfoOsc.connect(instLfoGain);
+  instLfoOsc.start();
   bus1Gain = audioContext.createGain();
   bus2Gain = audioContext.createGain();
   bus3Gain = audioContext.createGain();
@@ -2830,7 +2890,20 @@ async function setupAudioNodes() {
   videoDestination = audioContext.createMediaStreamDestination();
 
   samplesGain.connect(bus2Gain);
-  instrumentGain.connect(bus2Gain);
+  instrumentGain.connect(instDelay);
+  instrumentGain.connect(instReverb);
+  instrumentGain.connect(instComp);
+  instDelay.connect(instDelayMix).connect(instComp);
+  instReverb.connect(instRevMix).connect(instComp);
+  instComp.connect(instLimiter).connect(instVolume).connect(bus2Gain);
+
+  instDelayNode = instDelay;
+  instDelayMix = instDelayMix;
+  instReverbNode = instReverb;
+  instReverbMix = instRevMix;
+  instCompNode = instComp;
+  instLimiterNode = instLimiter;
+  instVolumeNode = instVolume;
   loopAudioGain.connect(bus3Gain);
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
@@ -4749,11 +4822,14 @@ function onKeyDown(e) {
     return;
   }
 
-  if (instrumentPreset > 0 && KEYBOARD_INST_MAP[k] !== undefined) {
-    playInstrumentNote(getInstBaseMidi() + KEYBOARD_INST_MAP[k]);
-    e.preventDefault();
-    e.stopPropagation();
-    return;
+  if (instrumentPreset > 0) {
+    const idx = KEYBOARD_INST_KEYS.indexOf(k);
+    if (idx !== -1) {
+      playInstrumentNote(getInstBaseMidi() + getScaleOffset(idx));
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
   }
 
   // Option+Cmd+R erases all audio loops
@@ -4949,11 +5025,14 @@ function onKeyUp(e) {
   return;
 }
 
-  if (instrumentPreset > 0 && KEYBOARD_INST_MAP[k] !== undefined) {
-    stopInstrumentNote(getInstBaseMidi() + KEYBOARD_INST_MAP[k]);
-    e.preventDefault();
-    e.stopPropagation();
-    return;
+  if (instrumentPreset > 0) {
+    const idx = KEYBOARD_INST_KEYS.indexOf(k);
+    if (idx !== -1) {
+      stopInstrumentNote(getInstBaseMidi() + getScaleOffset(idx));
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
   }
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
@@ -6406,6 +6485,25 @@ function refreshInstrumentEditFields() {
     instrumentRSlider.value = (cfg.env?.r ?? 0.3);
     if (instrumentRValue) instrumentRValue.textContent = instrumentRSlider.value;
   }
+  if (instrumentScaleSelect) instrumentScaleSelect.value = instrumentScale;
+  if (instrumentVolumeSlider && instVolumeNode) {
+    instrumentVolumeSlider.value = instVolumeNode.gain.value;
+  }
+  if (instrumentDelaySlider && instDelayNode) {
+    instrumentDelaySlider.value = instDelayNode.delayTime.value;
+  }
+  if (instrumentDelayMixSlider && instDelayMix) {
+    instrumentDelayMixSlider.value = instDelayMix.gain.value;
+  }
+  if (instrumentReverbMixSlider && instReverbMix) {
+    instrumentReverbMixSlider.value = instReverbMix.gain.value;
+  }
+  if (instrumentLfoRateSlider && instLfoOsc) {
+    instrumentLfoRateSlider.value = instLfoOsc.frequency.value;
+  }
+  if (instrumentLfoDepthSlider && instLfoGain) {
+    instrumentLfoDepthSlider.value = instLfoGain.gain.value;
+  }
   if (instrumentSampleLabel) instrumentSampleLabel.textContent = cfg.sample ? 'Loaded' : 'None';
 }
 
@@ -7213,8 +7311,14 @@ function showInstrumentWindowToggle() {
   if (!instrumentWindowContainer) {
     buildInstrumentWindow();
   }
-  instrumentWindowContainer.style.display =
-    (instrumentWindowContainer.style.display === "block") ? "none" : "block";
+  const showing = instrumentWindowContainer.style.display === "block";
+  if (showing) {
+    instrumentWindowContainer.style.display = "none";
+    setInstrumentPreset(0);
+  } else {
+    instrumentWindowContainer.style.display = "block";
+    if (instrumentPreset === 0) setInstrumentPreset(1);
+  }
 }
 
 function buildInstrumentWindow() {
@@ -7250,6 +7354,7 @@ function buildInstrumentWindow() {
   closeBtn.innerText = "Close";
   closeBtn.addEventListener("click", () => {
     instrumentWindowContainer.style.display = "none";
+    setInstrumentPreset(0);
   });
   topRow.appendChild(closeBtn);
 
@@ -7292,6 +7397,23 @@ function buildInstrumentWindow() {
     saveInstrumentStateToLocalStorage();
   });
   cw.appendChild(octaveSelect);
+
+  const scaleRow = document.createElement("div");
+  scaleRow.style.display = "flex";
+  scaleRow.style.gap = "4px";
+  scaleRow.style.marginTop = "4px";
+  const scLbl = document.createElement("span");
+  scLbl.textContent = "Scale";
+  scLbl.style.width = "40px";
+  instrumentScaleSelect = document.createElement("select");
+  ["chromatic","major","minor"].forEach(s => instrumentScaleSelect.add(new Option(s, s, false, s===instrumentScale)));
+  instrumentScaleSelect.addEventListener("change", () => {
+    instrumentScale = instrumentScaleSelect.value;
+    saveInstrumentStateToLocalStorage();
+  });
+  scaleRow.appendChild(scLbl);
+  scaleRow.appendChild(instrumentScaleSelect);
+  cw.appendChild(scaleRow);
 
   const pitchRow = document.createElement("div");
   pitchRow.style.display = "flex";
@@ -7456,6 +7578,66 @@ function buildInstrumentWindow() {
   });
   addParamRow("Release", instrumentRSlider, instrumentRValue);
 
+  instrumentVolumeSlider = document.createElement("input");
+  instrumentVolumeSlider.type = "range";
+  instrumentVolumeSlider.min = 0;
+  instrumentVolumeSlider.max = 2;
+  instrumentVolumeSlider.step = 0.01;
+  instrumentVolumeSlider.addEventListener("input", () => {
+    if (instVolumeNode) instVolumeNode.gain.value = parseFloat(instrumentVolumeSlider.value);
+  });
+  addParamRow("Volume", instrumentVolumeSlider);
+
+  instrumentDelaySlider = document.createElement("input");
+  instrumentDelaySlider.type = "range";
+  instrumentDelaySlider.min = 0;
+  instrumentDelaySlider.max = 1;
+  instrumentDelaySlider.step = 0.01;
+  instrumentDelaySlider.addEventListener("input", () => {
+    if (instDelayNode) instDelayNode.delayTime.value = parseFloat(instrumentDelaySlider.value);
+  });
+  addParamRow("Delay", instrumentDelaySlider);
+
+  instrumentDelayMixSlider = document.createElement("input");
+  instrumentDelayMixSlider.type = "range";
+  instrumentDelayMixSlider.min = 0;
+  instrumentDelayMixSlider.max = 1;
+  instrumentDelayMixSlider.step = 0.01;
+  instrumentDelayMixSlider.addEventListener("input", () => {
+    if (instDelayMix) instDelayMix.gain.value = parseFloat(instrumentDelayMixSlider.value);
+  });
+  addParamRow("D Mix", instrumentDelayMixSlider);
+
+  instrumentReverbMixSlider = document.createElement("input");
+  instrumentReverbMixSlider.type = "range";
+  instrumentReverbMixSlider.min = 0;
+  instrumentReverbMixSlider.max = 1;
+  instrumentReverbMixSlider.step = 0.01;
+  instrumentReverbMixSlider.addEventListener("input", () => {
+    if (instReverbMix) instReverbMix.gain.value = parseFloat(instrumentReverbMixSlider.value);
+  });
+  addParamRow("R Mix", instrumentReverbMixSlider);
+
+  instrumentLfoRateSlider = document.createElement("input");
+  instrumentLfoRateSlider.type = "range";
+  instrumentLfoRateSlider.min = 0.1;
+  instrumentLfoRateSlider.max = 10;
+  instrumentLfoRateSlider.step = 0.1;
+  instrumentLfoRateSlider.addEventListener("input", () => {
+    if (instLfoOsc) instLfoOsc.frequency.value = parseFloat(instrumentLfoRateSlider.value);
+  });
+  addParamRow("LFO Hz", instrumentLfoRateSlider);
+
+  instrumentLfoDepthSlider = document.createElement("input");
+  instrumentLfoDepthSlider.type = "range";
+  instrumentLfoDepthSlider.min = 0;
+  instrumentLfoDepthSlider.max = 50;
+  instrumentLfoDepthSlider.step = 1;
+  instrumentLfoDepthSlider.addEventListener("input", () => {
+    if (instLfoGain) instLfoGain.gain.value = parseFloat(instrumentLfoDepthSlider.value);
+  });
+  addParamRow("LFO Amt", instrumentLfoDepthSlider);
+
   const sampRow = document.createElement("div");
   sampRow.style.gridColumn = "1 / span 3";
   sampRow.style.display = "flex";
@@ -7487,6 +7669,13 @@ function buildInstrumentWindow() {
       engine: instrumentEngineSelect.value,
       filter: parseFloat(instrumentFilterSlider.value),
       q: parseFloat(instrumentQSlider.value),
+      delay: parseFloat(instrumentDelaySlider.value),
+      delayMix: parseFloat(instrumentDelayMixSlider.value),
+      reverbMix: parseFloat(instrumentReverbMixSlider.value),
+      volume: parseFloat(instrumentVolumeSlider.value),
+      lfoRate: parseFloat(instrumentLfoRateSlider.value),
+      lfoDepth: parseFloat(instrumentLfoDepthSlider.value),
+      scale: instrumentScaleSelect.value,
       env: {
         a: parseFloat(instrumentASlider.value),
         d: parseFloat(instrumentDSlider.value),
@@ -7555,6 +7744,14 @@ function buildInstrumentWindow() {
   });
   btnRow.appendChild(exportBtn);
 
+  const randBtn = document.createElement("button");
+  randBtn.className = "looper-btn";
+  randBtn.textContent = "Random";
+  randBtn.addEventListener("click", () => {
+    randomizeInstrumentPreset();
+  });
+  btnRow.appendChild(randBtn);
+
   document.body.appendChild(instrumentWindowContainer);
   makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
   updateInstrumentPitchUI();
@@ -7589,7 +7786,14 @@ function saveInstrumentStateToLocalStorage() {
       custom: instrumentPresets.slice(BUILTIN_PRESET_COUNT + 1),
       pitch: instrumentPitchSemitone,
       transpose: instrumentTranspose,
-      followVideo: instrumentPitchFollowVideo
+      followVideo: instrumentPitchFollowVideo,
+      scale: instrumentScale,
+      delay: instDelayNode ? instDelayNode.delayTime.value : 0.25,
+      delayMix: instDelayMix ? instDelayMix.gain.value : 0.3,
+      reverbMix: instReverbMix ? instReverbMix.gain.value : 0.3,
+      volume: instVolumeNode ? instVolumeNode.gain.value : 1,
+      lfoRate: instLfoOsc ? instLfoOsc.frequency.value : 5,
+      lfoDepth: instLfoGain ? instLfoGain.gain.value : 0
     };
     localStorage.setItem(INSTRUMENT_STATE_KEY, JSON.stringify(obj));
   } catch (err) {
@@ -7616,6 +7820,13 @@ function loadInstrumentStateFromLocalStorage() {
     }
     if (typeof obj.transpose === 'number') instrumentTranspose = obj.transpose;
     if (typeof obj.followVideo === 'boolean') instrumentPitchFollowVideo = obj.followVideo;
+    if (typeof obj.scale === 'string') instrumentScale = obj.scale;
+    if (typeof obj.delay === 'number' && instDelayNode) instDelayNode.delayTime.value = obj.delay;
+    if (typeof obj.delayMix === 'number' && instDelayMix) instDelayMix.gain.value = obj.delayMix;
+    if (typeof obj.reverbMix === 'number' && instReverbMix) instReverbMix.gain.value = obj.reverbMix;
+    if (typeof obj.volume === 'number' && instVolumeNode) instVolumeNode.gain.value = obj.volume;
+    if (typeof obj.lfoRate === 'number' && instLfoOsc) instLfoOsc.frequency.value = obj.lfoRate;
+    if (typeof obj.lfoDepth === 'number' && instLfoGain) instLfoGain.gain.value = obj.lfoDepth;
     if (instrumentPitchFollowVideo) {
       applyInstrumentPitchSync();
     } else {

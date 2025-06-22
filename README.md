@@ -146,11 +146,11 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-Press **N** to open the Nimbus Synth window. Choose a preset or create your own.
-While the synth is active, the number keys play notes (C‑major starting from the selected octave).
-The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it separately and use the transpose slider for coarse tuning.
+Press **N** to toggle the Nimbus Synth window. Opening the window activates the instrument; closing it turns it off.
+While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
+The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning.
 
-Each preset stores oscillator type, engine (analog, FM, wavetable or sampler), filter cutoff/Q and ADSR envelope. Use **Save** to store changes or **Delete** to remove custom presets. **Export** saves the current preset as JSON so you can share it.
+Each preset stores oscillator type, engine, filter settings, ADSR envelope and effect parameters (delay, reverb, volume and LFO). Use **Save** to keep changes, **Delete** to remove custom presets or **Export** to share them. The **Random** button quickly generates a usable sound.
 
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 Holding the MIDI Shift note while pressing a loop note erases that loop.
