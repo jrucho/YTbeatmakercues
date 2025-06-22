@@ -146,9 +146,11 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-Press **N** to toggle the Nimbus Synth window. Opening the window activates the instrument; closing it turns it off.
+Press **N** to open the Nimbus Synth window. Use the **Power** button to enable or disable the synth.
 While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic scale from the chosen octave. The **Scale** dropdown lets you switch to major or minor if desired.
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning.
+
+Moving any knob instantly updates the current preset. Built‑in presets cannot be deleted but you can save your tweaks as new ones. Each preset stores oscillator type, engine, filter, ADSR, effects and **Mode** (poly, mono or legato).
 
 Each preset stores oscillator type, engine, filter settings, ADSR envelope and effect parameters (delay, reverb, volume and LFO). Use **Save** to keep changes, **Delete** to remove custom presets or **Export** to share them. The **Random** button quickly generates a usable sound.
 

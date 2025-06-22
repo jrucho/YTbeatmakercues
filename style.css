@@ -6,3 +6,9 @@
   background-color: red;
   pointer-events: none;
 }
+/* Synth knob style */
+input.looper-knob {
+  width: 60px;
+  height: 60px;
+  transform: rotate(-90deg);
+}
