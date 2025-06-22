@@ -148,6 +148,7 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 
 Press **N** to open the Nimbus Synth window. Choose a preset or create your own.
 While the synth is active, the number keys play notes (C‑major starting from the selected octave).
+The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it separately and use the transpose slider for coarse tuning.
 
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 Holding the MIDI Shift note while pressing a loop note erases that loop.

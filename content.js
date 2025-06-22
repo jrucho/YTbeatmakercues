@@ -672,6 +672,15 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       instrumentPreset = 0,
       instrumentOctave = 3,
       instrumentVoices = {},
+      instrumentPitchSemitone = 0,
+      instrumentPitchFollowVideo = true,
+      instrumentTranspose = 0,
+      instrumentPitchRatio = 1,
+      instrumentPitchSlider = null,
+      instrumentPitchValueLabel = null,
+      instrumentPitchSyncCheck = null,
+      instrumentTransposeSlider = null,
+      instrumentTransposeValueLabel = null,
       // Pitch
       pitchPercentage = 0,
       pitchTarget = "video", // "video" or "loop"
@@ -722,6 +731,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateSuperKnobStep();
   loadInstrumentStateFromLocalStorage();
+  updateInstrumentPitchUI();
   updateInstrumentButtonColor();
 
   // When the instrument is active, the number row becomes a mini keyboard
@@ -739,7 +749,7 @@ const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
     '0': 16  // E4
   };
   function getInstBaseMidi() {
-    return instrumentOctave * 12;
+    return instrumentOctave * 12 + instrumentTranspose;
   }
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
@@ -2482,11 +2492,13 @@ function playInstrumentNote(midi) {
   if (!audioContext || instrumentPreset === 0) return;
   const cfg = instrumentSettings();
   if (!cfg) return;
+  const baseMidi = midi + instrumentTranspose;
+  const freqRatio = instrumentPitchRatio;
 
   if (cfg.engine === 'sampler' && cfg.sample) {
     const src = audioContext.createBufferSource();
     src.buffer = cfg.sample;
-    src.playbackRate.value = Math.pow(2, (midi - 60) / 12);
+    src.playbackRate.value = Math.pow(2, (baseMidi - 60) / 12) * freqRatio;
     const g = audioContext.createGain();
     src.connect(g).connect(instrumentGain);
     src.start();
@@ -2496,14 +2508,14 @@ function playInstrumentNote(midi) {
 
   const osc = audioContext.createOscillator();
   osc.type = cfg.oscillator || 'sine';
-  osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+  osc.frequency.value = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
 
   let mod = null;
   if (cfg.engine === 'fm') {
     mod = audioContext.createOscillator();
     const modGain = audioContext.createGain();
     modGain.gain.value = cfg.modIndex || 50;
-    mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (midi - 69) / 12);
+    mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
     mod.connect(modGain).connect(osc.frequency);
     mod.start();
   }
@@ -6289,6 +6301,7 @@ function updatePitch(v) {
   if (advancedPitchLabel)  advancedPitchLabel.innerText = v + "%";
   if (minimalPitchLabel)   minimalPitchLabel.innerText  = v + "%";
   if (window.refreshMinimalState) window.refreshMinimalState();
+  applyInstrumentPitchSync();
 }
 function getCurrentPitchRate() {
   return 1 + pitchPercentage / 100;
@@ -6304,6 +6317,43 @@ function togglePitchTarget() {
     pitchTarget = "video";
     pitchPercentage = videoPitchPercentage;
     updatePitch(pitchPercentage);
+  }
+}
+
+function getGlobalPitchSemitone() {
+  return 12 * Math.log2(getCurrentPitchRate());
+}
+
+function applyInstrumentPitchSync() {
+  if (!instrumentPitchFollowVideo) return;
+  instrumentPitchSemitone = getGlobalPitchSemitone();
+  instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+  if (instrumentPitchSlider) {
+    instrumentPitchSlider.value = instrumentPitchSemitone.toFixed(2);
+    instrumentPitchSlider.disabled = true;
+  }
+  if (instrumentPitchValueLabel) {
+    instrumentPitchValueLabel.innerText = instrumentPitchSemitone.toFixed(2) + ' st';
+  }
+  if (instrumentPitchSyncCheck) instrumentPitchSyncCheck.checked = true;
+}
+
+function updateInstrumentPitchUI() {
+  if (instrumentPitchSlider) {
+    instrumentPitchSlider.value = instrumentPitchSemitone.toFixed(2);
+    instrumentPitchSlider.disabled = instrumentPitchFollowVideo;
+  }
+  if (instrumentPitchValueLabel) {
+    instrumentPitchValueLabel.innerText = instrumentPitchSemitone.toFixed(2) + ' st';
+  }
+  if (instrumentPitchSyncCheck) {
+    instrumentPitchSyncCheck.checked = instrumentPitchFollowVideo;
+  }
+  if (instrumentTransposeSlider) {
+    instrumentTransposeSlider.value = instrumentTranspose;
+  }
+  if (instrumentTransposeValueLabel) {
+    instrumentTransposeValueLabel.innerText = instrumentTranspose + ' st';
   }
 }
 
@@ -7127,83 +7177,150 @@ function buildInstrumentWindow() {
   dh.innerText = "Nimbus Synth";
   instrumentWindowContainer.appendChild(dh);
 
-  const closeBtn = document.createElement("button");
-  closeBtn.className = "looper-btn";
-  closeBtn.innerText = "Close";
-  closeBtn.style.margin = "4px";
-  closeBtn.addEventListener("click", () => {
-    instrumentWindowContainer.style.display = "none";
-  });
-  instrumentWindowContainer.appendChild(closeBtn);
-
-  const powerBtn = document.createElement("button");
-  powerBtn.className = "looper-btn";
-  powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
-  powerBtn.style.margin = "4px";
-  powerBtn.addEventListener("click", () => {
-    setInstrumentPreset(instrumentPreset === 0 ? 1 : 0);
-    powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
-  });
-  instrumentWindowContainer.appendChild(powerBtn);
-
-  const octSelect = document.createElement("select");
-  for (let o = 1; o <= 7; o++) {
-    const opt = document.createElement("option");
-    opt.value = o;
-    opt.text = "Octave " + o;
-    if (o === instrumentOctave) opt.selected = true;
-    octSelect.appendChild(opt);
-  }
-  octSelect.addEventListener("change", () => {
-    instrumentOctave = parseInt(octSelect.value, 10);
-    saveInstrumentStateToLocalStorage();
-  });
-  instrumentWindowContainer.appendChild(octSelect);
-
   const cw = document.createElement("div");
   cw.className = "looper-midimap-content";
   instrumentWindowContainer.appendChild(cw);
 
-  function renderPresets() {
-    let html = instrumentPresets.slice(1).map((p, i) =>
-      `<div class="midimap-row"><button data-p="${i+1}" style="background:${p.color}" class="looper-btn">${escapeHtml(p.name)}</button>${i+1>BUILTIN_PRESET_COUNT?` <button data-d="${i+1}" class="looper-btn">Del</button>`:""}</div>`
-    ).join("");
-    html += '<button class="looper-btn" id="add-instrument-preset">Add Preset</button>';
-    cw.innerHTML = html;
+  const topRow = document.createElement("div");
+  topRow.style.display = "flex";
+  topRow.style.gap = "4px";
+  topRow.style.marginBottom = "8px";
+  cw.appendChild(topRow);
 
-    cw.querySelectorAll('button[data-p]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.getAttribute('data-p'), 10);
-        setInstrumentPreset(idx);
-        instrumentWindowContainer.style.display = 'none';
-      });
-    });
-    cw.querySelectorAll('button[data-d]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.getAttribute('data-d'), 10);
-        if (idx > BUILTIN_PRESET_COUNT) {
-          instrumentPresets.splice(idx, 1);
-          if (instrumentPreset === idx) setInstrumentPreset(0);
-          renderPresets();
-          saveInstrumentStateToLocalStorage();
-        }
-      });
-    });
-    const addBtn = cw.querySelector('#add-instrument-preset');
-    addBtn.addEventListener('click', () => {
-      const name = prompt('Preset name?');
-      const osc = prompt('Oscillator type (sine, square, sawtooth, triangle)?', 'sine');
-      if (!name || !osc) return;
-      instrumentPresets.push({ name, oscillator: osc, filter: 800, q: 1, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, color: randomPresetColor() });
-      saveInstrumentStateToLocalStorage();
-      renderPresets();
+  const powerBtn = document.createElement("button");
+  powerBtn.className = "looper-btn";
+  powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+  powerBtn.addEventListener("click", () => {
+    setInstrumentPreset(instrumentPreset === 0 ? 1 : 0);
+    powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+  });
+  topRow.appendChild(powerBtn);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "looper-btn";
+  closeBtn.innerText = "Close";
+  closeBtn.addEventListener("click", () => {
+    instrumentWindowContainer.style.display = "none";
+  });
+  topRow.appendChild(closeBtn);
+
+  const presetSelect = document.createElement("select");
+  function refreshPresetSelect() {
+    presetSelect.innerHTML = "";
+    instrumentPresets.slice(1).forEach((p, i) => {
+      const opt = new Option(p.name, String(i+1), false, i+1 === instrumentPreset);
+      presetSelect.add(opt);
     });
   }
+  refreshPresetSelect();
+  presetSelect.addEventListener("change", () => {
+    const idx = parseInt(presetSelect.value, 10);
+    setInstrumentPreset(idx);
+    updateInstrumentPitchUI();
+  });
+  cw.appendChild(presetSelect);
 
-  renderPresets();
+  const addPresetBtn = document.createElement("button");
+  addPresetBtn.className = "looper-btn";
+  addPresetBtn.textContent = "Add";
+  addPresetBtn.addEventListener("click", () => {
+    const name = prompt("Preset name?");
+    const osc = prompt("Oscillator type (sine, square, sawtooth, triangle)?", "sine");
+    if (!name || !osc) return;
+    instrumentPresets.push({ name, oscillator: osc, filter: 800, q: 1, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, color: randomPresetColor() });
+    saveInstrumentStateToLocalStorage();
+    refreshPresetSelect();
+  });
+  cw.appendChild(addPresetBtn);
+
+  const octaveSelect = document.createElement("select");
+  for (let o = 1; o <= 7; o++) {
+    const opt = new Option("Oct " + o, String(o), false, o === instrumentOctave);
+    octaveSelect.add(opt);
+  }
+  octaveSelect.addEventListener("change", () => {
+    instrumentOctave = parseInt(octaveSelect.value, 10);
+    saveInstrumentStateToLocalStorage();
+  });
+  cw.appendChild(octaveSelect);
+
+  const pitchRow = document.createElement("div");
+  pitchRow.style.display = "flex";
+  pitchRow.style.alignItems = "center";
+  pitchRow.style.gap = "4px";
+  pitchRow.style.marginTop = "8px";
+  cw.appendChild(pitchRow);
+
+  const pitchLabel = document.createElement("span");
+  pitchLabel.textContent = "Pitch";
+  pitchLabel.style.width = "40px";
+  pitchRow.appendChild(pitchLabel);
+
+  instrumentPitchSlider = document.createElement("input");
+  instrumentPitchSlider.type = "range";
+  instrumentPitchSlider.min = -12;
+  instrumentPitchSlider.max = 12;
+  instrumentPitchSlider.step = 0.1;
+  pitchRow.appendChild(instrumentPitchSlider);
+
+  instrumentPitchValueLabel = document.createElement("span");
+  instrumentPitchValueLabel.style.width = "50px";
+  pitchRow.appendChild(instrumentPitchValueLabel);
+
+  instrumentPitchSyncCheck = document.createElement("input");
+  instrumentPitchSyncCheck.type = "checkbox";
+  instrumentPitchSyncCheck.style.marginLeft = "4px";
+  pitchRow.appendChild(instrumentPitchSyncCheck);
+  const syncLbl = document.createElement("span");
+  syncLbl.textContent = "Sync Video";
+  pitchRow.appendChild(syncLbl);
+
+  instrumentPitchSlider.addEventListener("input", () => {
+    instrumentPitchSemitone = parseFloat(instrumentPitchSlider.value);
+    instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+    updateInstrumentPitchUI();
+    saveInstrumentStateToLocalStorage();
+  });
+
+  instrumentPitchSyncCheck.addEventListener("change", () => {
+    instrumentPitchFollowVideo = instrumentPitchSyncCheck.checked;
+    if (instrumentPitchFollowVideo) applyInstrumentPitchSync();
+    updateInstrumentPitchUI();
+    saveInstrumentStateToLocalStorage();
+  });
+
+  const transRow = document.createElement("div");
+  transRow.style.display = "flex";
+  transRow.style.alignItems = "center";
+  transRow.style.gap = "4px";
+  transRow.style.marginTop = "8px";
+  cw.appendChild(transRow);
+
+  const tLabel = document.createElement("span");
+  tLabel.textContent = "Transpose";
+  tLabel.style.width = "70px";
+  transRow.appendChild(tLabel);
+
+  instrumentTransposeSlider = document.createElement("input");
+  instrumentTransposeSlider.type = "range";
+  instrumentTransposeSlider.min = -24;
+  instrumentTransposeSlider.max = 24;
+  instrumentTransposeSlider.step = 1;
+  transRow.appendChild(instrumentTransposeSlider);
+
+  instrumentTransposeValueLabel = document.createElement("span");
+  instrumentTransposeValueLabel.style.width = "40px";
+  transRow.appendChild(instrumentTransposeValueLabel);
+
+  instrumentTransposeSlider.addEventListener("input", () => {
+    instrumentTranspose = parseInt(instrumentTransposeSlider.value, 10);
+    updateInstrumentPitchUI();
+    saveInstrumentStateToLocalStorage();
+  });
 
   document.body.appendChild(instrumentWindowContainer);
   makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
+  updateInstrumentPitchUI();
 }
 
 /* ------------------------------------------------------
@@ -7232,7 +7349,10 @@ function saveInstrumentStateToLocalStorage() {
     const obj = {
       preset: instrumentPreset,
       octave: instrumentOctave,
-      custom: instrumentPresets.slice(BUILTIN_PRESET_COUNT + 1)
+      custom: instrumentPresets.slice(BUILTIN_PRESET_COUNT + 1),
+      pitch: instrumentPitchSemitone,
+      transpose: instrumentTranspose,
+      followVideo: instrumentPitchFollowVideo
     };
     localStorage.setItem(INSTRUMENT_STATE_KEY, JSON.stringify(obj));
   } catch (err) {
@@ -7253,6 +7373,18 @@ function loadInstrumentStateFromLocalStorage() {
     }
     if (typeof obj.octave === 'number') instrumentOctave = obj.octave;
     if (typeof obj.preset === 'number') instrumentPreset = obj.preset;
+    if (typeof obj.pitch === 'number') {
+      instrumentPitchSemitone = obj.pitch;
+      instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+    }
+    if (typeof obj.transpose === 'number') instrumentTranspose = obj.transpose;
+    if (typeof obj.followVideo === 'boolean') instrumentPitchFollowVideo = obj.followVideo;
+    if (instrumentPitchFollowVideo) {
+      applyInstrumentPitchSync();
+    } else {
+      instrumentPitchRatio = Math.pow(2, instrumentPitchSemitone / 12);
+    }
+    updateInstrumentPitchUI();
   } catch (err) {
     console.warn("Failed loading instrument state", err);
   }
