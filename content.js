@@ -603,6 +603,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       micButton = null,          // <-- NEW: declare it here
       instrumentButton = null,
       instrumentButtonMin = null,
+      instrumentPowerButton = null,
       detectBpmButton = null,
       minimalActive = true,
       loopProgressFills = new Array(MAX_AUDIO_LOOPS).fill(null),
@@ -755,7 +756,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 3;
-  const PRESET_COLORS = ["#6cf","#fc6","#f66","#c6f","#f0c","#9cf","#cff","#fc9","#9f9","#f99"];
+  const PRESET_COLORS = [
+    "#52a3cc",
+    "#cca352",
+    "#cc5252",
+    "#a352cc",
+    "#cc00a3",
+    "#7aa3cc",
+    "#a3cccc",
+    "#cca37a",
+    "#7acc7a",
+    "#cc7a7a"
+  ];
   const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
   const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
   const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
@@ -2513,6 +2525,10 @@ function updateInstrumentButtonColor() {
   if (instrumentButtonMin) {
     instrumentButtonMin.innerText = `Instrument:${name}`;
     instrumentButtonMin.style.backgroundColor = color;
+  }
+  if (instrumentPowerButton) {
+    instrumentPowerButton.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+    instrumentPowerButton.style.backgroundColor = color;
   }
 }
 
@@ -5718,10 +5734,17 @@ minimalUIContainer.appendChild(importMediaBtn);
     cassetteButtonMin.style.backgroundColor = cassetteActive ? "#b05af5" : "#444";
 
     if (instrumentButtonMin) {
-      const labels = ["Off","Reso","Fender","808"];
-      const colors = ["#222","#6cf","#fc6","#f66"];
-      instrumentButtonMin.innerText = "Instrument:" + labels[instrumentPreset];
-      instrumentButtonMin.style.backgroundColor = colors[instrumentPreset];
+      let name = "Off";
+      let color = "#222";
+      if (instrumentPreset > 0) {
+        const p = instrumentPresets[instrumentPreset];
+        if (p) {
+          name = p.name;
+          color = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
+        }
+      }
+      instrumentButtonMin.innerText = "Instrument:" + name;
+      instrumentButtonMin.style.backgroundColor = color;
     }
   }
   window.refreshMinimalState = refreshMinimalState;
@@ -7365,10 +7388,10 @@ function buildInstrumentWindow() {
 
   const powerBtn = document.createElement("button");
   powerBtn.className = "looper-btn";
-  powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+  instrumentPowerButton = powerBtn;
   powerBtn.addEventListener("click", () => {
     setInstrumentPreset(instrumentPreset === 0 ? instrumentLastPreset : 0);
-    powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+    updateInstrumentButtonColor();
   });
   topRow.appendChild(powerBtn);
 
@@ -7847,6 +7870,7 @@ function buildInstrumentWindow() {
 
   document.body.appendChild(instrumentWindowContainer);
   makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
+  updateInstrumentButtonColor();
   updateInstrumentPitchUI();
 }
 
