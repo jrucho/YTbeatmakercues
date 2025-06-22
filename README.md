@@ -13,6 +13,8 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Synth stays off until opened and fades out cleanly when closed
 * Loops align perfectly to the master start time for rock‑solid sync
 * Progress bars track each loop's own start so visuals line up every time
+* The longest clip becomes the reference so loops of different lengths stay in phase
+* Newly recorded loops begin playing on the very next bar for snappier response
 * Reduced latency and cleaner loop boundaries for punchier recordings
 
 ## New in 1.4

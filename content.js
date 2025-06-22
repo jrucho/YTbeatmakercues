@@ -551,6 +551,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       newLoopStartTimeout = null,
       pendingPlayTimeout = null,
       pendingStopTimeouts = new Array(MAX_AUDIO_LOOPS).fill(null),
+      scheduledStopTime = null,
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
@@ -2010,9 +2011,10 @@ function crossfadeLoop(buffer, fadeTime) {
 }
 
 function getNextBarTime(afterTime) {
-  if (!baseLoopDuration || loopStartAbsoluteTime === null) return afterTime;
-  const bar = baseLoopDuration;
-  return loopStartAbsoluteTime + Math.ceil((afterTime - loopStartAbsoluteTime) / bar) * bar;
+  if (loopStartAbsoluteTime === null) return afterTime;
+  const cycle = Math.max(baseLoopDuration || 0, ...loopDurations);
+  if (!cycle) return afterTime;
+  return loopStartAbsoluteTime + Math.ceil((afterTime - loopStartAbsoluteTime) / cycle) * cycle;
 }
 
 
@@ -2076,13 +2078,20 @@ function finalizeLoopBuffer(buf) {
   recordingNewLoop = false;
   loopBuffer = buf;
   loopPlaying[activeLoopIndex] = true;
+  updateMasterLoopIndex();
 
   looperState = "playing";
   if (wasNew && loopSources.some(Boolean)) {
-    playNewLoop(activeLoopIndex);
+    const when = audioContext.currentTime + PLAY_PADDING;
+    let offset = 0;
+    if (scheduledStopTime !== null) {
+      offset = Math.max(0, audioContext.currentTime - scheduledStopTime);
+    }
+    playSingleLoop(activeLoopIndex, when, offset);
   } else {
     playLoop();
   }
+  scheduledStopTime = null;
   updateLooperButtonColor();
   updateExportButtonColor();
   if (window.refreshMinimalState) window.refreshMinimalState();
@@ -3698,6 +3707,7 @@ async function loadAudio(path) {
 function beginLoopRecording() {
   ensureAudioContext().then(async () => {
     if (!audioContext) return;
+    scheduledStopTime = null;
     bus1RecGain.gain.value = videoAudioEnabled ? 1 : 1;
     bus2RecGain.gain.value = 1;
     bus3RecGain.gain.value = 0;
@@ -3773,6 +3783,7 @@ function scheduleStopRecording() {
     const now = audioContext.currentTime;
     const elapsed = (now - loopStartAbsoluteTime) % d;
     const remain = d - elapsed;
+    scheduledStopTime = now + remain;
     setTimeout(() => {
       if (looperState === "recording") stopRecordingAndPlay();
     }, remain * 1000);
@@ -3835,7 +3846,7 @@ function playNewLoop(index) {
   });
 }
 
-function playSingleLoop(index, startTime = null) {
+function playSingleLoop(index, startTime = null, offset = 0) {
   ensureAudioContext().then(() => {
     if (!audioContext || !audioLoopBuffers[index]) return;
     stopLoopSource(index);
@@ -3851,14 +3862,15 @@ function playSingleLoop(index, startTime = null) {
     src.playbackRate.value = rate;
     src.connect(g).connect(loopAudioGain);
     const when = startTime !== null ? startTime : (loopSource ? getNextBarTime(audioContext.currentTime + PLAY_PADDING) : audioContext.currentTime);
-    src.start(when);
+    const off = Math.max(0, offset % (audioLoopBuffers[index].duration || 1e-6));
+    src.start(when, off);
     if (!loopSource) {
       loopStartAbsoluteTime = when;
       masterLoopIndex = index;
     }
     loopSources[index] = src;
     loopPlaying[index] = true;
-    loopStartOffsets[index] = when - loopStartAbsoluteTime;
+    loopStartOffsets[index] = when - loopStartAbsoluteTime - off;
     if (!loopSource) loopSource = src;
   });
 }
@@ -3871,7 +3883,7 @@ function schedulePlayLoop(index) {
     if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
       when = getNextBarTime(when);
     }
-    playSingleLoop(index, when);
+    playSingleLoop(index, when, 0);
     if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
@@ -3884,7 +3896,13 @@ function scheduleResumeLoop(index) {
     if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
       when = getNextBarTime(when);
     }
-    playSingleLoop(index, when);
+    const dur = loopDurations[index] || baseLoopDuration;
+    let offset = 0;
+    if (dur && loopStartAbsoluteTime !== null) {
+      const elapsed = when - loopStartAbsoluteTime - loopStartOffsets[index];
+      offset = ((elapsed % dur) + dur) % dur;
+    }
+    playSingleLoop(index, when, offset);
   });
 }
 
@@ -4051,6 +4069,16 @@ function stopLoop(index) {
   pendingStopTimeouts[index] = setTimeout(() => stopLoopImmediately(index), (remain + 0.05) * 1000);
 }
 
+function updateMasterLoopIndex() {
+  let longest = 0;
+  let idx = null;
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const dur = audioLoopBuffers[i] ? loopDurations[i] : 0;
+    if (dur > longest) { longest = dur; idx = i; }
+  }
+  masterLoopIndex = idx;
+}
+
 function eraseAudioLoop() {
   const idx = activeLoopIndex;
   if (audioLoopBuffers[idx]) pushUndoState();
@@ -4058,6 +4086,9 @@ function eraseAudioLoop() {
   stopLoopSource(idx);
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   audioLoopBuffers[idx] = null;
+  loopDurations[idx] = 0;
+  loopStartOffsets[idx] = 0;
+  audioLoopRates[idx] = 1;
   if (audioLoopBuffers.every(b => !b)) {
     loopBuffer = null;
     baseLoopDuration = null;
@@ -4070,6 +4101,7 @@ function eraseAudioLoop() {
     }
     if (loopPlaying.some(p => p)) looperState = "playing"; else looperState = "idle";
   }
+  updateMasterLoopIndex();
   updateExportButtonColor();
   updateLooperButtonColor();
   blinkButton(unifiedLooperButton, updateLooperButtonColor);
@@ -4090,12 +4122,15 @@ function eraseAllAudioLoops() {
   audioLoopBuffers.fill(null);
   loopPlaying.fill(false);
   audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1);
+  loopDurations.fill(0);
+  loopStartOffsets.fill(0);
   baseLoopDuration = null;
   loopsBPM = null;
   loopBuffer = null;
   if (newLoopStartTimeout) { clearTimeout(newLoopStartTimeout); newLoopStartTimeout = null; }
   pendingStopTimeouts.forEach((t, i) => { if (t) clearTimeout(t); pendingStopTimeouts[i] = null; });
   looperState = "idle";
+  updateMasterLoopIndex();
   updateExportButtonColor();
   updateLooperButtonColor();
   blinkButton(unifiedLooperButton, updateLooperButtonColor);
