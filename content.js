@@ -555,6 +555,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
       loopDurations = new Array(MAX_AUDIO_LOOPS).fill(0),
+      loopStartOffsets = new Array(MAX_AUDIO_LOOPS).fill(0),
       masterLoopIndex = null,
       // Video Looper
       videoLooperState = "idle",
@@ -2391,9 +2392,11 @@ function loopProgressStep() {
     const ld = loopDurations[i] || baseLoopDuration;
     let dur = ld;
     if (pitchTarget === "loop") dur /= getCurrentPitchRate();
-    const progress = elapsed % dur;
-    const pct = (progress / dur) * 100;
-    const bar = Math.floor((progress / dur) * 4);
+    const offset = loopStartOffsets[i] || 0;
+    const progress = (elapsed - offset) % dur;
+    const adj = progress < 0 ? progress + dur : progress;
+    const pct = (adj / dur) * 100;
+    const bar = Math.floor((adj / dur) * 4);
     if (adv) {
       adv.style.width = pct + '%';
       adv.style.opacity = active ? 1 : 0;
@@ -3795,7 +3798,12 @@ function playLoop(startTime = null) {
     if (!loopSources.some(Boolean)) return;
     const when = startTime !== null ? startTime : audioContext.currentTime;
     loopStartAbsoluteTime = when;
-    loopSources.forEach(src => { if (src) src.start(when); });
+    loopSources.forEach((src, i) => {
+      if (src) {
+        src.start(when);
+        loopStartOffsets[i] = 0;
+      }
+    });
     loopSource = loopSources.find(src => src) || null;
     masterLoopIndex = loopSources.findIndex(src => src);
     if (masterLoopIndex === -1) masterLoopIndex = null;
@@ -3822,6 +3830,7 @@ function playNewLoop(index) {
     loopSources[index] = src;
     if (!loopSource) loopSource = src;
     loopPlaying[index] = true;
+    loopStartOffsets[index] = when - loopStartAbsoluteTime;
     if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
@@ -3849,6 +3858,7 @@ function playSingleLoop(index, startTime = null) {
     }
     loopSources[index] = src;
     loopPlaying[index] = true;
+    loopStartOffsets[index] = when - loopStartAbsoluteTime;
     if (!loopSource) loopSource = src;
   });
 }
@@ -3884,6 +3894,7 @@ function stopAllLoopSources() {
     if (src) { try { src.stop(); src.disconnect(); } catch {} }
     if (g) { try { g.disconnect(); } catch {} }
     loopGainNodes[i] = null;
+    loopStartOffsets[i] = 0;
   });
   loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
   loopSource = null;
@@ -3902,6 +3913,7 @@ function stopLoopSource(index) {
   loopSources[index] = null;
   loopGainNodes[index] = null;
   loopPlaying[index] = false;
+  loopStartOffsets[index] = 0;
   if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
   if (loopSource === src) loopSource = loopSources.find(s => s) || null;
   if (index === masterLoopIndex) {
