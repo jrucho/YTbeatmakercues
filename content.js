@@ -475,7 +475,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   * Global Variables
   **************************************/
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
-  const PLAY_PADDING = 0.05; // schedule slightly ahead for stable sync
+  const PLAY_PADDING = 0.02; // shorter scheduling for lower latency
   const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
@@ -2040,7 +2040,7 @@ function finalizeLoopBuffer(buf) {
   let peak = measurePeak(buf);
   if (peak > 1.0) scaleBuffer(buf, 1.0 / peak);
   // Smooth the transition between loop boundaries
-  crossfadeLoop(buf, 0.005);
+  crossfadeLoop(buf, 0.002);
 
   pushUndoState();
   if (!baseLoopDuration) {
