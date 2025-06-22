@@ -672,6 +672,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       bus4RecGain = null,
       instrumentPreset = 0,
       instrumentLastPreset = 1,
+      instrumentLayers = [1],
       instrumentOctave = 3,
       instrumentVoices = {},
       instrumentPitchSemitone = 0,
@@ -2488,9 +2489,24 @@ function toggleCassette() {
 
 function setInstrumentPreset(idx) {
   instrumentPreset = idx;
+  instrumentLayers = idx > 0 ? [idx] : [];
   if (instrumentPreset > 0) instrumentLastPreset = instrumentPreset;
   if (instrumentPreset === 0) {
     for (const n of Object.keys(instrumentVoices)) stopInstrumentNote(Number(n));
+  }
+  updateInstrumentButtonColor();
+  refreshInstrumentEditFields();
+  saveInstrumentStateToLocalStorage();
+  if (window.refreshMinimalState) window.refreshMinimalState();
+}
+
+function setInstrumentLayers(indices) {
+  instrumentLayers = indices.filter(i => i > 0 && i < instrumentPresets.length);
+  if (instrumentLayers.length > 0) {
+    instrumentPreset = instrumentLayers[0];
+    instrumentLastPreset = instrumentPreset;
+  } else {
+    instrumentPreset = 0;
   }
   updateInstrumentButtonColor();
   refreshInstrumentEditFields();
@@ -2512,11 +2528,12 @@ function deactivateInstrument() {
 function updateInstrumentButtonColor() {
   let name = "Off";
   let color = "#444";
-  if (instrumentPreset > 0) {
-    const p = instrumentPresets[instrumentPreset];
+  const firstIdx = instrumentLayers[0] || 0;
+  if (firstIdx > 0) {
+    const p = instrumentPresets[firstIdx];
     if (p) {
       name = p.name;
-      color = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
+      color = p.color || PRESET_COLORS[(firstIdx - 1) % PRESET_COLORS.length];
     }
   }
   if (instrumentButton) {
@@ -2573,71 +2590,74 @@ function instrumentSettings() {
 }
 
 function playInstrumentNote(midi) {
-  if (!audioContext || instrumentPreset === 0) return;
-  const cfg = instrumentSettings();
-  if (!cfg) return;
+  if (!audioContext || instrumentLayers.length === 0) return;
   const baseMidi = midi + instrumentTranspose;
   const freqRatio = instrumentPitchRatio;
+  if (!instrumentVoices[midi]) instrumentVoices[midi] = [];
 
-  if (cfg.mode === 'legato' && Object.keys(instrumentVoices).length > 0) {
-    const prev = Object.keys(instrumentVoices)[0];
-    const v = instrumentVoices[prev];
-    const freq = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
-    if (v.osc) v.osc.frequency.setValueAtTime(freq, audioContext.currentTime);
-    if (v.mod) v.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio, audioContext.currentTime);
-    delete instrumentVoices[prev];
-    instrumentVoices[midi] = v;
-    return;
-  }
+  instrumentLayers.forEach(idx => {
+    const cfg = instrumentPresets[idx];
+    if (!cfg) return;
 
-  if (cfg.mode === 'mono') {
-    Object.keys(instrumentVoices).forEach(n => stopInstrumentNote(Number(n)));
-  }
+    if (cfg.mode === 'legato' && instrumentVoices[midi] && instrumentVoices[midi].length > 0) {
+      const v = instrumentVoices[midi][0];
+      const freq = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+      if (v.osc) v.osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+      if (v.mod) v.mod.frequency.setValueAtTime((cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio, audioContext.currentTime);
+      return;
+    }
 
-  if (cfg.engine === 'sampler' && cfg.sample) {
-    const src = audioContext.createBufferSource();
-    src.buffer = cfg.sample;
-    src.playbackRate.value = Math.pow(2, (baseMidi - 60) / 12) * freqRatio;
+    if (cfg.mode === 'mono') {
+      if (instrumentVoices[midi]) {
+        instrumentVoices[midi].forEach(v => {
+          if (v.preset === idx) stopInstrumentVoice(v);
+        });
+      }
+    }
+
+    if (cfg.engine === 'sampler' && cfg.sample) {
+      const src = audioContext.createBufferSource();
+      src.buffer = cfg.sample;
+      src.playbackRate.value = Math.pow(2, (baseMidi - 60) / 12) * freqRatio;
+      const g = audioContext.createGain();
+      src.connect(g).connect(instrumentGain);
+      src.start();
+      instrumentVoices[midi].push({ src, g, env: { r: cfg.env?.r || 0 }, preset: idx });
+      return;
+    }
+
+    const osc = audioContext.createOscillator();
+    osc.type = cfg.oscillator || 'sine';
+    osc.frequency.value = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+    instLfoGain.connect(osc.frequency);
+
+    let mod = null;
+    if (cfg.engine === 'fm') {
+      mod = audioContext.createOscillator();
+      const modGain = audioContext.createGain();
+      modGain.gain.value = cfg.modIndex || 50;
+      mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
+      mod.connect(modGain).connect(osc.frequency);
+      mod.start();
+    }
+
+    const f = audioContext.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cfg.filter;
+    f.Q.value = cfg.q;
     const g = audioContext.createGain();
-    src.connect(g).connect(instrumentGain);
-    src.start();
-    instrumentVoices[midi] = { src, g, env: { r: cfg.env?.r || 0 } };
-    return;
-  }
-
-  const osc = audioContext.createOscillator();
-  osc.type = cfg.oscillator || 'sine';
-  osc.frequency.value = 440 * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
-  instLfoGain.connect(osc.frequency);
-
-  let mod = null;
-  if (cfg.engine === 'fm') {
-    mod = audioContext.createOscillator();
-    const modGain = audioContext.createGain();
-    modGain.gain.value = cfg.modIndex || 50;
-    mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (baseMidi - 69) / 12) * freqRatio;
-    mod.connect(modGain).connect(osc.frequency);
-    mod.start();
-  }
-
-  const f = audioContext.createBiquadFilter();
-  f.type = 'lowpass';
-  f.frequency.value = cfg.filter;
-  f.Q.value = cfg.q;
-  const g = audioContext.createGain();
-  g.gain.setValueAtTime(0, audioContext.currentTime);
-  osc.connect(f).connect(g).connect(instrumentGain);
-  osc.start();
-  const e = cfg.env;
-  let t = audioContext.currentTime;
-  g.gain.linearRampToValueAtTime(1, t + e.a);
-  g.gain.linearRampToValueAtTime(e.s, t + e.a + e.d);
-  instrumentVoices[midi] = { osc, mod, filter: f, g, env: e };
+    g.gain.setValueAtTime(0, audioContext.currentTime);
+    osc.connect(f).connect(g).connect(instrumentGain);
+    osc.start();
+    const e = cfg.env;
+    let t = audioContext.currentTime;
+    g.gain.linearRampToValueAtTime(1, t + e.a);
+    g.gain.linearRampToValueAtTime(e.s, t + e.a + e.d);
+    instrumentVoices[midi].push({ osc, mod, filter: f, g, env: e, preset: idx });
+  });
 }
 
-function stopInstrumentNote(midi) {
-  const v = instrumentVoices[midi];
-  if (!v) return;
+function stopInstrumentVoice(v) {
   const now = audioContext.currentTime;
   if (v.g) {
     v.g.gain.cancelScheduledValues(now);
@@ -2647,6 +2667,12 @@ function stopInstrumentNote(midi) {
   if (v.mod) v.mod.stop(now + v.env.r + 0.05);
   if (v.osc) v.osc.stop(now + v.env.r + 0.05);
   if (v.src) v.src.stop();
+}
+
+function stopInstrumentNote(midi) {
+  const voices = instrumentVoices[midi];
+  if (!voices) return;
+  voices.forEach(v => stopInstrumentVoice(v));
   delete instrumentVoices[midi];
 }
 /**************************************
@@ -7423,17 +7449,19 @@ function buildInstrumentWindow() {
   topRow.appendChild(closeBtn);
 
   const presetSelect = document.createElement("select");
+  presetSelect.multiple = true;
+  presetSelect.size = 5;
   function refreshPresetSelect() {
     presetSelect.innerHTML = "";
     instrumentPresets.slice(1).forEach((p, i) => {
-      const opt = new Option(p.name, String(i+1), false, i+1 === instrumentPreset);
+      const opt = new Option(p.name, String(i+1), false, instrumentLayers.includes(i+1));
       presetSelect.add(opt);
     });
   }
   refreshPresetSelect();
   presetSelect.addEventListener("change", () => {
-    const idx = parseInt(presetSelect.value, 10);
-    setInstrumentPreset(idx);
+    const indices = Array.from(presetSelect.selectedOptions).map(o => parseInt(o.value,10));
+    setInstrumentLayers(indices);
     updateInstrumentPitchUI();
   });
   cw.appendChild(presetSelect);
@@ -7588,7 +7616,7 @@ function buildInstrumentWindow() {
   addParamRow("Oscillator", instrumentOscSelect);
   instrumentOscSelect.addEventListener("change", () => {
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].oscillator = instrumentOscSelect.value;
-    Object.values(instrumentVoices).forEach(v => { if (v.osc) v.osc.type = instrumentOscSelect.value; });
+    Object.values(instrumentVoices).flat().forEach(v => { if (v.osc) v.osc.type = instrumentOscSelect.value; });
     saveInstrumentStateToLocalStorage();
   });
 
@@ -7618,7 +7646,7 @@ function buildInstrumentWindow() {
   instrumentFilterSlider.addEventListener("input", () => {
     instrumentFilterValue.textContent = instrumentFilterSlider.value;
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].filter = parseFloat(instrumentFilterSlider.value);
-    Object.values(instrumentVoices).forEach(v => { if (v.filter) v.filter.frequency.value = parseFloat(instrumentFilterSlider.value); });
+    Object.values(instrumentVoices).flat().forEach(v => { if (v.filter) v.filter.frequency.value = parseFloat(instrumentFilterSlider.value); });
     saveInstrumentStateToLocalStorage();
   });
   addParamRow("Filter", instrumentFilterSlider, instrumentFilterValue);
@@ -7633,7 +7661,7 @@ function buildInstrumentWindow() {
   instrumentQSlider.addEventListener("input", () => {
     instrumentQValue.textContent = instrumentQSlider.value;
     if (instrumentPreset > 0) instrumentPresets[instrumentPreset].q = parseFloat(instrumentQSlider.value);
-    Object.values(instrumentVoices).forEach(v => { if (v.filter) v.filter.Q.value = parseFloat(instrumentQSlider.value); });
+    Object.values(instrumentVoices).flat().forEach(v => { if (v.filter) v.filter.Q.value = parseFloat(instrumentQSlider.value); });
     saveInstrumentStateToLocalStorage();
   });
   addParamRow("Resonance", instrumentQSlider, instrumentQValue);
@@ -7850,7 +7878,7 @@ function buildInstrumentWindow() {
       if (!name) return;
       instrumentPresets.push({ ...settings, name, color: randomPresetColor() });
       idx = instrumentPresets.length - 1;
-      setInstrumentPreset(idx);
+      setInstrumentLayers([idx]);
       refreshPresetSelect();
     } else {
       Object.assign(instrumentPresets[idx], settings);
@@ -7867,7 +7895,7 @@ function buildInstrumentWindow() {
     if (idx <= BUILTIN_PRESET_COUNT) { alert("Cannot delete built-in presets"); return; }
     if (!confirm("Delete preset?")) return;
     instrumentPresets.splice(idx,1);
-    setInstrumentPreset(0);
+    setInstrumentLayers([]);
     refreshPresetSelect();
     saveInstrumentStateToLocalStorage();
   });
@@ -7941,7 +7969,8 @@ function saveInstrumentStateToLocalStorage() {
       reverbMix: instReverbMix ? instReverbMix.gain.value : 0,
       volume: instVolumeNode ? instVolumeNode.gain.value : 1,
       lfoRate: instLfoOsc ? instLfoOsc.frequency.value : 5,
-      lfoDepth: instLfoGain ? instLfoGain.gain.value : 0
+      lfoDepth: instLfoGain ? instLfoGain.gain.value : 0,
+      layers: instrumentLayers
     };
     localStorage.setItem(INSTRUMENT_STATE_KEY, JSON.stringify(obj));
   } catch (err) {
@@ -7961,6 +7990,10 @@ function loadInstrumentStateFromLocalStorage() {
       });
     }
     if (typeof obj.octave === 'number') instrumentOctave = obj.octave;
+    if (Array.isArray(obj.layers)) {
+      instrumentLayers = obj.layers.filter(i => i > 0 && i < instrumentPresets.length);
+      instrumentLastPreset = instrumentLayers[0] || 1;
+    }
     if (typeof obj.preset === 'number') instrumentLastPreset = obj.preset;
     if (typeof obj.pitch === 'number') {
       instrumentPitchSemitone = obj.pitch;
