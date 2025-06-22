@@ -670,6 +670,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       bus3RecGain = null,
       bus4RecGain = null,
       instrumentPreset = 0,
+      instrumentOctave = 3,
       instrumentVoices = {},
       // Pitch
       pitchPercentage = 0,
@@ -710,10 +711,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
+  const BUILTIN_PRESET_COUNT = 10;
+  const PRESET_COLORS = ["#6cf","#fc6","#f66","#c6f","#f0c","#9cf","#cff","#fc9","#9f9","#f99"];
+  function randomPresetColor() {
+    const hue = Math.floor(Math.random() * 360);
+    return `hsl(${hue},70%,60%)`;
+  }
   // Speed level 1 matches the old fastest rate. Levels 2 and 3 are
   // progressively quicker for rapid cue movement.
-  const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
+const superKnobSpeedMap = { 1: 0.12, 2: 0.25, 3: 0.5 };
   updateSuperKnobStep();
+  loadInstrumentStateFromLocalStorage();
+  updateInstrumentButtonColor();
 
   // When the instrument is active, the number row becomes a mini keyboard
   // using a simple C major scale starting from C3.
@@ -729,7 +738,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     '9': 14, // D4
     '0': 16  // E4
   };
-  const INST_BASE_MIDI = 48; // C3
+  function getInstBaseMidi() {
+    return instrumentOctave * 12;
+  }
 
   // ---- Load saved keyboard / MIDI mappings from chrome.storage ----
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -2419,20 +2430,26 @@ function toggleCassette() {
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
-function toggleInstrument() {
-  instrumentPreset = (instrumentPreset + 1) % instrumentPresets.length;
+function setInstrumentPreset(idx) {
+  instrumentPreset = idx;
   if (instrumentPreset === 0) {
     for (const n of Object.keys(instrumentVoices)) stopInstrumentNote(Number(n));
   }
   updateInstrumentButtonColor();
+  saveInstrumentStateToLocalStorage();
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
 function updateInstrumentButtonColor() {
-  const labels = instrumentPresets.map(p => p ? p.name : "Off");
-  const colors = ["#222", "#6cf", "#fc6", "#f66", "#c6f", "#f0c", "#9cf", "#cff", "#fc9", "#9f9", "#f99"];
-  const name = labels[instrumentPreset] || "Preset";
-  const color = colors[instrumentPreset] || "#444";
+  let name = "Off";
+  let color = "#444";
+  if (instrumentPreset > 0) {
+    const p = instrumentPresets[instrumentPreset];
+    if (p) {
+      name = p.name;
+      color = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
+    }
+  }
   if (instrumentButton) {
     instrumentButton.innerText = `Instrument:${name}`;
     instrumentButton.style.backgroundColor = color;
@@ -2445,16 +2462,16 @@ function updateInstrumentButtonColor() {
 
 const instrumentPresets = [
   null,
-  { name: 'Reso', oscillator: 'sawtooth', filter: 200, q: 4, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 } },
-  { name: 'Fender', oscillator: 'triangle', filter: 800, q: 1, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 } },
-  { name: '808', oscillator: 'sine', filter: 80, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 } },
-  { name: 'Organ', oscillator: 'square', filter: 1000, q: 2, env: { a: 0.02, d: 0.3, s: 0.7, r: 0.3 } },
-  { name: 'Moog', oscillator: 'sawtooth', filter: 500, q: 3, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 } },
-  { name: 'Pad', oscillator: 'triangle', filter: 1200, q: 1, env: { a: 0.3, d: 0.5, s: 0.7, r: 0.8 } },
-  { name: 'Strings', oscillator: 'sawtooth', filter: 1500, q: 2, env: { a: 0.2, d: 0.3, s: 0.9, r: 0.6 } },
-  { name: 'Keys', oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.25, s: 0.8, r: 0.4 } },
-  { name: 'Pluck', oscillator: 'square', filter: 2500, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 } },
-  { name: 'Sweep', oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 } }
+  { name: 'Reso', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 200, q: 4, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, engine: 'analog' },
+  { name: 'Fender', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 800, q: 1, env: { a: 0.005, d: 0.15, s: 0.9, r: 0.25 }, engine: 'analog' },
+  { name: '808', color: PRESET_COLORS[2], oscillator: 'sine', filter: 80, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 }, engine: 'analog' },
+  { name: 'Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 1000, q: 2, env: { a: 0.02, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog' },
+  { name: 'Moog', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 500, q: 3, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog' },
+  { name: 'Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 1200, q: 1, env: { a: 0.3, d: 0.5, s: 0.7, r: 0.8 }, engine: 'wavetable' },
+  { name: 'Strings', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 1500, q: 2, env: { a: 0.2, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable' },
+  { name: 'Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm' },
+  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 2500, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm' },
+  { name: 'Sweep', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm' }
 ];
 
 function instrumentSettings() {
@@ -2465,9 +2482,32 @@ function playInstrumentNote(midi) {
   if (!audioContext || instrumentPreset === 0) return;
   const cfg = instrumentSettings();
   if (!cfg) return;
+
+  if (cfg.engine === 'sampler' && cfg.sample) {
+    const src = audioContext.createBufferSource();
+    src.buffer = cfg.sample;
+    src.playbackRate.value = Math.pow(2, (midi - 60) / 12);
+    const g = audioContext.createGain();
+    src.connect(g).connect(instrumentGain);
+    src.start();
+    instrumentVoices[midi] = { src, g, env: { r: cfg.env?.r || 0 } };
+    return;
+  }
+
   const osc = audioContext.createOscillator();
-  osc.type = cfg.oscillator;
+  osc.type = cfg.oscillator || 'sine';
   osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+
+  let mod = null;
+  if (cfg.engine === 'fm') {
+    mod = audioContext.createOscillator();
+    const modGain = audioContext.createGain();
+    modGain.gain.value = cfg.modIndex || 50;
+    mod.frequency.value = (cfg.modFreq || 2) * Math.pow(2, (midi - 69) / 12);
+    mod.connect(modGain).connect(osc.frequency);
+    mod.start();
+  }
+
   const f = audioContext.createBiquadFilter();
   f.type = 'lowpass';
   f.frequency.value = cfg.filter;
@@ -2480,17 +2520,21 @@ function playInstrumentNote(midi) {
   let t = audioContext.currentTime;
   g.gain.linearRampToValueAtTime(1, t + e.a);
   g.gain.linearRampToValueAtTime(e.s, t + e.a + e.d);
-  instrumentVoices[midi] = { osc, g, env: e };
+  instrumentVoices[midi] = { osc, mod, g, env: e };
 }
 
 function stopInstrumentNote(midi) {
   const v = instrumentVoices[midi];
   if (!v) return;
   const now = audioContext.currentTime;
-  v.g.gain.cancelScheduledValues(now);
-  v.g.gain.setValueAtTime(v.g.gain.value, now);
-  v.g.gain.linearRampToValueAtTime(0, now + v.env.r);
-  v.osc.stop(now + v.env.r + 0.05);
+  if (v.g) {
+    v.g.gain.cancelScheduledValues(now);
+    v.g.gain.setValueAtTime(v.g.gain.value, now);
+    v.g.gain.linearRampToValueAtTime(0, now + v.env.r);
+  }
+  if (v.mod) v.mod.stop(now + v.env.r + 0.05);
+  if (v.osc) v.osc.stop(now + v.env.r + 0.05);
+  if (v.src) v.src.stop();
   delete instrumentVoices[midi];
 }
 /**************************************
@@ -4670,12 +4714,12 @@ function onKeyDown(e) {
   if (k === extensionKeys.instrumentToggle.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
-    toggleInstrument();
+    showInstrumentWindowToggle();
     return;
   }
 
   if (instrumentPreset > 0 && KEYBOARD_INST_MAP[k] !== undefined) {
-    playInstrumentNote(INST_BASE_MIDI + KEYBOARD_INST_MAP[k]);
+    playInstrumentNote(getInstBaseMidi() + KEYBOARD_INST_MAP[k]);
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -4875,7 +4919,7 @@ function onKeyUp(e) {
 }
 
   if (instrumentPreset > 0 && KEYBOARD_INST_MAP[k] !== undefined) {
-    stopInstrumentNote(INST_BASE_MIDI + KEYBOARD_INST_MAP[k]);
+    stopInstrumentNote(getInstBaseMidi() + KEYBOARD_INST_MAP[k]);
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -5318,16 +5362,9 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   instrumentButtonMin = document.createElement("button");
   instrumentButtonMin.className = "looper-btn";
   instrumentButtonMin.innerText = "Instrument:Off";
-  instrumentButtonMin.title = "Toggle Instrument (Shift=Presets)";
+  instrumentButtonMin.title = "Nimbus Synth";
   instrumentButtonMin.style.backgroundColor = "#444";
-  instrumentButtonMin.addEventListener("click", (e) => {
-    if (e.shiftKey) {
-      showInstrumentWindowToggle();
-    } else {
-      toggleInstrument();
-      refreshMinimalState();
-    }
-  });
+  instrumentButtonMin.addEventListener("click", showInstrumentWindowToggle);
   minimalUIContainer.appendChild(instrumentButtonMin);
 
   let cuesBtnMin = document.createElement("button");
@@ -6019,13 +6056,8 @@ function addControls() {
   instrumentButton.className = "looper-btn";
   instrumentButton.innerText = "Instrument:Off";
   instrumentButton.style.flex = '1 1 calc(50% - 4px)';
-  instrumentButton.addEventListener("click", (e) => {
-    if (e.shiftKey) {
-      showInstrumentWindowToggle();
-    } else {
-      toggleInstrument();
-    }
-  });
+  instrumentButton.title = "Nimbus Synth";
+  instrumentButton.addEventListener("click", showInstrumentWindowToggle);
   actionWrap.appendChild(instrumentButton);
 
   eqButton = document.createElement("button");
@@ -6323,7 +6355,7 @@ function handleMIDIMessage(e) {
   const command = st & 0xf0;
 
   if (st === 144 && note === midiNotes.instrumentToggle) {
-    toggleInstrument();
+    showInstrumentWindowToggle();
     return;
   }
 
@@ -7039,6 +7071,7 @@ function updateMidiMapInput(name, val) {
 
 /* ⚙️  Config */
 const MIDI_PRESET_STORAGE_KEY = "ytbm_midiPresets_v1";
+const INSTRUMENT_STATE_KEY = "ytbm_instrument_state_v1";
 let   currentMidiPresetName   = null;   // which preset is ‘active’
 const SAMPLE_PACK_STORAGE_KEY = "ytbm_samplePacks_v1";
 
@@ -7080,11 +7113,9 @@ function syncMidiNotesFromWindow() {
 function showInstrumentWindowToggle() {
   if (!instrumentWindowContainer) {
     buildInstrumentWindow();
-    instrumentWindowContainer.style.display = "block";
-  } else {
-    instrumentWindowContainer.style.display =
-      (instrumentWindowContainer.style.display === "block") ? "none" : "block";
   }
+  instrumentWindowContainer.style.display =
+    (instrumentWindowContainer.style.display === "block") ? "none" : "block";
 }
 
 function buildInstrumentWindow() {
@@ -7093,43 +7124,86 @@ function buildInstrumentWindow() {
 
   const dh = document.createElement("div");
   dh.className = "looper-midimap-drag-handle";
-  dh.innerText = "Nimbus Synth Presets";
+  dh.innerText = "Nimbus Synth";
   instrumentWindowContainer.appendChild(dh);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "looper-btn";
+  closeBtn.innerText = "Close";
+  closeBtn.style.margin = "4px";
+  closeBtn.addEventListener("click", () => {
+    instrumentWindowContainer.style.display = "none";
+  });
+  instrumentWindowContainer.appendChild(closeBtn);
+
+  const powerBtn = document.createElement("button");
+  powerBtn.className = "looper-btn";
+  powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+  powerBtn.style.margin = "4px";
+  powerBtn.addEventListener("click", () => {
+    setInstrumentPreset(instrumentPreset === 0 ? 1 : 0);
+    powerBtn.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
+  });
+  instrumentWindowContainer.appendChild(powerBtn);
+
+  const octSelect = document.createElement("select");
+  for (let o = 1; o <= 7; o++) {
+    const opt = document.createElement("option");
+    opt.value = o;
+    opt.text = "Octave " + o;
+    if (o === instrumentOctave) opt.selected = true;
+    octSelect.appendChild(opt);
+  }
+  octSelect.addEventListener("change", () => {
+    instrumentOctave = parseInt(octSelect.value, 10);
+    saveInstrumentStateToLocalStorage();
+  });
+  instrumentWindowContainer.appendChild(octSelect);
 
   const cw = document.createElement("div");
   cw.className = "looper-midimap-content";
   instrumentWindowContainer.appendChild(cw);
 
-  let html = instrumentPresets.slice(1).map((p, i) =>
-    `<div class="midimap-row"><button data-p="${i+1}" class="looper-btn">${escapeHtml(p.name)}</button></div>`
-  ).join("");
-  html += '<button class="looper-btn" id="add-instrument-preset">Add Custom Preset</button>';
-  cw.innerHTML = html;
+  function renderPresets() {
+    let html = instrumentPresets.slice(1).map((p, i) =>
+      `<div class="midimap-row"><button data-p="${i+1}" style="background:${p.color}" class="looper-btn">${escapeHtml(p.name)}</button>${i+1>BUILTIN_PRESET_COUNT?` <button data-d="${i+1}" class="looper-btn">Del</button>`:""}</div>`
+    ).join("");
+    html += '<button class="looper-btn" id="add-instrument-preset">Add Preset</button>';
+    cw.innerHTML = html;
+
+    cw.querySelectorAll('button[data-p]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-p'), 10);
+        setInstrumentPreset(idx);
+        instrumentWindowContainer.style.display = 'none';
+      });
+    });
+    cw.querySelectorAll('button[data-d]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-d'), 10);
+        if (idx > BUILTIN_PRESET_COUNT) {
+          instrumentPresets.splice(idx, 1);
+          if (instrumentPreset === idx) setInstrumentPreset(0);
+          renderPresets();
+          saveInstrumentStateToLocalStorage();
+        }
+      });
+    });
+    const addBtn = cw.querySelector('#add-instrument-preset');
+    addBtn.addEventListener('click', () => {
+      const name = prompt('Preset name?');
+      const osc = prompt('Oscillator type (sine, square, sawtooth, triangle)?', 'sine');
+      if (!name || !osc) return;
+      instrumentPresets.push({ name, oscillator: osc, filter: 800, q: 1, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 }, color: randomPresetColor() });
+      saveInstrumentStateToLocalStorage();
+      renderPresets();
+    });
+  }
+
+  renderPresets();
 
   document.body.appendChild(instrumentWindowContainer);
   makePanelDraggable(instrumentWindowContainer, dh, "ytbm_instrPos");
-
-  cw.querySelectorAll('button[data-p]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      instrumentPreset = parseInt(btn.getAttribute('data-p'), 10);
-      updateInstrumentButtonColor();
-      instrumentWindowContainer.style.display = 'none';
-      if (window.refreshMinimalState) window.refreshMinimalState();
-    });
-  });
-
-  const addBtn = cw.querySelector('#add-instrument-preset');
-  addBtn.addEventListener('click', () => {
-    const name = prompt('Preset name?');
-    const osc = prompt('Oscillator type (sine, square, sawtooth, triangle)?', 'sine');
-    if (!name || !osc) return;
-    instrumentPresets.push({ name, oscillator: osc, filter: 800, q: 1, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.3 } });
-    instrumentPreset = instrumentPresets.length - 1;
-    updateInstrumentButtonColor();
-    instrumentWindowContainer.remove();
-    instrumentWindowContainer = null;
-    showInstrumentWindowToggle();
-  });
 }
 
 /* ------------------------------------------------------
@@ -7150,6 +7224,37 @@ function saveMidiPresetsToLocalStorage() {
     localStorage.setItem(MIDI_PRESET_STORAGE_KEY, JSON.stringify(midiPresets));
   } catch (err) {
     console.error("Failed saving MIDI presets:", err);
+  }
+}
+
+function saveInstrumentStateToLocalStorage() {
+  try {
+    const obj = {
+      preset: instrumentPreset,
+      octave: instrumentOctave,
+      custom: instrumentPresets.slice(BUILTIN_PRESET_COUNT + 1)
+    };
+    localStorage.setItem(INSTRUMENT_STATE_KEY, JSON.stringify(obj));
+  } catch (err) {
+    console.warn("Failed saving instrument state", err);
+  }
+}
+
+function loadInstrumentStateFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(INSTRUMENT_STATE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (Array.isArray(obj.custom)) {
+      obj.custom.forEach(p => {
+        if (!p.color) p.color = randomPresetColor();
+        instrumentPresets.push(p);
+      });
+    }
+    if (typeof obj.octave === 'number') instrumentOctave = obj.octave;
+    if (typeof obj.preset === 'number') instrumentPreset = obj.preset;
+  } catch (err) {
+    console.warn("Failed loading instrument state", err);
   }
 }
 

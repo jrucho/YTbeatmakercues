@@ -142,12 +142,12 @@ To create the downloadable archive yourself, run `bash build_release.sh`. The sc
 | Export | Ctrl/Cmd + Enter |
 | Pitch Down / Up | `,` / `.` |
 | Random Cue | `-` |
-| Instrument Toggle | N |
+| Nimbus Synth | N |
 | Blind Mode | B |
 | Show Advanced Panel | A |
 
-When the Nimbus Synth instrument is active, keys **1**–**0** act as a mini keyboard:
-C3, D3, E3, F3, G3, A3, B3, C4, D4, and E4.
+Press **N** to open the Nimbus Synth window. Choose a preset or create your own.
+While the synth is active, the number keys play notes (C‑major starting from the selected octave).
 
 All loop keys and MIDI notes can be reassigned in the Key Mapping and MIDI Mapping windows.
 Holding the MIDI Shift note while pressing a loop note erases that loop.
