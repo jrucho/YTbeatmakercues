@@ -3823,13 +3823,13 @@ function schedulePlayLoop(index) {
     if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
     let when = audioContext.currentTime + PLAY_PADDING;
-    if (baseLoopDuration && loopStartAbsoluteTime) {
+    let offset = 0;
+    if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
       let d = baseLoopDuration;
       if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      const cycles = Math.ceil((when - loopStartAbsoluteTime) / d);
-      when = loopStartAbsoluteTime + cycles * d;
+      offset = (when - loopStartAbsoluteTime) % d;
     }
-    playSingleLoop(index, 0, when);
+    playSingleLoop(index, offset, when);
     if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
@@ -3842,8 +3842,9 @@ function scheduleResumeLoop(index) {
     if (pitchTarget === "loop") d /= getCurrentPitchRate();
     const now = audioContext.currentTime;
     const elapsed = (now - loopStartAbsoluteTime) % d;
-    const when = now + (d - elapsed) + PLAY_PADDING;
-    playSingleLoop(index, 0, when);
+    const when = now + PLAY_PADDING;
+    const offset = loopSource ? elapsed : 0;
+    playSingleLoop(index, offset, when);
   });
 }
 
