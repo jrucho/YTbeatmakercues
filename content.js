@@ -477,6 +477,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   const MAX_AUDIO_LOOPS = 4; // limit simultaneous audio loops
   const PLAY_PADDING = 0.02; // shorter scheduling for lower latency
   const LOOP_CROSSFADE = 0.001; // smoother boundaries without changing length
+  const STOP_FADE = 0.005; // fade-out time when stopping loops
   const LOOP_COLORS = ['#0ff', '#f0f', '#ff0', '#fa0'];
   let cuePoints = {},
       sampleKeys = { kick: "é", hihat: "à", snare: "$" },
@@ -545,6 +546,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       audioLoopBuffers = new Array(MAX_AUDIO_LOOPS).fill(null),
       activeLoopIndex = 0,
       loopSources = new Array(MAX_AUDIO_LOOPS).fill(null),
+      loopGainNodes = new Array(MAX_AUDIO_LOOPS).fill(null),
       loopPlaying = new Array(MAX_AUDIO_LOOPS).fill(false),
       recordingNewLoop = false,
       newLoopStartTimeout = null,
@@ -3773,10 +3775,13 @@ function playNewLoop(index) {
     const src = audioContext.createBufferSource();
     src.buffer = buf;
     src.loop = true;
+    const g = audioContext.createGain();
+    g.gain.value = 1;
+    loopGainNodes[index] = g;
     let rate = audioLoopRates[index] || 1;
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
-    src.connect(loopAudioGain);
+    src.connect(g).connect(loopAudioGain);
     let d = baseLoopDuration;
     if (pitchTarget === "loop") d /= getCurrentPitchRate();
     const when = audioContext.currentTime + PLAY_PADDING;
@@ -3797,10 +3802,13 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
     const src = audioContext.createBufferSource();
     src.buffer = buf;
     src.loop = true;
+    const g = audioContext.createGain();
+    g.gain.value = 1;
+    loopGainNodes[index] = g;
     let rate = audioLoopRates[index] || 1;
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
-    src.connect(loopAudioGain);
+    src.connect(g).connect(loopAudioGain);
     const when = startTime ? startTime : audioContext.currentTime;
     if (!startTime && baseLoopDuration) {
       let d = baseLoopDuration;
@@ -3849,7 +3857,12 @@ function scheduleResumeLoop(index) {
 }
 
 function stopAllLoopSources() {
-  loopSources.forEach(src => { if (src) { try { src.stop(); src.disconnect(); } catch {} } });
+  loopSources.forEach((src, i) => {
+    const g = loopGainNodes[i];
+    if (src) { try { src.stop(); src.disconnect(); } catch {} }
+    if (g) { try { g.disconnect(); } catch {} }
+    loopGainNodes[i] = null;
+  });
   loopSources = new Array(MAX_AUDIO_LOOPS).fill(null);
   loopSource = null;
   masterLoopIndex = null;
@@ -3860,7 +3873,12 @@ function stopLoopSource(index) {
   if (src) {
     try { src.stop(); src.disconnect(); } catch {}
   }
+  const g = loopGainNodes[index];
+  if (g) {
+    try { g.disconnect(); } catch {}
+  }
   loopSources[index] = null;
+  loopGainNodes[index] = null;
   loopPlaying[index] = false;
   if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
   if (loopSource === src) loopSource = loopSources.find(s => s) || null;
@@ -3988,6 +4006,14 @@ function stopLoop(index) {
   let remain = d - elapsed;
   const src = loopSources[index];
   if (src) {
+    const g = loopGainNodes[index];
+    if (g) {
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+      const fadeStart = now + Math.max(0, remain - STOP_FADE);
+      g.gain.linearRampToValueAtTime(g.gain.value, fadeStart);
+      g.gain.linearRampToValueAtTime(0, now + remain);
+    }
     src.stop(now + remain);
   }
   if (pendingStopTimeouts[index]) clearTimeout(pendingStopTimeouts[index]);
