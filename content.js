@@ -2886,7 +2886,7 @@ async function setupAudioNodes() {
   instLimiter.threshold.value = -3;
   instLimiter.ratio.value = 20;
   const instVolume = audioContext.createGain();
-  instVolume.gain.value = 1;
+  instVolume.gain.value = 0.15; // default 15% volume
   instLfoOsc = audioContext.createOscillator();
   instLfoGain = audioContext.createGain();
   instLfoOsc.type = 'sine';
@@ -3697,10 +3697,11 @@ function schedulePlayLoop(index) {
     if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
     let when = audioContext.currentTime + PLAY_PADDING;
-    if (baseLoopDuration) {
+    if (baseLoopDuration && loopStartAbsoluteTime) {
       let d = baseLoopDuration;
       if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      when = Math.ceil(when / d) * d;
+      const cycles = Math.ceil((when - loopStartAbsoluteTime) / d);
+      when = loopStartAbsoluteTime + cycles * d;
     }
     playSingleLoop(index, 0, when);
     if (masterLoopIndex === null) masterLoopIndex = index;
