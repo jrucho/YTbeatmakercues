@@ -2555,12 +2555,19 @@ function setInstrumentLayers(indices) {
 }
 
 function deactivateInstrument() {
-  setInstrumentPreset(0);
+  if (audioContext && instVolumeNode) {
+    const now = audioContext.currentTime;
+    instVolumeNode.gain.cancelScheduledValues(now);
+    instVolumeNode.gain.setValueAtTime(instVolumeNode.gain.value, now);
+    instVolumeNode.gain.linearRampToValueAtTime(0, now + 0.03);
+  }
+  Object.values(instrumentVoices).flat().forEach(v => stopInstrumentVoiceInstant(v));
   instrumentVoices = {};
-  if (instDelayNode) instDelayNode.delayTime.value = 0.25;
+  setInstrumentPreset(0);
+  if (instDelayNode) instDelayNode.delayTime.value = 0;
   if (instDelayMix) instDelayMix.gain.value = 0;
   if (instReverbMix) instReverbMix.gain.value = 0;
-  if (instVolumeNode) instVolumeNode.gain.value = 1;
+  if (instVolumeNode) instVolumeNode.gain.setValueAtTime(0.15, (audioContext||{currentTime:0}).currentTime + 0.05);
   if (instLfoOsc) instLfoOsc.frequency.value = 5;
   if (instLfoGain) instLfoGain.gain.value = 0;
 }
@@ -2712,11 +2719,12 @@ function playInstrumentNote(midi) {
     f.frequency.value = cfg.filter;
     f.Q.value = cfg.q;
     const g = audioContext.createGain();
+    const startT = audioContext.currentTime + 0.003;
     g.gain.setValueAtTime(0, audioContext.currentTime);
     osc.connect(f).connect(g).connect(instrumentGain);
-    osc.start();
+    osc.start(startT);
     const e = cfg.env;
-    let t = audioContext.currentTime;
+    let t = startT;
     g.gain.linearRampToValueAtTime(1, t + e.a);
     g.gain.linearRampToValueAtTime(e.s, t + e.a + e.d);
     instrumentVoices[midi].push({ osc, mod, filter: f, g, env: e, preset: idx });
@@ -2728,10 +2736,12 @@ function stopInstrumentVoice(v) {
   if (v.g) {
     v.g.gain.cancelScheduledValues(now);
     v.g.gain.setValueAtTime(v.g.gain.value, now);
-    v.g.gain.linearRampToValueAtTime(0, now + v.env.r);
+    const rel = Math.max(0.02, v.env.r || 0);
+    v.g.gain.linearRampToValueAtTime(0, now + rel);
   }
-  if (v.mod) v.mod.stop(now + v.env.r + 0.05);
-  if (v.osc) v.osc.stop(now + v.env.r + 0.05);
+  const stopAt = now + Math.max(0.02, v.env.r || 0) + 0.05;
+  if (v.mod) v.mod.stop(stopAt);
+  if (v.osc) v.osc.stop(stopAt);
   if (v.src) v.src.stop();
 }
 
@@ -2739,10 +2749,11 @@ function stopInstrumentVoiceInstant(v) {
   const now = audioContext.currentTime;
   if (v.g) {
     v.g.gain.cancelScheduledValues(now);
-    v.g.gain.setValueAtTime(0, now);
+    v.g.gain.setTargetAtTime(0, now, 0.005);
   }
-  if (v.mod) v.mod.stop(now);
-  if (v.osc) v.osc.stop(now);
+  const stopAt = now + 0.01;
+  if (v.mod) v.mod.stop(stopAt);
+  if (v.osc) v.osc.stop(stopAt);
   if (v.src) v.src.stop();
 }
 
