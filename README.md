@@ -152,6 +152,7 @@ While the synth is active, the `1–0` keys plus `-` and `=` play a chromatic sc
 The synth has a pitch fader synced to the video by default. Uncheck **Sync Video** to adjust it independently and use the transpose slider for coarse tuning. A dedicated **Tune** slider lets you shift each preset in 12‑step increments from −24 to +24 semitones, and the value is stored per preset. All parameters are adjusted with labeled sliders so you know exactly what each one does.
 
 Moving any knob instantly updates the current preset. Built‑in presets cannot be deleted but you can save your tweaks as new ones. Each preset stores oscillator type, engine (analog, FM, wavetable or sampler), filter, ADSR, effects and **Mode** (poly, mono or legato). Example wavetables and a sample tone demonstrate these engines.
+In mono mode, triggering a new note now cuts the previous one immediately so bass lines stay tight.
 
 Each preset stores oscillator type, engine, filter settings, ADSR envelope and effect parameters (delay, reverb, compression, limiter, volume and LFO). Use **Save** to keep changes, **Delete** to remove custom presets or **Export** to share them. The **Random** button quickly generates a usable sound.
 

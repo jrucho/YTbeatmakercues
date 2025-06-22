@@ -2668,7 +2668,7 @@ function playInstrumentNote(midi) {
     if (cfg.mode === 'mono') {
       for (const key of Object.keys(instrumentVoices)) {
         instrumentVoices[key] = instrumentVoices[key].filter(v => {
-          if (v.preset === idx) { stopInstrumentVoice(v); return false; }
+          if (v.preset === idx) { stopInstrumentVoiceInstant(v); return false; }
           return true;
         });
         if (!instrumentVoices[key].length) delete instrumentVoices[key];
@@ -2730,6 +2730,17 @@ function stopInstrumentVoice(v) {
   }
   if (v.mod) v.mod.stop(now + v.env.r + 0.05);
   if (v.osc) v.osc.stop(now + v.env.r + 0.05);
+  if (v.src) v.src.stop();
+}
+
+function stopInstrumentVoiceInstant(v) {
+  const now = audioContext.currentTime;
+  if (v.g) {
+    v.g.gain.cancelScheduledValues(now);
+    v.g.gain.setValueAtTime(0, now);
+  }
+  if (v.mod) v.mod.stop(now);
+  if (v.osc) v.osc.stop(now);
   if (v.src) v.src.stop();
 }
 
