@@ -554,6 +554,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       loopsBPM = null,
       baseLoopDuration = null,
       audioLoopRates = new Array(MAX_AUDIO_LOOPS).fill(1),
+      loopDurations = new Array(MAX_AUDIO_LOOPS).fill(0),
       masterLoopIndex = null,
       // Video Looper
       videoLooperState = "idle",
@@ -624,7 +625,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       doublePressHoldStartTime = null,
       lastClickTimeVideo = 0,
       isDoublePressVideo = false,
-      doublePressHoldStartTimeVideo = null,
       // Undo double-press
       undoLastClickTime = 0,
       undoIsDoublePress = false,
@@ -2008,6 +2008,12 @@ function crossfadeLoop(buffer, fadeTime) {
   }
 }
 
+function getNextBarTime(afterTime) {
+  if (!baseLoopDuration || loopStartAbsoluteTime === null) return afterTime;
+  const bar = baseLoopDuration;
+  return loopStartAbsoluteTime + Math.ceil((afterTime - loopStartAbsoluteTime) / bar) * bar;
+}
+
 
 async function processLoopFromBlob() {
   if (looperState !== "recording") return;
@@ -2049,10 +2055,9 @@ function finalizeLoopBuffer(buf) {
   if (!baseLoopDuration) {
     baseLoopDuration = exactDur;
     loopsBPM = Math.round((60 * 4) / baseLoopDuration);
-    audioLoopRates[activeLoopIndex] = 1;
-  } else {
-    audioLoopRates[activeLoopIndex] = baseLoopDuration / exactDur;
   }
+  loopDurations[activeLoopIndex] = exactDur;
+  audioLoopRates[activeLoopIndex] = 1;
   audioLoopBuffers[activeLoopIndex] = buf;
   const wasNew = recordingNewLoop;
   recordingNewLoop = false;
@@ -3741,7 +3746,7 @@ function stopRecordingAndPlay() {
   }
 }
 
-function playLoop(startOffset = 0, startTime = null) {
+function playLoop(startTime = null) {
   ensureAudioContext().then(() => {
     if (!audioContext) return;
     stopAllLoopSources();
@@ -3758,9 +3763,9 @@ function playLoop(startOffset = 0, startTime = null) {
       loopSources[i] = src;
     });
     if (!loopSources.some(Boolean)) return;
-    const when = startTime ? startTime : audioContext.currentTime;
-    loopStartAbsoluteTime = when - startOffset;
-    loopSources.forEach(src => { if (src) src.start(when, startOffset); });
+    const when = startTime !== null ? startTime : audioContext.currentTime;
+    loopStartAbsoluteTime = when;
+    loopSources.forEach(src => { if (src) src.start(when); });
     loopSource = loopSources.find(src => src) || null;
     masterLoopIndex = loopSources.findIndex(src => src);
     if (masterLoopIndex === -1) masterLoopIndex = null;
@@ -3781,11 +3786,9 @@ function playNewLoop(index) {
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
     src.connect(g).connect(loopAudioGain);
-    let d = baseLoopDuration;
-    if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const when = audioContext.currentTime + PLAY_PADDING;
-    const offset = (when - loopStartAbsoluteTime) % d;
-    src.start(when, offset);
+    const when = loopSource ? getNextBarTime(audioContext.currentTime + PLAY_PADDING) : (audioContext.currentTime + PLAY_PADDING);
+    src.start(when);
+    if (!loopSource) loopStartAbsoluteTime = when;
     loopSources[index] = src;
     if (!loopSource) loopSource = src;
     loopPlaying[index] = true;
@@ -3793,7 +3796,7 @@ function playNewLoop(index) {
   });
 }
 
-function playSingleLoop(index, startOffset = 0, startTime = null) {
+function playSingleLoop(index, startTime = null) {
   ensureAudioContext().then(() => {
     if (!audioContext || !audioLoopBuffers[index]) return;
     stopLoopSource(index);
@@ -3808,15 +3811,10 @@ function playSingleLoop(index, startOffset = 0, startTime = null) {
     if (pitchTarget === "loop") rate *= getCurrentPitchRate();
     src.playbackRate.value = rate;
     src.connect(g).connect(loopAudioGain);
-    const when = startTime ? startTime : audioContext.currentTime;
-    if (!startTime && baseLoopDuration) {
-      let d = baseLoopDuration;
-      if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      startOffset = (audioContext.currentTime - loopStartAbsoluteTime) % d;
-    }
-    src.start(when, startOffset);
+    const when = startTime !== null ? startTime : (loopSource ? getNextBarTime(audioContext.currentTime + PLAY_PADDING) : audioContext.currentTime);
+    src.start(when);
     if (!loopSource) {
-      loopStartAbsoluteTime = when - startOffset;
+      loopStartAbsoluteTime = when;
       masterLoopIndex = index;
     }
     loopSources[index] = src;
@@ -3830,28 +3828,23 @@ function schedulePlayLoop(index) {
     if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
     let when = audioContext.currentTime + PLAY_PADDING;
-    let offset = 0;
     if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
-      let d = baseLoopDuration;
-      if (pitchTarget === "loop") d /= getCurrentPitchRate();
-      offset = (when - loopStartAbsoluteTime) % d;
+      when = getNextBarTime(when);
     }
-    playSingleLoop(index, offset, when);
+    playSingleLoop(index, when);
     if (masterLoopIndex === null) masterLoopIndex = index;
   });
 }
 
 function scheduleResumeLoop(index) {
   ensureAudioContext().then(() => {
-    if (!audioContext || !baseLoopDuration) return;
+    if (!audioContext) return;
     if (pendingStopTimeouts[index]) { clearTimeout(pendingStopTimeouts[index]); pendingStopTimeouts[index] = null; }
-    let d = baseLoopDuration;
-    if (pitchTarget === "loop") d /= getCurrentPitchRate();
-    const now = audioContext.currentTime;
-    const elapsed = (now - loopStartAbsoluteTime) % d;
-    const when = now + PLAY_PADDING;
-    const offset = loopSource ? (elapsed + PLAY_PADDING) % d : 0;
-    playSingleLoop(index, offset, when);
+    let when = audioContext.currentTime + PLAY_PADDING;
+    if (loopSource && baseLoopDuration && loopStartAbsoluteTime) {
+      when = getNextBarTime(when);
+    }
+    playSingleLoop(index, when);
   });
 }
 
@@ -4083,7 +4076,6 @@ function onVideoLooperButtonMouseDown() {
   let delta = now - lastClickTimeVideo;
   if (delta < clickDelay) {
     isDoublePressVideo = true;
-    doublePressHoldStartTimeVideo = now;
   } else {
     isDoublePressVideo = false;
   }
@@ -4092,14 +4084,8 @@ function onVideoLooperButtonMouseDown() {
 
 function onVideoLooperButtonMouseUp() {
   if (isDoublePressVideo) {
-    const holdMs = doublePressHoldStartTimeVideo ? (Date.now() - doublePressHoldStartTimeVideo) : 0;
-    if (holdMs >= holdEraseDelay) {
-      eraseVideoLoop();
-    } else {
-      stopVideoLoop();
-    }
+    eraseVideoLoop();
     isDoublePressVideo = false;
-    doublePressHoldStartTimeVideo = null;
   } else {
     singlePressActionVideo();
   }

@@ -66,29 +66,17 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 
 - 🔁 **Audio & Video Loopers**
   Record loops in sync with video or audio. Use `R`, `S`, `D`, or `F` to control
-  up to four separate audio loops. The first loop sets the tempo automatically;
-  additional loops stay synced to that BPM. Recording a new loop while others
-  play adds it seamlessly without restarting. Press another loop key during
-  playback to queue a new recording for the next bar. Loops keep the exact length you
-  recorded—automatic trimming has been removed to avoid cutting short sounds.
-  Double press a loop key to stop **that** loop at the end of the bar. Hold the
-  second press a moment longer (or tap three times quickly) to erase only the
-  selected loop—the button blinks briefly when this happens. Loops can be
-  resumed individually with a single press; they start right away in sync with
-  any loops already playing thanks to a short scheduling buffer. A stopped loop can rejoin mid‑phrase without breaking sync, just like legato mode. Resume scheduling now compensates for that buffer so loops hit exactly on time. Sync has been refined so multiple loops stay locked together. If no loops are active they wait for the next bar
-  and become the new **master** automatically. Should that loop stop, the
-  master role passes to the next playing loop. Exporting downloads each
-  active loop as its own track with the BPM rounded in the file name. If loops
-  are pitched, the filenames also include `-pitched-<BPM>bpm`. Use `V` for the
-  video looper. Hold Option and press **Cmd+R** to erase **all** loops. Use
-  Cmd+R/S/D/F individually to erase loops A–D or Cmd+V for the video loop. Each
-  looper button now has a compact progress bar tucked beneath it with four tick
-marks showing the current bar, and the button itself pulses in time while
-recording. Loopers A–C use cyan, magenta and yellow bars, while Looper D uses
-orange. All four progress bars are a bright 1.4 px thick for better visibility.
-Hold the mapped **MIDI Shift** note while pressing any loop note to erase that
-loop instantly. The progress bars speed up or slow down when loops are pitched
-so the visuals stay in sync.
+  up to four separate audio loops. The first loop defines the bar length and tempo.
+  Additional loops of any bar count launch on the next bar so everything stays aligned.
+  Loops keep the exact length you recorded with no trimming. Double press a loop key
+  to stop that loop at the next bar; double press again to erase it. Stopped loops
+  restart from the beginning when triggered again, and sync stays tight even when
+  loops have different lengths. Exporting downloads each active loop with the rounded
+  BPM in the file name. Use `V` for the video looper and double press to erase it.
+  Hold Option + **Cmd+R** to erase all loops. Each looper button shows a slim progress
+  bar that pulses while recording. Hold the mapped **MIDI Shift** note while pressing
+  any loop key to erase that loop instantly. Progress bars speed up or slow down when
+  loops are pitched so the visuals stay in sync.
 
 - 🎚️ **Pitch Control**  
   Independent pitch control for video and loop playback. When targeting loops,
