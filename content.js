@@ -755,7 +755,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
             compMode = "off";
 
   const BUILTIN_DEFAULT_COUNT = 10;
-  const BUILTIN_PRESET_COUNT = 3;
+  const BUILTIN_PRESET_COUNT = 10;
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -2536,7 +2536,14 @@ let instrumentPresets = [
   null,
   { name: 'Resonate', color: PRESET_COLORS[0], oscillator: 'sawtooth', filter: 150, q: 3, env: { a: 0.01, d: 0.15, s: 0.8, r: 0.3 }, engine: 'analog', mode: 'mono' },
   { name: 'Precision', color: PRESET_COLORS[1], oscillator: 'triangle', filter: 700, q: 1, env: { a: 0.005, d: 0.2, s: 0.9, r: 0.25 }, engine: 'analog', mode: 'poly' },
-  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 60, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono' }
+  { name: '808 Boom', color: PRESET_COLORS[2], oscillator: 'sine', filter: 60, q: 0, env: { a: 0.01, d: 0.3, s: 1.0, r: 0.5 }, engine: 'analog', mode: 'mono' },
+  { name: 'Warm Organ', color: PRESET_COLORS[3], oscillator: 'square', filter: 1000, q: 2, env: { a: 0.02, d: 0.3, s: 0.7, r: 0.3 }, engine: 'analog', mode: 'poly' },
+  { name: 'Moog Thump', color: PRESET_COLORS[4], oscillator: 'sawtooth', filter: 500, q: 3, env: { a: 0.01, d: 0.2, s: 0.8, r: 0.4 }, engine: 'analog', mode: 'poly' },
+  { name: 'Soft Pad', color: PRESET_COLORS[5], oscillator: 'triangle', filter: 1200, q: 1, env: { a: 0.3, d: 0.5, s: 0.7, r: 0.8 }, engine: 'wavetable', mode: 'poly' },
+  { name: 'String Ensemble', color: PRESET_COLORS[6], oscillator: 'sawtooth', filter: 1500, q: 2, env: { a: 0.2, d: 0.3, s: 0.9, r: 0.6 }, engine: 'wavetable', mode: 'poly' },
+  { name: 'FM Keys', color: PRESET_COLORS[7], oscillator: 'sine', filter: 800, q: 0, env: { a: 0.01, d: 0.25, s: 0.8, r: 0.4 }, engine: 'fm', mode: 'poly' },
+  { name: 'Pluck', color: PRESET_COLORS[8], oscillator: 'square', filter: 2500, q: 6, env: { a: 0.005, d: 0.2, s: 0, r: 0.2 }, engine: 'fm', mode: 'poly' },
+  { name: 'Sweep Lead', color: PRESET_COLORS[9], oscillator: 'sawtooth', filter: 5000, q: 8, env: { a: 0.05, d: 0.3, s: 0.4, r: 0.7 }, engine: 'fm', mode: 'poly' }
 ];
 
 function randomizeInstrumentPreset() {
