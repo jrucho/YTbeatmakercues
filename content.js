@@ -99,18 +99,30 @@ if (typeof updateCueMarkers === "undefined") {
   function updateCueMarkers() {}
 }
 
-// Global VJ overlay state
-// VJ windows and parameters
-window.vjProjectorWindow = null;
-window.vjControlsWindow = null;
-window.vjVideoStream = null;
-window.vjVideo = null;
-window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
-window.currentVJEffect = 'none';
-window.vjReactive = { low:0, mid:0, high:0 };
-window.useProjectorStream = false;
-window.projectorCanvasStream = null;
-window.cornerMapEnabled = false;
+// Global VJ overlay state (in‑page panels)
+window.vjProjectorContainer = null;
+window.vjControlsContainer  = null;
+window.vjVideoStream        = null;
+window.vjVideo              = null;
+window.currentVJParams      = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+window.currentVJEffect      = 'none';
+window.vjReactive           = { low:0, mid:0, high:0 };
+window.useProjectorStream   = false;
+window.projectorCanvasStream= null;
+window.cornerMapEnabled     = false;
+window.vjLogoImg            = null;
+window.vjText               = '';
+window.vjTextVisible        = true;
+window.vjTextInterval       = null;
+window.ytbmBPM              = 120;
+
+function setGlobalBPM(bpm) {
+  window.ytbmBPM = bpm;
+  const seqInput = document.querySelector('#sequencerContainer input[type="number"]');
+  if (seqInput) seqInput.value = bpm;
+  const touchInput = document.querySelector('#touchPopup input[type="number"]');
+  if (touchInput) touchInput.value = bpm;
+}
 
 // Attach to minimal random cues button
 if (typeof randomCuesButtonMin !== "undefined" && randomCuesButtonMin) {
@@ -1099,6 +1111,7 @@ function detectBpmFromVideo() {
       while (bpmMedian > 200) bpmMedian /= 2;
       bpmMedian = Math.round(bpmMedian);
       sequencerBPM = bpmMedian;
+      setGlobalBPM(sequencerBPM);
       detectBpmButton.textContent = `${bpmMedian} BPM`;
       detectBpmButton.style.backgroundColor = "#2ecc71"; // green for success
       const bpmField = document.querySelector('#sequencerContainer input[type="number"]');
@@ -1122,6 +1135,7 @@ function addDetectBpmButtonToMinimalUI() {
     e.preventDefault();
     // Divide BPM by 2, but don't go below 40
     sequencerBPM = Math.max(40, Math.round(sequencerBPM / 2));
+    setGlobalBPM(sequencerBPM);
     // Update input field if present
     const bpmField = document.querySelector('#sequencerContainer input[type="number"]');
     if (bpmField) bpmField.value = sequencerBPM;
@@ -1132,6 +1146,7 @@ function addDetectBpmButtonToMinimalUI() {
     if (e.altKey) {
       // Multiply BPM by 2, but don't go above 400
       sequencerBPM = Math.min(400, Math.round(sequencerBPM * 2));
+      setGlobalBPM(sequencerBPM);
       const bpmField = document.querySelector('#sequencerContainer input[type="number"]');
       if (bpmField) bpmField.value = sequencerBPM;
       detectBpmButton.textContent = `${sequencerBPM} BPM`;
@@ -1369,6 +1384,7 @@ tapBpmBtn.addEventListener("click", () => {
     }
     let avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
     sequencerBPM = Math.round(60000 / avgInterval);
+    setGlobalBPM(sequencerBPM);
     if (bpmInput) bpmInput.value = sequencerBPM;
     console.log("New BPM:", sequencerBPM);
     // If sequencer is running, restart it with the new BPM:
@@ -1390,6 +1406,7 @@ bpmInput.addEventListener("input", () => {
   const newBpm = parseInt(bpmInput.value, 10) || 120;
   if (newBpm !== sequencerBPM) {
     sequencerBPM = newBpm;
+    setGlobalBPM(sequencerBPM);
     console.log("Manual BPM change:", sequencerBPM);
     // If the sequencer is running, update it immediately:
     if (sequencerPlaying) {
@@ -2071,6 +2088,7 @@ function finalizeLoopBuffer(buf) {
   if (!baseLoopDuration) {
     baseLoopDuration = exactDur;
     loopsBPM = Math.round((60 * 4) / baseLoopDuration);
+    setGlobalBPM(loopsBPM);
   } else {
     const bars = Math.max(1, Math.round(exactDur / baseLoopDuration));
     const target = bars * baseLoopDuration;
@@ -2217,6 +2235,7 @@ function restoreAppState(st) {
   loopPlaying = st.loopPlaying.slice();
   baseLoopDuration = st.baseLoopDuration;
   loopsBPM = st.loopsBPM;
+  if (loopsBPM) setGlobalBPM(loopsBPM);
   activeLoopIndex = st.activeLoopIndex;
   cuePoints = JSON.parse(JSON.stringify(st.cuePoints));
   currentSampleIndex = { ...st.currentSampleIndex };
@@ -8882,6 +8901,16 @@ function injectCustomCSS() {
       font-size: 13px;
       text-align: center;
     }
+    .vj-corner-handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: hotpink;
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 1000000;
+      display: none;
+    }
   `;
   let st = document.createElement("style");
   st.textContent = css;
@@ -9084,73 +9113,147 @@ function safeRestorePanelPosition(panel, key) {
 
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
-  const projUrl = chrome.runtime.getURL('vj_projector.html');
-  const ctrlUrl = chrome.runtime.getURL('vj_controls.html');
-
-  if (!window.vjProjectorWindow || window.vjProjectorWindow.closed) {
-    window.vjProjectorWindow = window.open(projUrl, 'ytbm_vj_proj', 'popup=1,width=660,height=380');
-  } else {
-    window.vjProjectorWindow.focus();
+  if (!window.vjProjectorContainer) buildVJProjector();
+  if (!window.vjControlsContainer)  buildVJControls();
+  const showing = window.vjProjectorContainer.style.display !== 'block';
+  window.vjProjectorContainer.style.display = showing ? 'block' : 'none';
+  window.vjControlsContainer.style.display  = showing ? 'block' : 'none';
+  if (showing) {
+    initVJVideo();
+    startVJRenderLoop();
   }
-
-  if (!window.vjControlsWindow || window.vjControlsWindow.closed) {
-    window.vjControlsWindow = window.open(ctrlUrl, 'ytbm_vj_ctrl', 'popup=1,width=320,height=520');
-  } else {
-    window.vjControlsWindow.focus();
-  }
-
-  setupVJMessaging();
-  initVJVideo();
 }
 
-function setupVJMessaging() {
-  if (setupVJMessaging.done) return;
-  setupVJMessaging.done = true;
-  window.addEventListener('message', handleVJMessage);
+function buildVJProjector() {
+  const c = document.createElement('div');
+  c.className = 'looper-midimap-container';
+  c.style.width = '660px';
+  c.style.background = 'rgba(0,0,0,0.95)';
+  c.style.padding = '0';
+
+  const dh = document.createElement('div');
+  dh.className = 'looper-midimap-drag-handle';
+  dh.innerText = 'VJ Projector';
+  c.appendChild(dh);
+
+  const bar = document.createElement('div');
+  bar.style.position = 'absolute';
+  bar.style.top = '6px';
+  bar.style.right = '6px';
+  bar.style.display = 'flex';
+  bar.style.gap = '4px';
+  const hide = document.createElement('button');
+  hide.className = 'looper-btn';
+  hide.textContent = 'Hide';
+  hide.onclick = () => { c.style.display = 'none'; window.vjControlsContainer.style.display = 'none'; };
+  const full = document.createElement('button');
+  full.className = 'looper-btn';
+  full.textContent = 'Full';
+  full.onclick = () => c.requestFullscreen();
+  const reset = document.createElement('button');
+  reset.className = 'looper-btn';
+  reset.textContent = 'Reset';
+  reset.onclick = resetVJParams;
+  bar.appendChild(hide); bar.appendChild(full); bar.appendChild(reset);
+  c.appendChild(bar);
+
+  const canvas = document.createElement('canvas');
+  canvas.id = 'vjCanvas';
+  canvas.width = 640;
+  canvas.height = 360;
+  canvas.style.display = 'block';
+  c.appendChild(canvas);
+  window.vjCanvas = canvas;
+  window.projectorCanvasStream = canvas.captureStream();
+
+  for (let i=0;i<4;i++) {
+    const h = document.createElement('div');
+    h.className = 'vj-corner-handle';
+    h.dataset.idx = i;
+    c.appendChild(h);
+  }
+
+  document.body.appendChild(c);
+  safeMakePanelDraggable(c, dh, 'ytbm_vjProjPos');
+  safeRestorePanelPosition(c, 'ytbm_vjProjPos');
+  window.vjProjectorContainer = c;
+  setupCornerMapping();
 }
 
-function handleVJMessage(e) {
-  const msg = e.data || {};
-  if (e.source === window.vjProjectorWindow && msg.type === 'projectorReady') {
-    if (window.vjVideoStream) {
-      e.source.postMessage({type:'videoStream', stream: window.vjVideoStream}, '*', [window.vjVideoStream]);
-    }
-    e.source.postMessage({type:'params', params: window.currentVJParams}, '*');
-    e.source.postMessage({type:'effect', effect: window.currentVJEffect}, '*');
-    e.source.postMessage({type:'toggleCorners', enabled: window.cornerMapEnabled}, '*');
-  } else if (e.source === window.vjControlsWindow && msg.type === 'controlsReady') {
-    e.source.postMessage({type:'params', params: window.currentVJParams}, '*');
-    e.source.postMessage({type:'reactive', reactive: window.vjReactive}, '*');
-    e.source.postMessage({type:'effect', effect: window.currentVJEffect}, '*');
-    e.source.postMessage({type:'toggleCorners', enabled: window.cornerMapEnabled}, '*');
-    e.source.postMessage({type:'useProjector', enabled: window.useProjectorStream}, '*');
-  } else if (msg.type === 'params') {
-    window.currentVJParams = msg.params;
-    if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-      window.vjProjectorWindow.postMessage({type:'params', params: msg.params}, '*');
-    }
-  } else if (msg.type === 'reactive') {
-    window.vjReactive = msg.reactive;
-  } else if (msg.type === 'effect') {
-    window.currentVJEffect = msg.effect;
-    if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-      window.vjProjectorWindow.postMessage({type:'effect', effect: msg.effect}, '*');
-    }
-  } else if (msg.type === 'toggleCorners') {
-    window.cornerMapEnabled = msg.enabled;
-    if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-      window.vjProjectorWindow.postMessage({type:'toggleCorners', enabled: msg.enabled}, '*');
-    }
-  } else if (msg.type === 'useProjector') {
-    window.useProjectorStream = msg.enabled;
-  } else if (msg.type === 'projectorStream') {
-    window.projectorCanvasStream = msg.stream;
-  } else if (msg.type === 'reset') {
-    resetVJParams();
-    if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-      window.vjProjectorWindow.postMessage({type:'resetCorners'}, '*');
-    }
-  }
+function buildVJControls() {
+  const c = document.createElement('div');
+  c.className = 'looper-midimap-container';
+  c.style.width = '320px';
+
+  const dh = document.createElement('div');
+  dh.className = 'looper-midimap-drag-handle';
+  dh.innerText = 'VJ Controls';
+  c.appendChild(dh);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'looper-midimap-content';
+  c.appendChild(wrap);
+
+  const params = ['brightness','contrast','saturate','hue','blur'];
+  const ranges = {
+    brightness:[0,2,0.1],
+    contrast:[0,2,0.1],
+    saturate:[0,2,0.1],
+    hue:[0,360,1],
+    blur:[0,10,0.5]
+  };
+  params.forEach(p=>{
+    const row=document.createElement('div'); row.className='midimap-row';
+    const label=document.createElement('label'); label.textContent=p;
+    const input=document.createElement('input');
+    input.type='range';
+    const [min,max,step]=ranges[p];
+    input.min=min; input.max=max; input.step=step; input.value=window.currentVJParams[p];
+    input.oninput=()=>{ window.currentVJParams[p]=parseFloat(input.value); };
+    label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
+  });
+
+  ['low','mid','high'].forEach(b=>{
+    const row=document.createElement('div'); row.className='midimap-row';
+    const label=document.createElement('label'); label.textContent='Audio '+b;
+    const input=document.createElement('input');
+    input.type='range'; input.min=0; input.max=2; input.step=0.1; input.value=0;
+    input.oninput=()=>{ window.vjReactive[b]=parseFloat(input.value); };
+    label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
+  });
+
+  const effects=['none','invert','grayscale','sepia','pixel','rgbShift','kaleido','edge','wave'];
+  const effRow=document.createElement('div'); effRow.className='midimap-row';
+  const sel=document.createElement('select'); effects.forEach(n=>sel.add(new Option(n,n)));
+  sel.onchange=()=>{ window.currentVJEffect=sel.value; };
+  const lab=document.createElement('label'); lab.textContent='Effect'; lab.appendChild(sel);
+  effRow.appendChild(lab); wrap.appendChild(effRow);
+
+  const cornerChk=document.createElement('input'); cornerChk.type='checkbox';
+  cornerChk.onchange=()=>toggleCorners(cornerChk.checked);
+  const cornerLab=document.createElement('label'); cornerLab.textContent='Corner Map'; cornerLab.prepend(cornerChk);
+  wrap.appendChild(cornerLab);
+
+  const projChk=document.createElement('input'); projChk.type='checkbox';
+  projChk.onchange=()=>{ window.useProjectorStream = projChk.checked; };
+  const projLab=document.createElement('label'); projLab.textContent='Use in Looper'; projLab.prepend(projChk);
+  wrap.appendChild(projLab);
+
+  const logoBtn=document.createElement('button'); logoBtn.className='looper-btn'; logoBtn.textContent='Set Logo';
+  logoBtn.onclick=()=>{ pickLogoImage(); };
+  wrap.appendChild(logoBtn);
+
+  const textBtn=document.createElement('button'); textBtn.className='looper-btn'; textBtn.textContent='Set Text';
+  textBtn.onclick=()=>{ const t=prompt('Overlay text?'); if(t){ startTextLoop(t); } };
+  wrap.appendChild(textBtn);
+
+  const reset=document.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
+  reset.onclick=resetVJParams; wrap.appendChild(reset);
+
+  document.body.appendChild(c);
+  safeMakePanelDraggable(c, dh, 'ytbm_vjCtrlPos');
+  safeRestorePanelPosition(c, 'ytbm_vjCtrlPos');
+  window.vjControlsContainer = c;
 }
 
 function initVJVideo() {
@@ -9161,12 +9264,9 @@ function initVJVideo() {
   const v = document.createElement('video');
   v.srcObject = stream;
   v.muted = true;
-  v.play().catch(() => {});
+  v.play().catch(()=>{});
   window.vjVideo = v;
   window.vjVideoStream = stream;
-  if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-    window.vjProjectorWindow.postMessage({type:'videoStream', stream}, '*', [stream]);
-  }
   setupAudioAnalyser(v);
 }
 
@@ -9183,31 +9283,89 @@ function setupAudioAnalyser(video) {
 function getReactiveMod() {
   if (!vjAnalyser) return {low:0, mid:0, high:0};
   vjAnalyser.getByteFrequencyData(vjFreqData);
-  const bass = avg(vjFreqData,0,30)/255;
-  const mid = avg(vjFreqData,30,90)/255;
-  const tre = avg(vjFreqData,90,180)/255;
-  return {
-    low: bass*window.vjReactive.low,
-    mid: mid*window.vjReactive.mid,
-    high: tre*window.vjReactive.high
-  };
+  const bass=avg(vjFreqData,0,30)/255;
+  const mid=avg(vjFreqData,30,90)/255;
+  const tre=avg(vjFreqData,90,180)/255;
+  return {low:bass*window.vjReactive.low, mid:mid*window.vjReactive.mid, high:tre*window.vjReactive.high};
 }
 
-function avg(arr, from, to) {
-  let sum = 0, c = 0;
-  for (let i = from; i < to && i < arr.length; i++) { sum += arr[i]; c++; }
-  return c ? sum / c : 0;
+function avg(arr, from, to){
+  let sum=0,c=0; for(let i=from;i<to&&i<arr.length;i++){sum+=arr[i];c++;} return c?sum/c:0;
 }
 
+function setupCornerMapping(){
+  window.vjCorners=[{x:0,y:0},{x:640,y:0},{x:640,y:360},{x:0,y:360}];
+  window.vjHandles=Array.from(window.vjProjectorContainer.querySelectorAll('.vj-corner-handle'));
+  window.vjDragging=-1;
+  window.vjHandles.forEach((h,i)=>{
+    h.onmousedown=ev=>{window.vjDragging=i;ev.preventDefault();};
+  });
+  window.addEventListener('mousemove',ev=>{
+    if(window.vjDragging>=0){window.vjCorners[window.vjDragging]={x:ev.clientX-6,y:ev.clientY-6};updateHandles();}
+  });
+  window.addEventListener('mouseup',()=>{window.vjDragging=-1;});
+  updateHandles();
+}
 
-function resetVJParams() {
-  window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
-  window.vjReactive = { low:0, mid:0, high:0 };
-  if (window.vjControlsWindow && !window.vjControlsWindow.closed) {
-    window.vjControlsWindow.postMessage({type:'params', params: window.currentVJParams}, '*');
-    window.vjControlsWindow.postMessage({type:'reactive', reactive: window.vjReactive}, '*');
+function updateHandles(){
+  window.vjHandles.forEach((h,i)=>{h.style.left=window.vjCorners[i].x+'px';h.style.top=window.vjCorners[i].y+'px';});
+  applyTransform();
+}
+
+function applyTransform(){
+  const w=window.vjCanvas.width,h=window.vjCanvas.height;
+  const src=[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
+  const m=computeHomography(src,window.vjCorners); const css=homographyToCss(m);
+  window.vjCanvas.style.transform='matrix3d('+css.join(',')+')';
+}
+
+function computeHomography(src,dst){
+  const A=[]; for(let i=0;i<4;i++){const xs=src[i].x,ys=src[i].y,xd=dst[i].x,yd=dst[i].y;A.push([xs,ys,1,0,0,0,-xs*xd,-ys*xd,xd]);A.push([0,0,0,xs,ys,1,-xs*yd,-ys*yd,yd]);}
+  for(let i=0;i<8;i++){let maxRow=i;for(let j=i+1;j<8;j++)if(Math.abs(A[j][i])>Math.abs(A[maxRow][i]))maxRow=j;const tmp=A[i];A[i]=A[maxRow];A[maxRow]=tmp;for(let j=i+1;j<9;j++)A[i][j]/=A[i][i];for(let k=0;k<8;k++){if(k===i)continue;const factor=A[k][i];for(let j=i;j<9;j++)A[k][j]-=factor*A[i][j];}}
+  const h=A.map(r=>r[8]);h[8]=1;return h;
+}
+
+function homographyToCss(m){return [m[0],m[3],0,m[6],m[1],m[4],0,m[7],0,0,1,0,m[2],m[5],0,m[8]];}
+
+function toggleCorners(en){window.vjHandles.forEach(h=>{h.style.display=en?'block':'none';});window.cornerMapEnabled=en;}
+
+function startVJRenderLoop(){
+  if(startVJRenderLoop.running) return; startVJRenderLoop.running=true;
+  function loop(){
+    if(!startVJRenderLoop.running) return;
+    renderVJFrame();
+    requestAnimationFrame(loop);
   }
-  if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-    window.vjProjectorWindow.postMessage({type:'params', params: window.currentVJParams}, '*');
-  }
+  loop();
+}
+
+function renderVJFrame(){
+  if(!window.vjVideo||!window.vjCanvas) return;
+  const ctx=window.vjCanvas.getContext('2d');
+  const r=getReactiveMod();
+  const p=window.currentVJParams;
+  ctx.filter=`brightness(${p.brightness+r.low}) contrast(${p.contrast+r.mid}) saturate(${p.saturate}) hue-rotate(${p.hue}deg) blur(${p.blur}px)`;
+  ctx.drawImage(window.vjVideo,0,0,window.vjCanvas.width,window.vjCanvas.height);
+  applyEffect(ctx);
+  if(window.vjLogoImg){ctx.drawImage(window.vjLogoImg,10,10);} 
+  if(window.vjText&&window.vjTextVisible){ctx.fillStyle='white';ctx.font='48px sans-serif';ctx.fillText(window.vjText,20,window.vjCanvas.height-40);} 
+}
+
+function applyEffect(ctx){
+  const effect=window.currentVJEffect;
+  const c=window.vjCanvas; if(effect==='invert'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){d[i]=255-d[i];d[i+1]=255-d[i+1];d[i+2]=255-d[i+2];}ctx.putImageData(img,0,0);}else if(effect==='grayscale'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];d[i]=d[i+1]=d[i+2]=g;}ctx.putImageData(img,0,0);}else if(effect==='sepia'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];d[i]=r*0.393+g*0.769+b*0.189;d[i+1]=r*0.349+g*0.686+b*0.168;d[i+2]=r*0.272+g*0.534+b*0.131;}ctx.putImageData(img,0,0);}else if(effect==='pixel'){const size=10;const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let y=0;y<c.height;y+=size){for(let x=0;x<c.width;x+=size){const i=(y*c.width+x)*4;const r=d[i],g=d[i+1],b=d[i+2];for(let yy=0;yy<size;yy++){for(let xx=0;xx<size;xx++){const p=((y+yy)*c.width+(x+xx))*4;d[p]=r;d[p+1]=g;d[p+2]=b;}}}}ctx.putImageData(img,0,0);}else if(effect==='rgbShift'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){d[i]=d[i+5]||d[i];d[i+2]=d[i+2-5]||d[i+2];}ctx.putImageData(img,0,0);}else if(effect==='kaleido'){const temp=ctx.getImageData(0,0,c.width/2,c.height/2);ctx.putImageData(temp,c.width/2,0);ctx.putImageData(temp,0,c.height/2);ctx.putImageData(temp,c.width/2,c.height/2);}else if(effect==='edge'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;const w=c.width;const h=c.height;const out=ctx.createImageData(w,h);let o=out.data;for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){const i=(y*w+x)*4;const gx=(-d[i-4-w*4]-2*d[i-w*4]-d[i+4-w*4]+d[i-4+w*4]+2*d[i+w*4]+d[i+4+w*4]);const gy=(-d[i-4-w*4]-2*d[i-4]-d[i-4+w*4]+d[i+4-w*4]+2*d[i+4]+d[i+4+w*4]);const g=Math.sqrt(gx*gx+gy*gy);o[i]=o[i+1]=o[i+2]=g;o[i+3]=255;}}ctx.putImageData(out,0,0);}else if(effect==='wave'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;const out=ctx.createImageData(c.width,c.height);let o=out.data;for(let y=0;y<c.height;y++){const shift=Math.sin(y/10)*10;for(let x=0;x<c.width;x++){const src=((y*c.width+((x+shift+c.width)%c.width)))*4;const dst=(y*c.width+x)*4;o[dst]=d[src];o[dst+1]=d[src+1];o[dst+2]=d[src+2];o[dst+3]=255;}}ctx.putImageData(out,0,0);} }
+
+function resetVJParams(){
+  window.currentVJParams={brightness:1,contrast:1,saturate:1,hue:0,blur:0};
+  window.vjReactive={low:0,mid:0,high:0};
+  const sliders=window.vjControlsContainer?.querySelectorAll('input[type="range"]')||[];
+  sliders.forEach(inp=>{const n=inp.parentElement.textContent.trim().toLowerCase().split(' ')[0];if(window.currentVJParams[n]!==undefined){inp.value=window.currentVJParams[n];}else if(window.vjReactive[n]!==undefined){inp.value=window.vjReactive[n];}});
+}
+
+function pickLogoImage(){
+  const input=document.createElement('input');input.type='file';input.accept='image/png';input.onchange=()=>{const file=input.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{window.vjLogoImg=img;};img.src=r.result;};r.readAsDataURL(file);};input.click();
+}
+
+function startTextLoop(text){
+  window.vjText=text;window.vjTextVisible=true;clearInterval(window.vjTextInterval);const bpm=window.ytbmBPM||120;const ms=60000/bpm;window.vjTextInterval=setInterval(()=>{window.vjTextVisible=!window.vjTextVisible;},ms);
 }

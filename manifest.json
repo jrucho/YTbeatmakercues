@@ -29,11 +29,7 @@
     "resources": [
       "sounds/*",
       "sp303-compressor-worklet.js",
-      "sp404-compressor-worklet.js",
-      "vj_projector.html",
-      "vj_projector.js",
-      "vj_controls.html",
-      "vj_controls.js"
+      "sp404-compressor-worklet.js"
     ],
     "matches": ["<all_urls>"]
   }],
