@@ -113,6 +113,7 @@ window.cornerMapEnabled     = false;
 window.vjLogoImg            = null;
 window.vjText               = '';
 window.vjTextVisible        = true;
+window.vjEffectParam        = 1;
 window.vjTextInterval       = null;
 window.ytbmBPM              = 120;
 
@@ -9213,6 +9214,12 @@ function buildVJControls() {
     label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
   });
 
+  // Effect parameter slider
+  const effParRow=document.createElement('div'); effParRow.className='midimap-row';
+  const effParLab=document.createElement('label'); effParLab.textContent='Effect Param';
+  const effParIn=document.createElement('input'); effParIn.type='range'; effParIn.min=0; effParIn.max=1; effParIn.step=0.1; effParIn.value=window.vjEffectParam||1; effParIn.oninput=()=>{ window.vjEffectParam=parseFloat(effParIn.value); };
+  effParLab.appendChild(effParIn); effParRow.appendChild(effParLab); wrap.appendChild(effParRow);
+
   ['low','mid','high'].forEach(b=>{
     const row=document.createElement('div'); row.className='midimap-row';
     const label=document.createElement('label'); label.textContent='Audio '+b;
@@ -9222,7 +9229,7 @@ function buildVJControls() {
     label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
   });
 
-  const effects=['none','invert','grayscale','sepia','pixel','rgbShift','kaleido','edge','wave'];
+  const effects=['none','invert','grayscale','sepia','pixel','rgbShift','kaleido','edge','wave','mirror','posterize'];
   const effRow=document.createElement('div'); effRow.className='midimap-row';
   const sel=document.createElement('select'); effects.forEach(n=>sel.add(new Option(n,n)));
   sel.onchange=()=>{ window.currentVJEffect=sel.value; };
@@ -9243,9 +9250,17 @@ function buildVJControls() {
   logoBtn.onclick=()=>{ pickLogoImage(); };
   wrap.appendChild(logoBtn);
 
+  const clearLogo=document.createElement('button'); clearLogo.className='looper-btn'; clearLogo.textContent='Clear Logo';
+  clearLogo.onclick=clearLogoImage;
+  wrap.appendChild(clearLogo);
+
   const textBtn=document.createElement('button'); textBtn.className='looper-btn'; textBtn.textContent='Set Text';
   textBtn.onclick=()=>{ const t=prompt('Overlay text?'); if(t){ startTextLoop(t); } };
   wrap.appendChild(textBtn);
+
+  const clearText=document.createElement('button'); clearText.className='looper-btn'; clearText.textContent='Clear Text';
+  clearText.onclick=stopTextLoop;
+  wrap.appendChild(clearText);
 
   const reset=document.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
   reset.onclick=resetVJParams; wrap.appendChild(reset);
@@ -9294,21 +9309,22 @@ function avg(arr, from, to){
 }
 
 function setupCornerMapping(){
-  window.vjCorners=[{x:0,y:0},{x:640,y:0},{x:640,y:360},{x:0,y:360}];
+  const w=vjCanvas.width,h=vjCanvas.height;
+  window.vjCorners=[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
   window.vjHandles=Array.from(window.vjProjectorContainer.querySelectorAll('.vj-corner-handle'));
   window.vjDragging=-1;
   window.vjHandles.forEach((h,i)=>{
     h.onmousedown=ev=>{window.vjDragging=i;ev.preventDefault();};
   });
   window.addEventListener('mousemove',ev=>{
-    if(window.vjDragging>=0){window.vjCorners[window.vjDragging]={x:ev.clientX-6,y:ev.clientY-6};updateHandles();}
+    if(window.vjDragging>=0){const crect=vjProjectorContainer.getBoundingClientRect();const rect=vjCanvas.getBoundingClientRect();const offX=rect.left-crect.left;const offY=rect.top-crect.top;window.vjCorners[window.vjDragging]={x:ev.clientX-crect.left-offX,y:ev.clientY-crect.top-offY};updateHandles();}
   });
   window.addEventListener('mouseup',()=>{window.vjDragging=-1;});
   updateHandles();
 }
 
 function updateHandles(){
-  window.vjHandles.forEach((h,i)=>{h.style.left=window.vjCorners[i].x+'px';h.style.top=window.vjCorners[i].y+'px';});
+  const crect=vjProjectorContainer.getBoundingClientRect();const rect=vjCanvas.getBoundingClientRect();const offX=rect.left-crect.left;const offY=rect.top-crect.top;window.vjHandles.forEach((h,i)=>{h.style.left=(offX+window.vjCorners[i].x-6)+'px';h.style.top=(offY+window.vjCorners[i].y-6)+'px';});
   applyTransform();
 }
 
@@ -9351,13 +9367,69 @@ function renderVJFrame(){
   if(window.vjText&&window.vjTextVisible){ctx.fillStyle='white';ctx.font='48px sans-serif';ctx.fillText(window.vjText,20,window.vjCanvas.height-40);} 
 }
 
-function applyEffect(ctx){
-  const effect=window.currentVJEffect;
-  const c=window.vjCanvas; if(effect==='invert'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){d[i]=255-d[i];d[i+1]=255-d[i+1];d[i+2]=255-d[i+2];}ctx.putImageData(img,0,0);}else if(effect==='grayscale'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];d[i]=d[i+1]=d[i+2]=g;}ctx.putImageData(img,0,0);}else if(effect==='sepia'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];d[i]=r*0.393+g*0.769+b*0.189;d[i+1]=r*0.349+g*0.686+b*0.168;d[i+2]=r*0.272+g*0.534+b*0.131;}ctx.putImageData(img,0,0);}else if(effect==='pixel'){const size=10;const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let y=0;y<c.height;y+=size){for(let x=0;x<c.width;x+=size){const i=(y*c.width+x)*4;const r=d[i],g=d[i+1],b=d[i+2];for(let yy=0;yy<size;yy++){for(let xx=0;xx<size;xx++){const p=((y+yy)*c.width+(x+xx))*4;d[p]=r;d[p+1]=g;d[p+2]=b;}}}}ctx.putImageData(img,0,0);}else if(effect==='rgbShift'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;for(let i=0;i<d.length;i+=4){d[i]=d[i+5]||d[i];d[i+2]=d[i+2-5]||d[i+2];}ctx.putImageData(img,0,0);}else if(effect==='kaleido'){const temp=ctx.getImageData(0,0,c.width/2,c.height/2);ctx.putImageData(temp,c.width/2,0);ctx.putImageData(temp,0,c.height/2);ctx.putImageData(temp,c.width/2,c.height/2);}else if(effect==='edge'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;const w=c.width;const h=c.height;const out=ctx.createImageData(w,h);let o=out.data;for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){const i=(y*w+x)*4;const gx=(-d[i-4-w*4]-2*d[i-w*4]-d[i+4-w*4]+d[i-4+w*4]+2*d[i+w*4]+d[i+4+w*4]);const gy=(-d[i-4-w*4]-2*d[i-4]-d[i-4+w*4]+d[i+4-w*4]+2*d[i+4]+d[i+4+w*4]);const g=Math.sqrt(gx*gx+gy*gy);o[i]=o[i+1]=o[i+2]=g;o[i+3]=255;}}ctx.putImageData(out,0,0);}else if(effect==='wave'){const img=ctx.getImageData(0,0,c.width,c.height);let d=img.data;const out=ctx.createImageData(c.width,c.height);let o=out.data;for(let y=0;y<c.height;y++){const shift=Math.sin(y/10)*10;for(let x=0;x<c.width;x++){const src=((y*c.width+((x+shift+c.width)%c.width)))*4;const dst=(y*c.width+x)*4;o[dst]=d[src];o[dst+1]=d[src+1];o[dst+2]=d[src+2];o[dst+3]=255;}}ctx.putImageData(out,0,0);} }
-
+function applyEffect(ctx)
+{
+  const effect = window.currentVJEffect;
+  const c = window.vjCanvas;
+  const p = window.vjEffectParam;
+  if (effect === 'invert') {
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;
+    for(let i=0;i<d.length;i+=4){d[i]=255-d[i];d[i+1]=255-d[i+1];d[i+2]=255-d[i+2];}
+    ctx.putImageData(img,0,0);
+  } else if (effect === 'grayscale') {
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;
+    for(let i=0;i<d.length;i+=4){const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];d[i]=d[i+1]=d[i+2]=g;}
+    ctx.putImageData(img,0,0);
+  } else if (effect === 'sepia') {
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;
+    for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];d[i]=r*0.393+g*0.769+b*0.189;d[i+1]=r*0.349+g*0.686+b*0.168;d[i+2]=r*0.272+g*0.534+b*0.131;}
+    ctx.putImageData(img,0,0);
+  } else if (effect === 'pixel') {
+    const size = Math.max(1,Math.round(10*p));
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;
+    for(let y=0;y<c.height;y+=size){for(let x=0;x<c.width;x+=size){const i=(y*c.width+x)*4;const r=d[i],g=d[i+1],b=d[i+2];for(let yy=0;yy<size;yy++){for(let xx=0;xx<size;xx++){const idx=((y+yy)*c.width+(x+xx))*4;d[idx]=r;d[idx+1]=g;d[idx+2]=b;}}}}
+    ctx.putImageData(img,0,0);
+  } else if (effect === 'rgbShift') {
+    const shift = Math.round(5*p);
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;
+    for(let i=0;i<d.length;i+=4){d[i]=d[i+shift*4]||d[i];d[i+2]=d[i+2-shift*4]||d[i+2];}
+    ctx.putImageData(img,0,0);
+  } else if (effect === 'kaleido') {
+    const temp = ctx.getImageData(0,0,c.width/2,c.height/2);
+    ctx.putImageData(temp,c.width/2,0);
+    ctx.putImageData(temp,0,c.height/2);
+    ctx.putImageData(temp,c.width/2,c.height/2);
+  } else if (effect === 'edge') {
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;const w=c.width;const h=c.height;const out=ctx.createImageData(w,h);const o=out.data;
+    for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){const i=(y*w+x)*4;const gx=(-d[i-4-w*4]-2*d[i-w*4]-d[i+4-w*4]+d[i-4+w*4]+2*d[i+w*4]+d[i+4+w*4]);const gy=(-d[i-4-w*4]-2*d[i-4]-d[i-4+w*4]+d[i+4-w*4]+2*d[i+4]+d[i+4+w*4]);const g=Math.sqrt(gx*gx+gy*gy);o[i]=o[i+1]=o[i+2]=g;o[i+3]=255;}}
+    ctx.putImageData(out,0,0);
+  } else if (effect === 'wave') {
+    const amp = 10*p;
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;const out=ctx.createImageData(c.width,c.height);const o=out.data;
+    for(let y=0;y<c.height;y++){const shift=Math.sin(y/10)*amp;for(let x=0;x<c.width;x++){const src=((y*c.width+((x+shift+c.width)%c.width)))*4;const dst=(y*c.width+x)*4;o[dst]=d[src];o[dst+1]=d[src+1];o[dst+2]=d[src+2];o[dst+3]=255;}}
+    ctx.putImageData(out,0,0);
+  } else if (effect === 'mirror') {
+    const off=document.createElement('canvas');off.width=c.width;off.height=c.height;off.getContext('2d').drawImage(c,0,0);ctx.save();ctx.scale(-1,1);ctx.drawImage(off,-c.width,0);ctx.restore();
+  } else if (effect === 'posterize') {
+    const levels = Math.max(2,Math.round(8*p+2));
+    const img = ctx.getImageData(0,0,c.width,c.height);
+    const d = img.data;const step=255/(levels-1);
+    for(let i=0;i<d.length;i+=4){d[i]=Math.round(d[i]/step)*step;d[i+1]=Math.round(d[i+1]/step)*step;d[i+2]=Math.round(d[i+2]/step)*step;}
+    ctx.putImageData(img,0,0);
+  }
+}
 function resetVJParams(){
   window.currentVJParams={brightness:1,contrast:1,saturate:1,hue:0,blur:0};
   window.vjReactive={low:0,mid:0,high:0};
+  stopTextLoop();
+  clearLogoImage();
   const sliders=window.vjControlsContainer?.querySelectorAll('input[type="range"]')||[];
   sliders.forEach(inp=>{const n=inp.parentElement.textContent.trim().toLowerCase().split(' ')[0];if(window.currentVJParams[n]!==undefined){inp.value=window.currentVJParams[n];}else if(window.vjReactive[n]!==undefined){inp.value=window.vjReactive[n];}});
 }
@@ -9366,6 +9438,16 @@ function pickLogoImage(){
   const input=document.createElement('input');input.type='file';input.accept='image/png';input.onchange=()=>{const file=input.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{window.vjLogoImg=img;};img.src=r.result;};r.readAsDataURL(file);};input.click();
 }
 
+function clearLogoImage(){
+  window.vjLogoImg=null;
+}
+
 function startTextLoop(text){
   window.vjText=text;window.vjTextVisible=true;clearInterval(window.vjTextInterval);const bpm=window.ytbmBPM||120;const ms=60000/bpm;window.vjTextInterval=setInterval(()=>{window.vjTextVisible=!window.vjTextVisible;},ms);
+}
+
+function stopTextLoop(){
+  clearInterval(window.vjTextInterval);
+  window.vjText="";
+  window.vjTextVisible=false;
 }
