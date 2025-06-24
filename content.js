@@ -118,6 +118,7 @@ window.vjEffects           = {
   invert:0, grayscale:0, sepia:0, pixel:0, rgbShift:0,
   kaleido:0, edge:0, wave:0, mirror:0, posterize:0
 };
+window.vjPopupWindow       = null;
 
 function setGlobalBPM(bpm) {
   window.ytbmBPM = bpm;
@@ -9125,8 +9126,28 @@ function openVJProjector() {
     initVJVideo();
     startVJRenderLoop();
   } else {
-    stopVJRenderLoop();
+    if(!window.vjPopupWindow || window.vjPopupWindow.closed){
+      stopVJRenderLoop();
+    }
   }
+}
+
+function openVJPopupWindow(){
+  if(window.vjPopupWindow && !window.vjPopupWindow.closed){
+    window.vjPopupWindow.focus();
+    return;
+  }
+  if(!window.projectorCanvasStream){
+    if(!window.vjProjectorContainer) buildVJProjector();
+    initVJVideo();
+    startVJRenderLoop();
+  }
+  const w=800,h=450;
+  const win=window.open('','ytbm_vj_win',`width=${w},height=${h},menubar=0,toolbar=0,location=0`);
+  if(!win) { alert('Popup blocked'); return; }
+  const html=`<html><head><style>body{margin:0;background:#000;overflow:hidden;}video{width:100vw;height:100vh;object-fit:contain;background:#000;}#bar{position:absolute;top:10px;right:10px;z-index:10;}#bar button{background:#333;color:#fff;border:1px solid #666;border-radius:4px;padding:4px 8px;margin-left:4px;cursor:pointer;}</style></head><body><video id="v" autoplay muted></video><div id="bar"><button id="fs">Full</button><button id="cls">Close</button></div><script>const vid=document.getElementById('v');vid.srcObject=window.opener.projectorCanvasStream;document.getElementById('fs').onclick=()=>{vid.requestFullscreen&&vid.requestFullscreen();};document.getElementById('cls').onclick=()=>window.close();</script></body></html>`;
+  win.document.write(html);
+  window.vjPopupWindow=win;
 }
 
 function buildVJProjector() {
@@ -9270,6 +9291,9 @@ function buildVJControls() {
 
   const reset=document.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
   reset.onclick=resetVJParams; wrap.appendChild(reset);
+
+  const winBtn=document.createElement('button'); winBtn.className='looper-btn'; winBtn.textContent='Window';
+  winBtn.onclick=openVJPopupWindow; wrap.appendChild(winBtn);
 
   document.body.appendChild(c);
   safeMakePanelDraggable(c, dh, 'ytbm_vjCtrlPos');
