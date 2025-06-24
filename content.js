@@ -9067,6 +9067,20 @@ function safeMakePanelDraggable(panel, handle, key) {
   }
 }
 
+function safeRestorePanelPosition(panel, key) {
+  if (typeof restorePanelPosition === 'function') {
+    restorePanelPosition(panel, key);
+  } else {
+    const pos = localStorage.getItem(key);
+    if (!pos) return;
+    try {
+      const obj = JSON.parse(pos);
+      panel.style.left = obj.left + 'px';
+      panel.style.top = obj.top + 'px';
+    } catch {}
+  }
+}
+
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
   if (!window.vjProjectorContainer) buildVJProjector();
@@ -9119,7 +9133,7 @@ function buildVJProjector() {
 
   document.body.appendChild(container);
   safeMakePanelDraggable(container, dh, 'ytbm_vjProjPos');
-  restorePanelPosition(container, 'ytbm_vjProjPos');
+  safeRestorePanelPosition(container, 'ytbm_vjProjPos');
 
   window.vjProjectorContainer = container;
   window.vjCanvas = canvas;
@@ -9199,7 +9213,7 @@ function buildVJControls() {
 
   document.body.appendChild(container);
   safeMakePanelDraggable(container, dh, 'ytbm_vjCtrlPos');
-  restorePanelPosition(container, 'ytbm_vjCtrlPos');
+  safeRestorePanelPosition(container, 'ytbm_vjCtrlPos');
 
   window.vjControlsContainer = container;
 }
