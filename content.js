@@ -9038,16 +9038,16 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
 function openVJProjector() {
   const width = 1280,
     height = 720;
-  vjProjectorWindow = window.open(
-    chrome.runtime.getURL('vj_projector.html'),
-    'vjProjector',
-    `width=${width},height=${height},frame=false,toolbar=0,location=0,menubar=0`
-  );
-  vjControlsWindow = window.open(
-    chrome.runtime.getURL('vj_controls.html'),
-    'vjControls',
-    'width=300,height=450,frame=false,toolbar=0,location=0,menubar=0'
-  );
+  const projFeatures = `width=${width},height=${height},popup=yes,toolbar=0,location=0,menubar=0`;
+  vjProjectorWindow = window.open('', 'vjProjector', projFeatures);
+  if (vjProjectorWindow) {
+    vjProjectorWindow.location = chrome.runtime.getURL('vj_projector.html');
+  }
+  const ctrlFeatures = 'width=300,height=450,popup=yes,toolbar=0,location=0,menubar=0';
+  vjControlsWindow = window.open('', 'vjControls', ctrlFeatures);
+  if (vjControlsWindow) {
+    vjControlsWindow.location = chrome.runtime.getURL('vj_controls.html');
+  }
   if (!vjProjectorWindow || !vjControlsWindow) return;
   window.addEventListener('message', handleVJMessage);
 }
