@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>VJ Monitor</title>
+  <style>
+    body { margin:0; background:#000; color:#fff; overflow:hidden; font-family:sans-serif; }
+    #controls { position:fixed; top:4px; left:4px; z-index:10; background:rgba(0,0,0,0.6); padding:4px; border-radius:4px; }
+    #controls select { margin-right:4px; }
+    canvas { display:block; width:100vw; height:100vh; }
+  </style>
+</head>
+<body>
+<div id="controls">
+  <select id="tabSelect" multiple size="4"></select>
+  <button id="refresh">Refresh</button>
+</div>
+<canvas id="vjCanvas" width="1280" height="720"></canvas>
+<script src="vj_monitor.js"></script>
+</body>
+</html>

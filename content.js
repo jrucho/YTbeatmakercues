@@ -118,7 +118,7 @@ window.vjEffects           = {
   invert:0, grayscale:0, sepia:0, pixel:0, rgbShift:0,
   kaleido:0, edge:0, wave:0, mirror:0, posterize:0
 };
-window.vjPopupWindow       = null;
+window.vjProjectorWindow  = null;
 window.vjGl                = null;
 window.vjProgram           = null;
 window.vjTex               = null;
@@ -9135,38 +9135,19 @@ function safeRestorePanelPosition(panel, key) {
 
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
-  if (!window.vjProjectorContainer) buildVJProjector();
-  if (!window.vjControlsContainer)  buildVJControls();
-  const showing = window.vjProjectorContainer.style.display !== 'block';
-  window.vjProjectorContainer.style.display = showing ? 'block' : 'none';
-  window.vjControlsContainer.style.display  = showing ? 'block' : 'none';
-  if (showing) {
-    initVJVideo();
-    startVJRenderLoop();
-  } else {
-    if(!window.vjPopupWindow || window.vjPopupWindow.closed){
-      stopVJRenderLoop();
-    }
-  }
-}
-
-function openVJPopupWindow(){
-  if(window.vjPopupWindow && !window.vjPopupWindow.closed){
-    window.vjPopupWindow.focus();
+  const url = chrome.runtime.getURL('vj_monitor.html');
+  if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
+    window.vjProjectorWindow.focus();
     return;
   }
-  if(!window.projectorCanvasStream){
-    if(!window.vjProjectorContainer) buildVJProjector();
-    initVJVideo();
-    startVJRenderLoop();
+  const w = window.open(url, 'ytbm_vj_monitor', 'width=800,height=450,menubar=0,toolbar=0,location=0');
+  if (!w) {
+    alert('Popup blocked');
+    return;
   }
-  const w=800,h=450;
-  const win=window.open('','ytbm_vj_win',`width=${w},height=${h},menubar=0,toolbar=0,location=0`);
-  if(!win) { alert('Popup blocked'); return; }
-  const html=`<html><head><style>body{margin:0;background:#000;overflow:hidden;}video{width:100vw;height:100vh;object-fit:contain;background:#000;}#bar{position:absolute;top:10px;right:10px;z-index:10;}#bar button{background:#333;color:#fff;border:1px solid #666;border-radius:4px;padding:4px 8px;margin-left:4px;cursor:pointer;}</style></head><body><video id="v" autoplay muted></video><div id="bar"><button id="fs">Full</button><button id="cls">Close</button></div><script>const vid=document.getElementById('v');vid.srcObject=window.opener.projectorCanvasStream;document.getElementById('fs').onclick=()=>{vid.requestFullscreen&&vid.requestFullscreen();};document.getElementById('cls').onclick=()=>window.close();</script></body></html>`;
-  win.document.write(html);
-  window.vjPopupWindow=win;
+  window.vjProjectorWindow = w;
 }
+
 
 function buildVJProjector() {
   const c = document.createElement('div');
@@ -9317,8 +9298,11 @@ function buildVJControls() {
   const reset=document.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
   reset.onclick=resetVJParams; wrap.appendChild(reset);
 
-  const winBtn=document.createElement('button'); winBtn.className='looper-btn'; winBtn.textContent='Window';
-  winBtn.onclick=openVJPopupWindow; wrap.appendChild(winBtn);
+  const winBtn=document.createElement('button');
+  winBtn.className='looper-btn';
+  winBtn.textContent='Window';
+  winBtn.onclick=openVJProjector;
+  wrap.appendChild(winBtn);
 
   document.body.appendChild(c);
   safeMakePanelDraggable(c, dh, 'ytbm_vjCtrlPos');
@@ -9360,13 +9344,47 @@ function setupAudioAnalyser(video) {
 function initVJGL(canvas){
   const gl = canvas.getContext('webgl');
   if(!gl) return;
+  const vsSource = `
+    attribute vec2 aPos;
+    attribute vec2 aTex;
+    varying vec2 vTex;
+    void main(){
+      vTex=aTex;
+      gl_Position=vec4(aPos,0.0,1.0);
+    }`;
+  const fsSource = `
+    precision mediump float;
+    varying vec2 vTex;
+    uniform sampler2D uTex;
+    uniform vec4 uParams1;
+    uniform vec4 uParams2;
+    vec3 hueShift(vec3 c,float h){
+      const mat3 m=mat3(0.299,0.587,0.114,0.596,-0.274,-0.322,0.211,-0.523,0.312);
+      vec3 yiq=m*c;float cosA=cos(h);float sinA=sin(h);yiq.yz=mat2(cosA,-sinA,sinA,cosA)*yiq.yz;
+      return inverse(m)*yiq;
+    }
+    void main(){
+      vec4 col=texture2D(uTex,vTex);
+      col.rgb*=uParams1.x;
+      col.rgb=(col.rgb-0.5)*uParams1.y+0.5;
+      float l=dot(col.rgb,vec3(0.299,0.587,0.114));
+      col.rgb=mix(vec3(l),col.rgb,uParams1.z);
+      col.rgb=hueShift(col.rgb,uParams1.w);
+      col.rgb=mix(col.rgb,1.0-col.rgb,uParams2.x);
+      float g=dot(col.rgb,vec3(0.299,0.587,0.114));
+      col.rgb=mix(col.rgb,vec3(g),uParams2.y);
+      vec3 s=vec3(dot(col.rgb,vec3(.393,.769,.189)),dot(col.rgb,vec3(.349,.686,.168)),dot(col.rgb,vec3(.272,.534,.131)));
+      col.rgb=mix(col.rgb,s,uParams2.z);
+      gl_FragColor=col;
+    }`;
   const vs = gl.createShader(gl.VERTEX_SHADER);
-  gl.shaderSource(vs,'attribute vec2 aPos;attribute vec2 aTex;varying vec2 vTex;void main(){vTex=aTex;gl_Position=vec4(aPos,0.0,1.0);}');
+  gl.shaderSource(vs, vsSource);
   gl.compileShader(vs);
-  const fsSrc=`precision mediump float;uniform sampler2D uTex;uniform vec4 uParams1;uniform vec4 uParams2;varying vec2 vTex;vec3 hueShift(vec3 c,float h){float a=h;const mat3 m=mat3(0.299,0.587,0.114,0.596,-0.274,-0.322,0.211,-0.523,0.312);vec3 yiq=m*c;float cosA=cos(a);float sinA=sin(a);yiq.yz=mat2(cosA,-sinA,sinA,cosA)*yiq.yz;return inverse(m)*yiq;}void main(){vec4 col=texture2D(uTex,vTex);col.rgb*=uParams1.x;col.rgb=(col.rgb-0.5)*uParams1.y+0.5;float l=dot(col.rgb,vec3(0.299,0.587,0.114));col.rgb=mix(vec3(l),col.rgb,uParams1.z);col.rgb=hueShift(col.rgb,uParams1.w);if(uParams2.x>0.0)col.rgb=mix(col.rgb,1.0-col.rgb,uParams2.x);if(uParams2.y>0.0){float g=dot(col.rgb,vec3(0.299,0.587,0.114));col.rgb=mix(col.rgb,vec3(g),uParams2.y);}if(uParams2.z>0.0){vec3 s=vec3(dot(col.rgb,vec3(.393,.769,.189)),dot(col.rgb,vec3(.349,.686,.168)),dot(col.rgb,vec3(.272,.534,.131)));col.rgb=mix(col.rgb,s,uParams2.z);}gl_FragColor=col;}`;
   const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  gl.shaderSource(fs,fsSrc);
+  gl.shaderSource(fs, fsSource);
   gl.compileShader(fs);
+  if(!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) console.warn(gl.getShaderInfoLog(vs));
+  if(!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) console.warn(gl.getShaderInfoLog(fs));
   const prog = gl.createProgram();
   gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);gl.useProgram(prog);
   const posBuf=gl.createBuffer();
