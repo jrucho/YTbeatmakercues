@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>VJ Controls</title>
+<style>
+html,body{margin:0;background:rgba(30,30,30,0.95);color:#fff;font-family:sans-serif;overflow:hidden;}
+.looper-midimap-content{padding:8px;overflow-y:auto;height:calc(100vh - 40px);}
+.looper-midimap-drag-handle{background:#222;padding:6px 10px;font-weight:600;cursor:move;}
+.looper-btn{background:#333;color:#fff;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;}
+.midimap-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.midimap-row label{width:100px;}
+.midimap-row input{width:80px;background:#222;color:#fff;border:1px solid #555;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="looper-midimap-drag-handle" id="drag">VJ Controls</div>
+<div class="looper-midimap-content" id="content"></div>
+<script src="vj_controls.js"></script>
+</body>
+</html>

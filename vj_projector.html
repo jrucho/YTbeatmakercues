@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>VJ Projector</title>
+<style>
+html,body{margin:0;background:#000;overflow:hidden;}
+canvas{display:block;background:#000;width:100vw;height:100vh;}
+.handle{position:absolute;width:12px;height:12px;background:hotpink;border-radius:50%;cursor:pointer;}
+.btnBar{position:absolute;top:4px;right:4px;display:flex;gap:4px;z-index:10;}
+.looper-btn{background:#333;color:#fff;border:1px solid #555;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="btnBar">
+ <button id="btnHide" class="looper-btn">Hide</button>
+ <button id="btnFull" class="looper-btn">Full</button>
+ <button id="btnReset" class="looper-btn">Reset</button>
+</div>
+<canvas id="vjCanvas" width="640" height="360"></canvas>
+<div id="h0" class="handle"></div>
+<div id="h1" class="handle"></div>
+<div id="h2" class="handle"></div>
+<div id="h3" class="handle"></div>
+<script src="vj_projector.js"></script>
+</body>
+</html>
