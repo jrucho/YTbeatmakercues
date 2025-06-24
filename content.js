@@ -6361,6 +6361,15 @@ function addControls() {
   pasteCuesButton.title = "Paste a YouTube link with cues to update them";
   pasteCuesButton.addEventListener("click", pasteCuesFromLink);
   actionWrap.appendChild(pasteCuesButton);
+
+  // Button to open a borderless VJ monitor window
+  const vjButton = document.createElement("button");
+  vjButton.className = "looper-btn";
+  vjButton.innerText = "VJ Monitor";
+  vjButton.style.flex = '1 1 calc(50% - 4px)';
+  vjButton.title = "Open a frameless monitor window";
+  vjButton.addEventListener("click", createVJWindow);
+  actionWrap.appendChild(vjButton);
 /*
   videoAudioToggleButton = document.createElement("button");
   videoAudioToggleButton.className = "looper-btn";
@@ -9013,3 +9022,68 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   `;
   document.head.appendChild(style);
 })();
+
+// ---------- VJ Monitor & Visual FX ----------
+function createVJWindow() {
+  const width = 1280,
+    height = 720;
+  const vjWin = window.open(
+    '',
+    'vjMonitor',
+    `width=${width},height=${height},frame=false,toolbar=0,location=0,menubar=0`
+  );
+  if (!vjWin) return;
+  const html = `
+    <html><head><style>body{margin:0;overflow:hidden;background:black;}</style></head>
+    <body><canvas id="vjCanvas" width="${width}" height="${height}"></canvas>
+    <script>
+      const canvas = document.getElementById('vjCanvas');
+      const ctx = canvas.getContext('2d');
+      const video = document.createElement('video');
+      const stream = window.opener.document.querySelector('video')?.captureStream();
+      if (stream) { video.srcObject = stream; video.play(); }
+      function draw(){
+        if (!video.paused && !video.ended) {
+          ctx.filter = 'contrast(1.2) brightness(1.1) hue-rotate(15deg)';
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx.filter = 'none';
+        }
+        requestAnimationFrame(draw);
+      }
+      draw();
+    <\/script></body></html>`;
+  vjWin.document.write(html);
+}
+
+function applyVisualEffects(ctx, video, w, h) {
+  ctx.filter = 'contrast(1.2) brightness(1.1) hue-rotate(15deg)';
+  ctx.drawImage(video, 0, 0, w, h);
+  ctx.filter = 'none';
+}
+
+function enableCornerMapping(canvas) {
+  // Placeholder for future perspective transform controls
+  console.log('Corner mapping initialized');
+}
+
+function startAudioReactiveFX(videoEl, canvas) {
+  const audioCtx = new AudioContext();
+  const source = audioCtx.createMediaElementSource(videoEl);
+  const analyser = audioCtx.createAnalyser();
+  source.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  function render() {
+    analyser.getByteFrequencyData(freqData);
+    const bass = freqData.slice(0, 30).reduce((a, b) => a + b, 0) / 30;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 0.5 + bass / 512;
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+    requestAnimationFrame(render);
+  }
+  render();
+}
