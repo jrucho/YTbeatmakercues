@@ -99,6 +99,14 @@ if (typeof updateCueMarkers === "undefined") {
   function updateCueMarkers() {}
 }
 
+// Global VJ window state
+window.vjProjectorWindow = null;
+window.vjControlsWindow = null;
+window.useProjectorStream = false;
+window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+window.vjReactive = { low:0, mid:0, high:0 };
+window.projectorCanvasStream = null;
+
 // Attach to minimal random cues button
 if (typeof randomCuesButtonMin !== "undefined" && randomCuesButtonMin) {
   randomCuesButtonMin.title = "Suggest cues from transients (Cmd-click = random)";
@@ -746,12 +754,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqDragHandle = null,
       eqContentWrap = null,
       instrumentWindowContainer = null,
-      vjProjectorWindow = null,
-      vjControlsWindow = null,
-      useProjectorStream = false,
-      currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 },
-      vjReactive = { low:0, mid:0, high:0 },
-      projectorCanvasStream = null,
       // We'll keep them to identify which button is which
       reverbButton = null,
       cassetteButton = null,
@@ -9039,29 +9041,29 @@ function openVJProjector() {
   const width = 1280,
     height = 720;
   const projFeatures = `width=${width},height=${height},popup=yes,toolbar=0,location=0,menubar=0`;
-  vjProjectorWindow = window.open('', 'vjProjector', projFeatures);
-  if (vjProjectorWindow) {
-    vjProjectorWindow.location = chrome.runtime.getURL('vj_projector.html');
+  window.vjProjectorWindow = window.open('', 'vjProjector', projFeatures);
+  if (window.vjProjectorWindow) {
+    window.vjProjectorWindow.location = chrome.runtime.getURL('vj_projector.html');
   }
   const ctrlFeatures = 'width=300,height=450,popup=yes,toolbar=0,location=0,menubar=0';
-  vjControlsWindow = window.open('', 'vjControls', ctrlFeatures);
-  if (vjControlsWindow) {
-    vjControlsWindow.location = chrome.runtime.getURL('vj_controls.html');
+  window.vjControlsWindow = window.open('', 'vjControls', ctrlFeatures);
+  if (window.vjControlsWindow) {
+    window.vjControlsWindow.location = chrome.runtime.getURL('vj_controls.html');
   }
-  if (!vjProjectorWindow || !vjControlsWindow) return;
+  if (!window.vjProjectorWindow || !window.vjControlsWindow) return;
   window.addEventListener('message', handleVJMessage);
 }
 
 function handleVJMessage(e) {
   const { type, data } = e.data || {};
-  if (typeof currentVJParams === 'undefined') {
-    currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+  if (typeof window.currentVJParams === 'undefined') {
+    window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
   }
   if (type === 'projectorReady') {
     const srcVid = getVideoElement();
     if (srcVid) {
       const stream = srcVid.captureStream?.();
-      if (stream) e.source.postMessage({ type: 'videoStream', data: stream }, '*', [stream]);
+      if (stream) e.source.postMessage({ type: 'videoStream', data: stream }, '*');
     }
     sendVJParams();
   } else if (type === 'projectorStream') {
@@ -9069,31 +9071,31 @@ function handleVJMessage(e) {
   } else if (type === 'controlsReady') {
     sendVJParams();
   } else if (type === 'filterParams') {
-    currentVJParams = { ...currentVJParams, ...data.params };
-    vjReactive = { ...vjReactive, ...data.reactive };
-    if (vjProjectorWindow) {
-      vjProjectorWindow.postMessage({ type: 'filterParams', data: { params: currentVJParams, reactive: vjReactive } }, '*');
+    window.currentVJParams = { ...window.currentVJParams, ...data.params };
+    window.vjReactive = { ...window.vjReactive, ...data.reactive };
+    if (window.vjProjectorWindow) {
+      window.vjProjectorWindow.postMessage({ type: 'filterParams', data: { params: window.currentVJParams, reactive: window.vjReactive } }, '*');
     }
   } else if (type === 'useProjector') {
-    useProjectorStream = !!data;
+    window.useProjectorStream = !!data;
   } else if (type === 'cornerMap') {
-    if (data && enableCornerMapping && vjProjectorWindow) {
-      vjProjectorWindow.postMessage({ type: 'cornerMap' }, '*');
+    if (data && enableCornerMapping && window.vjProjectorWindow) {
+      window.vjProjectorWindow.postMessage({ type: 'cornerMap' }, '*');
     }
   } else if (type === 'resetRequest') {
-    currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
-    vjReactive = { low:0, mid:0, high:0 };
-    if (vjControlsWindow) vjControlsWindow.postMessage({type:'resetUI'}, '*');
+    window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+    window.vjReactive = { low:0, mid:0, high:0 };
+    if (window.vjControlsWindow) window.vjControlsWindow.postMessage({type:'resetUI'}, '*');
     sendVJParams();
   }
 }
 
 function sendVJParams() {
-  if (typeof currentVJParams === 'undefined') {
-    currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+  if (typeof window.currentVJParams === 'undefined') {
+    window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
   }
-  if (vjProjectorWindow) {
-    vjProjectorWindow.postMessage({ type:'filterParams', data:{ params: currentVJParams, reactive: vjReactive } }, '*');
+  if (window.vjProjectorWindow) {
+    window.vjProjectorWindow.postMessage({ type:'filterParams', data:{ params: window.currentVJParams, reactive: window.vjReactive } }, '*');
   }
 }
 
