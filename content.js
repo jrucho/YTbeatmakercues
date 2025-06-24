@@ -119,6 +119,33 @@ window.vjEffects           = {
   kaleido:0, edge:0, wave:0, mirror:0, posterize:0
 };
 window.vjPopupWindow       = null;
+window.vjGl                = null;
+window.vjProgram           = null;
+window.vjTex               = null;
+window.vjUniforms          = {};
+window.vjPrefsKey          = 'ytbm_vjPrefs';
+
+function saveVJPrefs() {
+  const obj = {
+    params: window.currentVJParams,
+    reactive: window.vjReactive,
+    effects: window.vjEffects
+  };
+  localStorage.setItem(window.vjPrefsKey, JSON.stringify(obj));
+}
+
+function loadVJPrefs() {
+  try {
+    const raw = localStorage.getItem(window.vjPrefsKey);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    Object.assign(window.currentVJParams, obj.params || {});
+    Object.assign(window.vjReactive, obj.reactive || {});
+    Object.assign(window.vjEffects, obj.effects || {});
+  } catch (e) {
+    console.warn('Failed loading VJ prefs', e);
+  }
+}
 
 function setGlobalBPM(bpm) {
   window.ytbmBPM = bpm;
@@ -1065,63 +1092,53 @@ addDetectBpmButtonToMinimalUI();
 }
 
 // ===== Detect‑BPM support (minimal UI) ===================================
-function detectBpmFromVideo() {
-  ensureAudioContext().then(() => {
-    const vid = getVideoElement();
-    if (!vid || !audioContext || !videoGain) return;
+async function detectBpmFromVideo() {
+  await ensureAudioContext();
+  const vid = getVideoElement();
+  if (!vid) return;
 
-    // UI feedback: set to orange, show "Detecting…"
-    detectBpmButton.textContent = "Detecting…";
-    detectBpmButton.style.backgroundColor = "#f39c12";
-    detectBpmButton.disabled = true;
+  detectBpmButton.textContent = "Detecting…";
+  detectBpmButton.style.backgroundColor = "#f39c12";
+  detectBpmButton.disabled = true;
 
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    const buf = new Uint8Array(analyser.fftSize);
-    videoGain.connect(analyser);
-
-    const SLICE_MS = 8000, SLICES = 3;
-    const bpms = [];
-
-    (async function loop(slice = 0) {
-      const energies = [];
-      const t0 = performance.now();
-      while (performance.now() - t0 < SLICE_MS) {
-        analyser.getByteTimeDomainData(buf);
-        let rms = 0;
-        for (let i = 0; i < buf.length; i++) {
-          const v = buf[i] - 128;
-          rms += v * v;
-        }
-        energies.push({ t: performance.now(), e: Math.sqrt(rms / buf.length) });
-        await new Promise(r => requestAnimationFrame(r));
-      }
-      const bpm = analyseBPMFromEnergies(energies);   // helper from previous message
-      if (bpm) bpms.push(bpm);
-      if (slice + 1 < SLICES) return loop(slice + 1);
-
-      // finish
-      videoGain.disconnect(analyser);
-      detectBpmButton.disabled = false;
-      if (!bpms.length) {
-        detectBpmButton.textContent = "Detect BPM";
-        detectBpmButton.style.backgroundColor = "#e74c3c"; // red for failure
-        return;
-      }
-      bpms.sort((a, b) => a - b);
-      let bpmMedian = bpms[Math.floor(bpms.length / 2)];
-      // Fold to 80–200 BPM range
-      while (bpmMedian < 80) bpmMedian *= 2;
-      while (bpmMedian > 200) bpmMedian /= 2;
-      bpmMedian = Math.round(bpmMedian);
-      sequencerBPM = bpmMedian;
-      setGlobalBPM(sequencerBPM);
-      detectBpmButton.textContent = `${bpmMedian} BPM`;
-      detectBpmButton.style.backgroundColor = "#2ecc71"; // green for success
-      const bpmField = document.querySelector('#sequencerContainer input[type="number"]');
-      if (bpmField) bpmField.value = bpmMedian;
-    })();
-  });
+  const stream = vid.captureStream();
+  const track = stream.getAudioTracks()[0];
+  if (!track) { detectBpmButton.textContent="Detect BPM"; return; }
+  const rec = new MediaRecorder(new MediaStream([track]));
+  const chunks = [];
+  rec.ondataavailable = e => chunks.push(e.data);
+  rec.start();
+  await new Promise(r => setTimeout(r, 8000));
+  rec.stop();
+  await new Promise(r => { rec.onstop = r; });
+  const blob = new Blob(chunks);
+  const arr = await blob.arrayBuffer();
+  const off = new OfflineAudioContext(1, 44100 * 8, 44100);
+  const buffer = await off.decodeAudioData(arr.slice(0));
+  const data = buffer.getChannelData(0);
+  const step = Math.floor(buffer.sampleRate / 60);
+  const energies = [];
+  for (let i=0;i<data.length;i+=step){
+    let rms=0; for(let j=0;j<step && i+j<data.length;j++){ const v=data[i+j]; rms+=v*v; }
+    energies.push({t:i/buffer.sampleRate*1000,e:Math.sqrt(rms/step)});
+  }
+  const bpm = analyseBPMFromEnergies(energies);
+  detectBpmButton.disabled = false;
+  if(!bpm){
+    detectBpmButton.textContent = "Detect BPM";
+    detectBpmButton.style.backgroundColor = "#e74c3c";
+    return;
+  }
+  let bpmMedian = bpm;
+  while (bpmMedian < 80) bpmMedian *= 2;
+  while (bpmMedian > 200) bpmMedian /= 2;
+  bpmMedian = Math.round(bpmMedian);
+  sequencerBPM = bpmMedian;
+  setGlobalBPM(sequencerBPM);
+  detectBpmButton.textContent = `${bpmMedian} BPM`;
+  detectBpmButton.style.backgroundColor = "#2ecc71";
+  const bpmField = document.querySelector('#sequencerContainer input[type="number"]');
+  if (bpmField) bpmField.value = bpmMedian;
 }
 
 function addDetectBpmButtonToMinimalUI() {
@@ -8985,9 +9002,10 @@ async function initialize() {
     
     await loadMappingsFromLocalStorage();
     loadMidiPresetsFromLocalStorage();
-    await loadSamplePacksFromLocalStorage();
-    await loadMonitorPrefs();
-    await ensureAudioContext();
+  await loadSamplePacksFromLocalStorage();
+  await loadMonitorPrefs();
+  loadVJPrefs();
+  await ensureAudioContext();
     if (activeSamplePackNames.length) {
       await applySelectedSamplePacks();
     } else if (currentSamplePackName) {
@@ -9215,6 +9233,7 @@ function buildVJControls() {
   const c = document.createElement('div');
   c.className = 'looper-midimap-container';
   c.style.width = '320px';
+  loadVJPrefs();
 
   const dh = document.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
@@ -9240,7 +9259,7 @@ function buildVJControls() {
     input.type='range';
     const [min,max,step]=ranges[p];
     input.min=min; input.max=max; input.step=step; input.value=window.currentVJParams[p];
-    input.oninput=()=>{ window.currentVJParams[p]=parseFloat(input.value); };
+    input.oninput=()=>{ window.currentVJParams[p]=parseFloat(input.value); saveVJPrefs(); };
     label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
   });
 
@@ -9249,9 +9268,15 @@ function buildVJControls() {
     const label=document.createElement('label'); label.textContent='Audio '+b;
     const input=document.createElement('input');
     input.type='range'; input.min=0; input.max=2; input.step=0.1; input.value=0;
-    input.oninput=()=>{ window.vjReactive[b]=parseFloat(input.value); };
+    input.oninput=()=>{ window.vjReactive[b]=parseFloat(input.value); saveVJPrefs(); };
     label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
   });
+
+  const advanced=document.createElement('details');
+  const sum=document.createElement('summary');
+  sum.textContent='Advanced';
+  advanced.appendChild(sum);
+  wrap.appendChild(advanced);
 
   const effects=['invert','grayscale','sepia','pixel','rgbShift','kaleido','edge','wave','mirror','posterize'];
   effects.forEach(name=>{
@@ -9259,19 +9284,19 @@ function buildVJControls() {
     const label=document.createElement('label'); label.textContent=name;
     const input=document.createElement('input');
     input.type='range'; input.min=0; input.max=1; input.step=0.1; input.value=window.vjEffects[name]||0;
-    input.oninput=()=>{ window.vjEffects[name]=parseFloat(input.value); };
-    label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
+    input.oninput=()=>{ window.vjEffects[name]=parseFloat(input.value); saveVJPrefs(); };
+    label.appendChild(input); row.appendChild(label); advanced.appendChild(row);
   });
 
   const cornerChk=document.createElement('input'); cornerChk.type='checkbox';
-  cornerChk.onchange=()=>toggleCorners(cornerChk.checked);
+  cornerChk.onchange=()=>{ toggleCorners(cornerChk.checked); saveVJPrefs(); };
   const cornerLab=document.createElement('label'); cornerLab.textContent='Corner Map'; cornerLab.prepend(cornerChk);
-  wrap.appendChild(cornerLab);
+  advanced.appendChild(cornerLab);
 
   const projChk=document.createElement('input'); projChk.type='checkbox';
-  projChk.onchange=()=>{ window.useProjectorStream = projChk.checked; };
+  projChk.onchange=()=>{ window.useProjectorStream = projChk.checked; saveVJPrefs(); };
   const projLab=document.createElement('label'); projLab.textContent='Use in Looper'; projLab.prepend(projChk);
-  wrap.appendChild(projLab);
+  advanced.appendChild(projLab);
 
   const logoBtn=document.createElement('button'); logoBtn.className='looper-btn'; logoBtn.textContent='Set Logo';
   logoBtn.onclick=()=>{ pickLogoImage(); };
@@ -9304,15 +9329,22 @@ function buildVJControls() {
 function initVJVideo() {
   const src = getVideoElement();
   if (!src) return;
-  const stream = src.captureStream?.();
-  if (!stream) return;
-  const v = document.createElement('video');
-  v.srcObject = stream;
-  v.muted = true;
-  v.play().catch(()=>{});
-  window.vjVideo = v;
-  window.vjVideoStream = stream;
-  setupAudioAnalyser(v);
+  if (!window.vjVideoStream) {
+    const stream = src.captureStream?.();
+    if (!stream) return;
+    window.vjVideoStream = stream;
+  }
+  if (!window.vjVideo) {
+    const v = document.createElement('video');
+    v.srcObject = window.vjVideoStream;
+    v.muted = true;
+    v.play().catch(()=>{});
+    window.vjVideo = v;
+    setupAudioAnalyser(v);
+  }
+  if(!window.vjGl && window.vjCanvas){
+    initVJGL(window.vjCanvas);
+  }
 }
 
 let vjAnalyser, vjFreqData, vjAudioCtx;
@@ -9325,13 +9357,51 @@ function setupAudioAnalyser(video) {
   vjFreqData = new Uint8Array(vjAnalyser.frequencyBinCount);
 }
 
+function initVJGL(canvas){
+  const gl = canvas.getContext('webgl');
+  if(!gl) return;
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs,'attribute vec2 aPos;attribute vec2 aTex;varying vec2 vTex;void main(){vTex=aTex;gl_Position=vec4(aPos,0.0,1.0);}');
+  gl.compileShader(vs);
+  const fsSrc=`precision mediump float;uniform sampler2D uTex;uniform vec4 uParams1;uniform vec4 uParams2;varying vec2 vTex;vec3 hueShift(vec3 c,float h){float a=h;const mat3 m=mat3(0.299,0.587,0.114,0.596,-0.274,-0.322,0.211,-0.523,0.312);vec3 yiq=m*c;float cosA=cos(a);float sinA=sin(a);yiq.yz=mat2(cosA,-sinA,sinA,cosA)*yiq.yz;return inverse(m)*yiq;}void main(){vec4 col=texture2D(uTex,vTex);col.rgb*=uParams1.x;col.rgb=(col.rgb-0.5)*uParams1.y+0.5;float l=dot(col.rgb,vec3(0.299,0.587,0.114));col.rgb=mix(vec3(l),col.rgb,uParams1.z);col.rgb=hueShift(col.rgb,uParams1.w);if(uParams2.x>0.0)col.rgb=mix(col.rgb,1.0-col.rgb,uParams2.x);if(uParams2.y>0.0){float g=dot(col.rgb,vec3(0.299,0.587,0.114));col.rgb=mix(col.rgb,vec3(g),uParams2.y);}if(uParams2.z>0.0){vec3 s=vec3(dot(col.rgb,vec3(.393,.769,.189)),dot(col.rgb,vec3(.349,.686,.168)),dot(col.rgb,vec3(.272,.534,.131)));col.rgb=mix(col.rgb,s,uParams2.z);}gl_FragColor=col;}`;
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs,fsSrc);
+  gl.compileShader(fs);
+  const prog = gl.createProgram();
+  gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);gl.useProgram(prog);
+  const posBuf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const posLoc=gl.getAttribLocation(prog,'aPos');
+  gl.enableVertexAttribArray(posLoc);gl.vertexAttribPointer(posLoc,2,gl.FLOAT,false,0,0);
+  const texBuf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,texBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,1,1,1,0,0,1,0]),gl.STATIC_DRAW);
+  const texLoc=gl.getAttribLocation(prog,'aTex');
+  gl.enableVertexAttribArray(texLoc);gl.vertexAttribPointer(texLoc,2,gl.FLOAT,false,0,0);
+  const tex=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  window.vjGl=gl;window.vjProgram=prog;window.vjTex=tex;
+  window.vjUniforms={uParams1:gl.getUniformLocation(prog,'uParams1'),uParams2:gl.getUniformLocation(prog,'uParams2')};
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+
 function getReactiveMod() {
   if (!vjAnalyser) return {low:0, mid:0, high:0};
+  const now = performance.now();
+  if (getReactiveMod.last && now - getReactiveMod.last < 80)
+    return getReactiveMod.cache;
+  getReactiveMod.last = now;
   vjAnalyser.getByteFrequencyData(vjFreqData);
   const bass=avg(vjFreqData,0,30)/255;
   const mid=avg(vjFreqData,30,90)/255;
   const tre=avg(vjFreqData,90,180)/255;
-  return {low:bass*window.vjReactive.low, mid:mid*window.vjReactive.mid, high:tre*window.vjReactive.high};
+  getReactiveMod.cache = {low:bass*window.vjReactive.low, mid:mid*window.vjReactive.mid, high:tre*window.vjReactive.high};
+  return getReactiveMod.cache;
 }
 
 function avg(arr, from, to){
@@ -9392,94 +9462,19 @@ function stopVJRenderLoop(){
 }
 
 function renderVJFrame(){
-  if(!window.vjVideo||!window.vjCanvas) return;
-  const ctx=window.vjCanvas.getContext('2d');
+  if(!window.vjVideo||!window.vjCanvas||!window.vjGl) return;
+  const gl=window.vjGl;
   const r=getReactiveMod();
   const p=window.currentVJParams;
-  ctx.filter=`brightness(${p.brightness+r.low}) contrast(${p.contrast+r.mid}) saturate(${p.saturate}) hue-rotate(${p.hue}deg) blur(${p.blur}px)`;
-  ctx.drawImage(window.vjVideo,0,0,window.vjCanvas.width,window.vjCanvas.height);
-  applyEffect(ctx,r);
-  if(window.vjLogoImg){ctx.drawImage(window.vjLogoImg,10,10);} 
-  if(window.vjText&&window.vjTextVisible){ctx.fillStyle='white';ctx.font='48px sans-serif';ctx.fillText(window.vjText,20,window.vjCanvas.height-40);} 
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, window.vjTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,window.vjVideo);
+  gl.useProgram(window.vjProgram);
+  gl.uniform4f(window.vjUniforms.uParams1, p.brightness+r.low, p.contrast+r.mid, p.saturate, p.hue*(Math.PI/180));
+  gl.uniform4f(window.vjUniforms.uParams2, window.vjEffects.invert, window.vjEffects.grayscale, window.vjEffects.sepia, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 }
-
-function applyEffect(ctx,r)
-{
-  const c = window.vjCanvas;
-  const effects = window.vjEffects;
-  const rand = (r.low+r.mid+r.high)*Math.random();
-
-  if (effects.invert>0) {
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;
-    for(let i=0;i<d.length;i+=4){d[i]=255-d[i];d[i+1]=255-d[i+1];d[i+2]=255-d[i+2];}
-    ctx.putImageData(img,0,0);
-  }
-
-  if (effects.grayscale>0) {
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;
-    for(let i=0;i<d.length;i+=4){const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];d[i]=d[i+1]=d[i+2]=g;}
-    ctx.putImageData(img,0,0);
-  }
-
-  if (effects.sepia>0) {
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;
-    for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];d[i]=r*0.393+g*0.769+b*0.189;d[i+1]=r*0.349+g*0.686+b*0.168;d[i+2]=r*0.272+g*0.534+b*0.131;}
-    ctx.putImageData(img,0,0);
-  }
-
-  if (effects.pixel>0) {
-    const size = Math.max(1,Math.round(10*(effects.pixel+rand)));
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;
-    for(let y=0;y<c.height;y+=size){for(let x=0;x<c.width;x+=size){const i=(y*c.width+x)*4;const r=d[i],g=d[i+1],b=d[i+2];for(let yy=0;yy<size;yy++){for(let xx=0;xx<size;xx++){const idx=((y+yy)*c.width+(x+xx))*4;d[idx]=r;d[idx+1]=g;d[idx+2]=b;}}}}
-    ctx.putImageData(img,0,0);
-  }
-
-  if (effects.rgbShift>0) {
-    const shift = Math.round(5*(effects.rgbShift+rand));
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;
-    for(let i=0;i<d.length;i+=4){d[i]=d[i+shift*4]||d[i];d[i+2]=d[i+2-shift*4]||d[i+2];}
-    ctx.putImageData(img,0,0);
-  }
-
-  if (effects.kaleido>0) {
-    const temp = ctx.getImageData(0,0,c.width/2,c.height/2);
-    ctx.putImageData(temp,c.width/2,0);
-    ctx.putImageData(temp,0,c.height/2);
-    ctx.putImageData(temp,c.width/2,c.height/2);
-  }
-
-  if (effects.edge>0) {
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;const w=c.width;const h=c.height;const out=ctx.createImageData(w,h);const o=out.data;
-    for(let y=1;y<h-1;y++){for(let x=1;x<w-1;x++){const i=(y*w+x)*4;const gx=(-d[i-4-w*4]-2*d[i-w*4]-d[i+4-w*4]+d[i-4+w*4]+2*d[i+w*4]+d[i+4+w*4]);const gy=(-d[i-4-w*4]-2*d[i-4]-d[i-4+w*4]+d[i+4-w*4]+2*d[i+4]+d[i+4+w*4]);const g=Math.sqrt(gx*gx+gy*gy);o[i]=o[i+1]=o[i+2]=g;o[i+3]=255;}}
-    ctx.putImageData(out,0,0);
-  }
-
-  if (effects.wave>0) {
-    const amp = 10*(effects.wave+rand);
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;const out=ctx.createImageData(c.width,c.height);const o=out.data;
-    for(let y=0;y<c.height;y++){const shift=Math.sin(y/10)*amp;for(let x=0;x<c.width;x++){const src=((y*c.width+((x+shift+c.width)%c.width)))*4;const dst=(y*c.width+x)*4;o[dst]=d[src];o[dst+1]=d[src+1];o[dst+2]=d[src+2];o[dst+3]=255;}}
-    ctx.putImageData(out,0,0);
-  }
-
-  if (effects.mirror>0) {
-    const off=document.createElement('canvas');off.width=c.width;off.height=c.height;off.getContext('2d').drawImage(c,0,0);ctx.save();ctx.scale(-1,1);ctx.drawImage(off,-c.width,0);ctx.restore();
-  }
-
-  if (effects.posterize>0) {
-    const levels = Math.max(2,Math.round(8*(effects.posterize+rand)+2));
-    const img = ctx.getImageData(0,0,c.width,c.height);
-    const d = img.data;const step=255/(levels-1);
-    for(let i=0;i<d.length;i+=4){d[i]=Math.round(d[i]/step)*step;d[i+1]=Math.round(d[i+1]/step)*step;d[i+2]=Math.round(d[i+2]/step)*step;}
-    ctx.putImageData(img,0,0);
-  }
-}
+// CPU-intensive effects removed; using WebGL shader instead
 function resetVJParams(){
   window.currentVJParams={brightness:1,contrast:1,saturate:1,hue:0,blur:0};
   window.vjReactive={low:0,mid:0,high:0};
@@ -9497,22 +9492,41 @@ function resetVJParams(){
   if(chk){chk.checked=false;}
   window.cornerMapEnabled=false;
   if(window.vjCanvas){const w=vjCanvas.width,h=vjCanvas.height;window.vjCorners=[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];updateHandles();}
+  saveVJPrefs();
 }
 
 function pickLogoImage(){
-  const input=document.createElement('input');input.type='file';input.accept='image/png';input.onchange=()=>{const file=input.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{window.vjLogoImg=img;};img.src=r.result;};r.readAsDataURL(file);};input.click();
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='image/png';
+  input.onchange=()=>{
+    const file=input.files[0];
+    if(!file)return;
+    const r=new FileReader();
+    r.onload=()=>{const img=new Image();img.onload=()=>{window.vjLogoImg=img; saveVJPrefs();};img.src=r.result;};
+    r.readAsDataURL(file);
+  };
+  input.click();
 }
 
 function clearLogoImage(){
   window.vjLogoImg=null;
+  saveVJPrefs();
 }
 
 function startTextLoop(text){
-  window.vjText=text;window.vjTextVisible=true;clearInterval(window.vjTextInterval);const bpm=window.ytbmBPM||120;const ms=60000/bpm;window.vjTextInterval=setInterval(()=>{window.vjTextVisible=!window.vjTextVisible;},ms);
+  window.vjText=text;
+  window.vjTextVisible=true;
+  clearInterval(window.vjTextInterval);
+  const bpm=window.ytbmBPM||120;
+  const ms=60000/bpm;
+  window.vjTextInterval=setInterval(()=>{window.vjTextVisible=!window.vjTextVisible;},ms);
+  saveVJPrefs();
 }
 
 function stopTextLoop(){
   clearInterval(window.vjTextInterval);
   window.vjText="";
   window.vjTextVisible=false;
+  saveVJPrefs();
 }
