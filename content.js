@@ -9054,11 +9054,14 @@ function openVJProjector() {
 
 function handleVJMessage(e) {
   const { type, data } = e.data || {};
+  if (typeof currentVJParams === 'undefined') {
+    currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+  }
   if (type === 'projectorReady') {
     const srcVid = getVideoElement();
     if (srcVid) {
       const stream = srcVid.captureStream?.();
-      if (stream) e.source.postMessage({ type: 'videoStream', data: stream }, '*');
+      if (stream) e.source.postMessage({ type: 'videoStream', data: stream }, '*', [stream]);
     }
     sendVJParams();
   } else if (type === 'projectorStream') {
@@ -9086,6 +9089,9 @@ function handleVJMessage(e) {
 }
 
 function sendVJParams() {
+  if (typeof currentVJParams === 'undefined') {
+    currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+  }
   if (vjProjectorWindow) {
     vjProjectorWindow.postMessage({ type:'filterParams', data:{ params: currentVJParams, reactive: vjReactive } }, '*');
   }

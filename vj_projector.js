@@ -23,7 +23,7 @@ window.addEventListener('message', async (e) => {
     setupAudio();
     requestAnimationFrame(draw);
     const captureStream = canvas.captureStream();
-    window.opener?.postMessage({ type:'projectorStream', data: captureStream }, '*');
+    window.opener?.postMessage({ type:'projectorStream', data: captureStream }, '*', [captureStream]);
   } else if (type === 'filterParams') {
     filterParams = { ...filterParams, ...data.params };
     reactive = { ...reactive, ...data.reactive };
