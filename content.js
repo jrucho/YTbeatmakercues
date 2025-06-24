@@ -99,13 +99,17 @@ if (typeof updateCueMarkers === "undefined") {
   function updateCueMarkers() {}
 }
 
-// Global VJ window state
-window.vjProjectorWindow = null;
-window.vjControlsWindow = null;
+// Global VJ overlay state
+window.vjProjectorContainer = null;
+window.vjControlsContainer = null;
+window.vjCanvas = null;
+window.vjVideo = null;
 window.useProjectorStream = false;
 window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
 window.vjReactive = { low:0, mid:0, high:0 };
 window.projectorCanvasStream = null;
+window.cornerMapEnabled = false;
+window.vjCorners = null;
 
 // Attach to minimal random cues button
 if (typeof randomCuesButtonMin !== "undefined" && randomCuesButtonMin) {
@@ -9038,96 +9042,229 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
 
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
-  const width = 1280,
-    height = 720;
-  const projFeatures = `width=${width},height=${height},popup=yes,toolbar=0,location=0,menubar=0`;
-  window.vjProjectorWindow = window.open('', 'vjProjector', projFeatures);
-  if (window.vjProjectorWindow) {
-    window.vjProjectorWindow.location = chrome.runtime.getURL('vj_projector.html');
-  }
-  const ctrlFeatures = 'width=300,height=450,popup=yes,toolbar=0,location=0,menubar=0';
-  window.vjControlsWindow = window.open('', 'vjControls', ctrlFeatures);
-  if (window.vjControlsWindow) {
-    window.vjControlsWindow.location = chrome.runtime.getURL('vj_controls.html');
-  }
-  if (!window.vjProjectorWindow || !window.vjControlsWindow) return;
-  window.addEventListener('message', handleVJMessage);
+  if (!window.vjProjectorContainer) buildVJProjector();
+  if (!window.vjControlsContainer) buildVJControls();
+  window.vjProjectorContainer.style.display = 'block';
+  window.vjControlsContainer.style.display = 'block';
+  startVJRenderLoop();
 }
 
-function handleVJMessage(e) {
-  const { type, data } = e.data || {};
-  if (typeof window.currentVJParams === 'undefined') {
-    window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+function buildVJProjector() {
+  const container = document.createElement('div');
+  container.className = 'looper-midimap-container';
+  container.style.width = '660px';
+  container.style.background = 'rgba(0,0,0,0.95)';
+  container.style.padding = '0';
+
+  const dh = document.createElement('div');
+  dh.className = 'looper-midimap-drag-handle';
+  dh.innerText = 'VJ Projector';
+  container.appendChild(dh);
+
+  const ui = document.createElement('div');
+  ui.style.position = 'absolute';
+  ui.style.top = '6px';
+  ui.style.right = '6px';
+
+  const hideBtn = document.createElement('button');
+  hideBtn.className = 'looper-btn';
+  hideBtn.innerText = 'Hide';
+  hideBtn.onclick = () => { container.style.display = 'none'; };
+  const fsBtn = document.createElement('button');
+  fsBtn.className = 'looper-btn';
+  fsBtn.innerText = 'Full';
+  fsBtn.onclick = () => container.requestFullscreen();
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'looper-btn';
+  resetBtn.innerText = 'Reset';
+  resetBtn.onclick = resetVJParams;
+  ui.appendChild(hideBtn);
+  ui.appendChild(fsBtn);
+  ui.appendChild(resetBtn);
+  container.appendChild(ui);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 360;
+  canvas.id = 'vjCanvas';
+  canvas.style.display = 'block';
+  container.appendChild(canvas);
+
+  document.body.appendChild(container);
+  makePanelDraggable(container, dh, 'ytbm_vjProjPos');
+  restorePanelPosition(container, 'ytbm_vjProjPos');
+
+  window.vjProjectorContainer = container;
+  window.vjCanvas = canvas;
+
+  initVJVideo();
+  window.projectorCanvasStream = canvas.captureStream();
+}
+
+function buildVJControls() {
+  const container = document.createElement('div');
+  container.className = 'looper-midimap-container';
+  container.style.width = '300px';
+
+  const dh = document.createElement('div');
+  dh.className = 'looper-midimap-drag-handle';
+  dh.innerText = 'VJ Controls';
+  container.appendChild(dh);
+
+  const cw = document.createElement('div');
+  cw.className = 'looper-midimap-content';
+  container.appendChild(cw);
+
+  const ranges = {
+    brightness:[0,2,0.1],
+    contrast:[0,2,0.1],
+    saturate:[0,2,0.1],
+    hue:[0,360,1],
+    blur:[0,10,0.5]
+  };
+  for (const key in ranges) {
+    const row = document.createElement('div');
+    row.className = 'midimap-row';
+    const label = document.createElement('label');
+    label.textContent = key;
+    const input = document.createElement('input');
+    input.type = 'range';
+    const [min,max,step] = ranges[key];
+    input.min=min; input.max=max; input.step=step;
+    input.value = window.currentVJParams[key];
+    input.oninput = () => {
+      window.currentVJParams[key] = parseFloat(input.value);
+    };
+    label.appendChild(input);
+    row.appendChild(label);
+    cw.appendChild(row);
   }
-  if (type === 'projectorReady') {
-    const srcVid = getVideoElement();
-    if (srcVid) {
-      const stream = srcVid.captureStream?.();
-      if (stream) e.source.postMessage({ type: 'videoStream', data: stream }, '*');
+
+  ['low','mid','high'].forEach(b => {
+    const row = document.createElement('div');
+    row.className = 'midimap-row';
+    const label = document.createElement('label');
+    label.textContent = 'Audio '+b;
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = 0; input.max=2; input.step=0.1; input.value=0;
+    input.oninput = () => { window.vjReactive[b] = parseFloat(input.value); };
+    label.appendChild(input);
+    row.appendChild(label);
+    cw.appendChild(row);
+  });
+
+  const cornerChk = document.createElement('input');
+  cornerChk.type = 'checkbox';
+  cornerChk.onchange = e => { window.cornerMapEnabled = e.target.checked; };
+  const cornerLbl = document.createElement('label');
+  cornerLbl.textContent = 'Corner Mapping';
+  cornerLbl.prepend(cornerChk);
+  cw.appendChild(cornerLbl);
+
+  const projChk = document.createElement('input');
+  projChk.type = 'checkbox';
+  projChk.onchange = e => { window.useProjectorStream = e.target.checked; };
+  const projLbl = document.createElement('label');
+  projLbl.textContent = 'Use for Recording';
+  projLbl.prepend(projChk);
+  cw.appendChild(projLbl);
+
+  document.body.appendChild(container);
+  makePanelDraggable(container, dh, 'ytbm_vjCtrlPos');
+  restorePanelPosition(container, 'ytbm_vjCtrlPos');
+
+  window.vjControlsContainer = container;
+}
+
+function initVJVideo() {
+  const src = getVideoElement();
+  if (!src) return;
+  const stream = src.captureStream?.();
+  if (!stream) return;
+  const v = document.createElement('video');
+  v.srcObject = stream;
+  v.muted = true;
+  v.play().catch(() => {});
+  window.vjVideo = v;
+  setupAudioAnalyser(v);
+}
+
+let vjAnalyser, vjFreqData, vjAudioCtx;
+function setupAudioAnalyser(video) {
+  vjAudioCtx = new AudioContext();
+  const source = vjAudioCtx.createMediaElementSource(video);
+  vjAnalyser = vjAudioCtx.createAnalyser();
+  source.connect(vjAnalyser);
+  vjAnalyser.connect(vjAudioCtx.destination);
+  vjFreqData = new Uint8Array(vjAnalyser.frequencyBinCount);
+}
+
+function getReactiveMod() {
+  if (!vjAnalyser) return {low:0, mid:0, high:0};
+  vjAnalyser.getByteFrequencyData(vjFreqData);
+  const bass = avg(vjFreqData,0,30)/255;
+  const mid = avg(vjFreqData,30,90)/255;
+  const tre = avg(vjFreqData,90,180)/255;
+  return {
+    low: bass*window.vjReactive.low,
+    mid: mid*window.vjReactive.mid,
+    high: tre*window.vjReactive.high
+  };
+}
+
+function avg(arr, from, to) {
+  let sum = 0, c = 0;
+  for (let i = from; i < to && i < arr.length; i++) { sum += arr[i]; c++; }
+  return c ? sum / c : 0;
+}
+
+function startVJRenderLoop() {
+  if (!window.vjCanvas || !window.vjVideo) return;
+  if (startVJRenderLoop.running) return;
+  startVJRenderLoop.running = true;
+  function draw() {
+    const ctx = window.vjCanvas.getContext('2d');
+    const v = window.vjVideo;
+    if (v && !v.paused && !v.ended) {
+      ctx.save();
+      const mod = getReactiveMod();
+      const p = window.currentVJParams;
+      ctx.filter = `brightness(${p.brightness + mod.low}) contrast(${p.contrast}) saturate(${p.saturate}) hue-rotate(${p.hue + mod.mid*180}deg) blur(${p.blur}px)`;
+      ctx.drawImage(v, 0, 0, window.vjCanvas.width, window.vjCanvas.height);
+      ctx.restore();
+      if (window.cornerMapEnabled) drawCornerGuides(ctx);
     }
-    sendVJParams();
-  } else if (type === 'projectorStream') {
-    window.projectorCanvasStream = data;
-  } else if (type === 'controlsReady') {
-    sendVJParams();
-  } else if (type === 'filterParams') {
-    window.currentVJParams = { ...window.currentVJParams, ...data.params };
-    window.vjReactive = { ...window.vjReactive, ...data.reactive };
-    if (window.vjProjectorWindow) {
-      window.vjProjectorWindow.postMessage({ type: 'filterParams', data: { params: window.currentVJParams, reactive: window.vjReactive } }, '*');
-    }
-  } else if (type === 'useProjector') {
-    window.useProjectorStream = !!data;
-  } else if (type === 'cornerMap') {
-    if (data && enableCornerMapping && window.vjProjectorWindow) {
-      window.vjProjectorWindow.postMessage({ type: 'cornerMap' }, '*');
-    }
-  } else if (type === 'resetRequest') {
-    window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
-    window.vjReactive = { low:0, mid:0, high:0 };
-    if (window.vjControlsWindow) window.vjControlsWindow.postMessage({type:'resetUI'}, '*');
-    sendVJParams();
+    requestAnimationFrame(draw);
   }
+  requestAnimationFrame(draw);
 }
 
-function sendVJParams() {
-  if (typeof window.currentVJParams === 'undefined') {
-    window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+function drawCornerGuides(ctx) {
+  if (!window.vjCorners) {
+    window.vjCorners = [
+      {x:0,y:0},
+      {x:window.vjCanvas.width, y:0},
+      {x:window.vjCanvas.width, y:window.vjCanvas.height},
+      {x:0, y:window.vjCanvas.height}
+    ];
   }
-  if (window.vjProjectorWindow) {
-    window.vjProjectorWindow.postMessage({ type:'filterParams', data:{ params: window.currentVJParams, reactive: window.vjReactive } }, '*');
-  }
+  ctx.strokeStyle = 'hotpink';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(window.vjCorners[0].x, window.vjCorners[0].y);
+  for (let i=1;i<4;i++) ctx.lineTo(window.vjCorners[i].x, window.vjCorners[i].y);
+  ctx.closePath();
+  ctx.stroke();
 }
 
-function applyVisualEffects(ctx, video, w, h) {
-  ctx.filter = 'contrast(1.2) brightness(1.1) hue-rotate(15deg)';
-  ctx.drawImage(video, 0, 0, w, h);
-  ctx.filter = 'none';
-}
-
-function enableCornerMapping(canvas) {
-  // Placeholder for future perspective transform controls
-  console.log('Corner mapping initialized');
-}
-
-function startAudioReactiveFX(videoEl, canvas) {
-  const audioCtx = new AudioContext();
-  const source = audioCtx.createMediaElementSource(videoEl);
-  const analyser = audioCtx.createAnalyser();
-  source.connect(analyser);
-  analyser.connect(audioCtx.destination);
-
-  const freqData = new Uint8Array(analyser.frequencyBinCount);
-  function render() {
-    analyser.getByteFrequencyData(freqData);
-    const bass = freqData.slice(0, 30).reduce((a, b) => a + b, 0) / 30;
-
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 0.5 + bass / 512;
-    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-
-    requestAnimationFrame(render);
+function resetVJParams() {
+  window.currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+  window.vjReactive = { low:0, mid:0, high:0 };
+  if (window.vjControlsContainer) {
+    const inputs = window.vjControlsContainer.querySelectorAll('input[type="range"]');
+    let i=0;
+    ['brightness','contrast','saturate','hue','blur'].forEach(k=>{ inputs[i].value = window.currentVJParams[k]; i++; });
+    ['low','mid','high'].forEach(_=>{ inputs[i].value = 0; i++; });
   }
-  render();
 }
