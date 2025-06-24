@@ -17,10 +17,11 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Newly recorded loops begin playing on the very next bar for snappier response
 * Reduced latency and cleaner loop boundaries for punchier recordings
 
-## Update 1.6
+## Update 1.7
 * **Projector Monitor** button opens a borderless window for live video with effects
 * Drag green handles on that window to map corners for quick projection alignment
-* Video loops are recorded with active EQ, reverb and tape effects
+* Real‑time brightness effect pulses with the music in the monitor window
+* Video loops are recorded with active EQ, reverb and tape effects plus any visual FX
 
 ## Update 1.4
 * Four independent audio loopers with bright progress bars beneath the looper button

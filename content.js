@@ -766,6 +766,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // External projector monitor
       projectorWindow = null,
       projectorVideo = null,
+      projectorCanvas = null,
+      projectorCtx = null,
+      projectorAnalyser = null,
+      projectorFreqData = null,
       projectorHandles = [],
       projectorCorners = [
         {x:0, y:0},
@@ -4246,7 +4250,13 @@ function startVideoRecording() {
   // }
   // ————————————————————————————————————————————————
 
-  let captureStream = mv.captureStream?.() || null;
+  let captureStream = null;
+  if (projectorCanvas && !projectorWindow?.closed) {
+    captureStream = projectorCanvas.captureStream?.() || null;
+  }
+  if (!captureStream) {
+    captureStream = mv.captureStream?.() || null;
+  }
   if (!captureStream) {
     alert("Unable to capture video stream!");
     return;
@@ -9007,15 +9017,19 @@ function openProjectorWindow() {
   }
   projectorWindow = window.open('', 'ytbm_projector', 'width=640,height=360,menubar=no,toolbar=no,status=no,location=no');
   if (!projectorWindow) return;
-  projectorWindow.document.write(`<!DOCTYPE html><html><head><title>Monitor</title><style>body{margin:0;overflow:hidden;background:#000;}#vid{width:100%;height:100%;object-fit:contain;} .map-handle{position:absolute;width:12px;height:12px;background:#0f0;border-radius:50%;cursor:pointer;user-select:none;}</style></head><body></body></html>`);
+  projectorWindow.document.write(`<!DOCTYPE html><html><head><title>Monitor</title><style>body{margin:0;overflow:hidden;background:#000;}canvas{width:100%;height:100%;display:block;} .map-handle{position:absolute;width:12px;height:12px;background:#0f0;border-radius:50%;cursor:pointer;user-select:none;}</style></head><body></body></html>`);
   projectorWindow.document.close();
+  projectorCanvas = projectorWindow.document.createElement('canvas');
+  projectorCanvas.id = 'vjCanvas';
+  projectorWindow.document.body.appendChild(projectorCanvas);
   projectorVideo = projectorWindow.document.createElement('video');
-  projectorVideo.id = 'vid';
   projectorVideo.autoplay = true;
   projectorVideo.playsInline = true;
+  projectorVideo.style.display = 'none';
   projectorWindow.document.body.appendChild(projectorVideo);
   attachProjectorStream();
   buildProjectorMapping();
+  startProjectorLoop();
 }
 
 function attachProjectorStream() {
@@ -9027,6 +9041,39 @@ function attachProjectorStream() {
     videoDestination.stream.getAudioTracks().forEach(t => stream.addTrack(t));
   }
   projectorVideo.srcObject = stream;
+}
+
+function startProjectorLoop() {
+  if (!projectorCanvas || !projectorVideo) return;
+  projectorCtx = projectorCanvas.getContext('2d');
+  if (!projectorAnalyser && audioContext) {
+    projectorAnalyser = audioContext.createAnalyser();
+    projectorAnalyser.fftSize = 256;
+    videoGain.connect(projectorAnalyser);
+    projectorFreqData = new Uint8Array(projectorAnalyser.frequencyBinCount);
+  }
+  function draw() {
+    if (!projectorWindow || projectorWindow.closed) return;
+    if (projectorVideo.readyState >= 2) {
+      if (projectorAnalyser) {
+        projectorAnalyser.getByteFrequencyData(projectorFreqData);
+        let bass = 0;
+        for (let i = 0; i < 30 && i < projectorFreqData.length; i++) bass += projectorFreqData[i];
+        bass /= 30;
+        projectorCtx.filter = `brightness(${0.75 + bass / 512}) contrast(1.2)`;
+      } else {
+        projectorCtx.filter = 'none';
+      }
+      projectorCtx.drawImage(projectorVideo, 0, 0, projectorCanvas.width, projectorCanvas.height);
+    }
+    requestAnimationFrame(draw);
+  }
+  projectorVideo.addEventListener('loadedmetadata', () => {
+    projectorCanvas.width = projectorVideo.videoWidth;
+    projectorCanvas.height = projectorVideo.videoHeight;
+    draw();
+  }, { once: true });
+  projectorVideo.play().catch(() => {});
 }
 
 let draggingCorner = null;
@@ -9056,8 +9103,8 @@ function buildProjectorMapping() {
 }
 
 function updateProjectorMapping() {
-  if (!projectorVideo) return;
-  projectorVideo.style.clipPath = 'polygon(' + projectorCorners.map(p => p.x + '% ' + p.y + '%').join(',') + ')';
+  if (!projectorCanvas) return;
+  projectorCanvas.style.clipPath = 'polygon(' + projectorCorners.map(p => p.x + '% ' + p.y + '%').join(',') + ')';
   projectorHandles.forEach((h,i) => {
     h.style.left = projectorCorners[i].x + '%';
     h.style.top = projectorCorners[i].y + '%';
