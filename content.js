@@ -763,6 +763,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       crossFadeTime = 0.20,   // 80 ms smoothed constant‑power fade
             compMode = "off";
 
+      // External projector monitor
+      projectorWindow = null,
+      projectorVideo = null,
+      projectorHandles = [],
+      projectorCorners = [
+        {x:0, y:0},
+        {x:100, y:0},
+        {x:100, y:100},
+        {x:0, y:100}
+      ];
+
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 12;
   const PRESET_COLORS = [
@@ -3388,10 +3399,21 @@ function applyAllFXRouting() {
   // If you also want the recorded videoPreviewElement to have the same FX:
   if (videoPreviewElement && videoPreviewElement._mediaSource) {
     let prev = videoPreviewElement._mediaSource;
-    // Disconnect any existing connections
     prev.disconnect();
-    // Connect the preview directly to bus4Gain (bypassing EQ, reverb, and cassette)
-    prev.connect(bus4Gain);
+    let prevNode = prev;
+    if (eqFilterActive && eqFilterApplyTarget === "video") {
+      prevNode.connect(eqFilterNode);
+      prevNode = eqFilterNode;
+    }
+    if (reverbActive) {
+      prevNode.connect(reverbNode);
+      prevNode = reverbNode;
+    }
+    if (cassetteActive) {
+      prevNode.connect(cassetteNode);
+      prevNode = cassetteNode;
+    }
+    prevNode.connect(bus4Gain);
   }
 
   // Now connect bus1..3 into masterGain, as normal:
@@ -6158,6 +6180,13 @@ function addControls() {
   videoLooperButton.addEventListener("mousedown", onVideoLooperButtonMouseDown);
   videoLooperButton.addEventListener("mouseup", onVideoLooperButtonMouseUp);
   looperButtonRow.appendChild(videoLooperButton);
+
+  const projectorBtn = document.createElement("button");
+  projectorBtn.className = "looper-btn";
+  projectorBtn.innerText = "Projector";
+  projectorBtn.title = "Open borderless monitor";
+  projectorBtn.addEventListener("click", openProjectorWindow);
+  looperButtonRow.appendChild(projectorBtn);
 
   cw.appendChild(looperButtonRow);
 
@@ -8970,6 +8999,71 @@ async function initialize() {
   }
 }
 
+// ============ Projector Monitor ============
+function openProjectorWindow() {
+  if (projectorWindow && !projectorWindow.closed) {
+    projectorWindow.focus();
+    return;
+  }
+  projectorWindow = window.open('', 'ytbm_projector', 'width=640,height=360,menubar=no,toolbar=no,status=no,location=no');
+  if (!projectorWindow) return;
+  projectorWindow.document.write(`<!DOCTYPE html><html><head><title>Monitor</title><style>body{margin:0;overflow:hidden;background:#000;}#vid{width:100%;height:100%;object-fit:contain;} .map-handle{position:absolute;width:12px;height:12px;background:#0f0;border-radius:50%;cursor:pointer;user-select:none;}</style></head><body></body></html>`);
+  projectorWindow.document.close();
+  projectorVideo = projectorWindow.document.createElement('video');
+  projectorVideo.id = 'vid';
+  projectorVideo.autoplay = true;
+  projectorVideo.playsInline = true;
+  projectorWindow.document.body.appendChild(projectorVideo);
+  attachProjectorStream();
+  buildProjectorMapping();
+}
+
+function attachProjectorStream() {
+  const vid = getVideoElement();
+  if (!vid || !projectorVideo) return;
+  let stream = vid.captureStream ? vid.captureStream() : null;
+  if (!stream) return;
+  if (videoDestination) {
+    videoDestination.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+  }
+  projectorVideo.srcObject = stream;
+}
+
+let draggingCorner = null;
+function buildProjectorMapping() {
+  if (!projectorWindow) return;
+  projectorHandles.forEach(h => h.remove());
+  projectorHandles = [];
+  projectorCorners.forEach((pt, idx) => {
+    const h = projectorWindow.document.createElement('div');
+    h.className = 'map-handle';
+    h.style.left = pt.x + '%';
+    h.style.top = pt.y + '%';
+    h.dataset.index = idx;
+    h.addEventListener('mousedown', e => { draggingCorner = idx; e.preventDefault(); });
+    projectorWindow.document.body.appendChild(h);
+    projectorHandles.push(h);
+  });
+  projectorWindow.addEventListener('mousemove', e => {
+    if (draggingCorner === null) return;
+    const rect = projectorWindow.document.body.getBoundingClientRect();
+    projectorCorners[draggingCorner].x = (e.clientX / rect.width) * 100;
+    projectorCorners[draggingCorner].y = (e.clientY / rect.height) * 100;
+    updateProjectorMapping();
+  });
+  projectorWindow.addEventListener('mouseup', () => { draggingCorner = null; });
+  updateProjectorMapping();
+}
+
+function updateProjectorMapping() {
+  if (!projectorVideo) return;
+  projectorVideo.style.clipPath = 'polygon(' + projectorCorners.map(p => p.x + '% ' + p.y + '%').join(',') + ')';
+  projectorHandles.forEach((h,i) => {
+    h.style.left = projectorCorners[i].x + '%';
+    h.style.top = projectorCorners[i].y + '%';
+  });
+}
+
 initialize();
 })();
 
@@ -8998,6 +9092,7 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
     // (left as a comment for further integration)
   }
 }
+
 
 // Make minimal UI bar responsive on smaller videos
 (() => {
