@@ -749,7 +749,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       vjProjectorWindow = null,
       vjControlsWindow = null,
       useProjectorStream = false,
-      currentVJFilter = 'none',
+      currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 },
+      vjReactive = { low:0, mid:0, high:0 },
+      projectorCanvasStream = null,
       // We'll keep them to identify which button is which
       reverbButton = null,
       cassetteButton = null,
@@ -4213,14 +4215,19 @@ function startVideoRecording() {
   if (videoLooperState !== "idle") return;
   videoRecordedChunks = [];
 
-  let captureSource;
-  if (window.useProjectorStream && window.vjProjectorWindow) {
-    captureSource = window.vjProjectorWindow.document.getElementById('vjCanvas');
+  let captureStream;
+  if (window.useProjectorStream && window.projectorCanvasStream) {
+    captureStream = window.projectorCanvasStream;
   } else {
-    captureSource = getVideoElement();
+    let elem = getVideoElement();
+    if (!elem) return;
+    captureStream = elem.captureStream?.() || null;
   }
-  if (!captureSource) return;
-  // forceVideoPlayOnce(captureSource);
+  if (!captureStream) {
+    alert("Unable to capture video stream!");
+    return;
+  }
+  // forceVideoPlayOnce(elem);
 
   bus1RecGain.gain.value = videoAudioEnabled ? 1 : 0;
   bus2RecGain.gain.value = 1;
@@ -4233,11 +4240,6 @@ function startVideoRecording() {
   // }
   // ————————————————————————————————————————————————
 
-  let captureStream = captureSource.captureStream?.() || null;
-  if (!captureStream) {
-    alert("Unable to capture video stream!");
-    return;
-  }
   let videoTracks = captureStream.getVideoTracks();
   let allTracks = [...videoTracks, ...videoDestination.stream.getAudioTracks()];
   let finalStream = new MediaStream(allTracks);
@@ -9037,99 +9039,55 @@ function openVJProjector() {
   const width = 1280,
     height = 720;
   vjProjectorWindow = window.open(
-    '',
+    chrome.runtime.getURL('vj_projector.html'),
     'vjProjector',
     `width=${width},height=${height},frame=false,toolbar=0,location=0,menubar=0`
   );
   vjControlsWindow = window.open(
-    '',
+    chrome.runtime.getURL('vj_controls.html'),
     'vjControls',
-    'width=300,height=420,frame=false,toolbar=0,location=0,menubar=0'
+    'width=300,height=450,frame=false,toolbar=0,location=0,menubar=0'
   );
   if (!vjProjectorWindow || !vjControlsWindow) return;
+  window.addEventListener('message', handleVJMessage);
+}
 
-  const projHTML = `
-    <html><head><style>
-      body{margin:0;overflow:hidden;background:black;}
-      canvas{width:100%;height:100%;display:block;}
-      #ui{position:fixed;top:6px;right:6px;z-index:10;}
-      #ui button{margin-left:4px;font-size:12px;}
-    </style></head>
-    <body>
-      <canvas id="vjCanvas" width="${width}" height="${height}"></canvas>
-      <div id="ui">
-        <button id="hideBtn">Hide</button>
-        <button id="fsBtn">Full</button>
-        <button id="resetBtn">Reset</button>
-      </div>
-      <video id="vjVideo" style="display:none"></video>
-      <script>
-        const canvas=document.getElementById('vjCanvas');
-        const ctx=canvas.getContext('2d');
-        const video=document.getElementById('vjVideo');
-        function draw(){
-          if(!video.paused && !video.ended){
-            ctx.filter=window.opener.currentVJFilter||'none';
-            ctx.drawImage(video,0,0,canvas.width,canvas.height);
-          }
-          requestAnimationFrame(draw);
-        }
-        draw();
-        document.getElementById('fsBtn').onclick=()=>document.documentElement.requestFullscreen();
-        document.getElementById('hideBtn').onclick=()=>{canvas.style.display=canvas.style.display==='none'?'block':'none';};
-        document.getElementById('resetBtn').onclick=()=>{window.opener.currentVJFilter='none';};
-        window.addEventListener('keydown',e=>{if(e.key==='Escape')document.exitFullscreen();});
-      <\/script>
-    </body></html>`;
-  vjProjectorWindow.document.write(projHTML);
-  vjProjectorWindow.document.close();
+function handleVJMessage(e) {
+  const { type, data } = e.data || {};
+  if (type === 'projectorReady') {
+    const srcVid = getVideoElement();
+    if (srcVid) {
+      const stream = srcVid.captureStream?.();
+      if (stream) e.source.postMessage({ type: 'videoStream', data: stream }, '*');
+    }
+    sendVJParams();
+  } else if (type === 'projectorStream') {
+    window.projectorCanvasStream = data;
+  } else if (type === 'controlsReady') {
+    sendVJParams();
+  } else if (type === 'filterParams') {
+    currentVJParams = { ...currentVJParams, ...data.params };
+    vjReactive = { ...vjReactive, ...data.reactive };
+    if (vjProjectorWindow) {
+      vjProjectorWindow.postMessage({ type: 'filterParams', data: { params: currentVJParams, reactive: vjReactive } }, '*');
+    }
+  } else if (type === 'useProjector') {
+    useProjectorStream = !!data;
+  } else if (type === 'cornerMap') {
+    if (data && enableCornerMapping && vjProjectorWindow) {
+      vjProjectorWindow.postMessage({ type: 'cornerMap' }, '*');
+    }
+  } else if (type === 'resetRequest') {
+    currentVJParams = { brightness:1, contrast:1, saturate:1, hue:0, blur:0 };
+    vjReactive = { low:0, mid:0, high:0 };
+    if (vjControlsWindow) vjControlsWindow.postMessage({type:'resetUI'}, '*');
+    sendVJParams();
+  }
+}
 
-  const effects = [
-    'Invert','Blur','Grayscale','Sepia','Hue Rotate',
-    'RGB Shift (ISF)','Glitch (ISF)','Pixelate (ISF)','Kaleidoscope (ISF)','Wave (ISF)'
-  ];
-  const list = effects
-    .map(e=>`<li><label><input type="radio" name="fx" value="${e}">${e}</label></li>`)
-    .join('');
-  const ctrlHTML = `
-    <html><head><style>
-      body{font-family:sans-serif;margin:10px;}
-      ul{list-style:none;padding:0;}
-      li{margin:4px 0;}
-    </style></head><body>
-      <h3>VJ Effects</h3>
-      <ul>${list}</ul>
-      <label><input type="checkbox" id="cornerMap"> Corner Mapping</label><br>
-      <label><input type="checkbox" id="useProj"> Send to Video Looper</label>
-      <script>
-        const rad=document.querySelectorAll('input[name=fx]');
-        rad.forEach(r=>r.onchange=()=>{window.opener.currentVJFilter=getFilter(r.value);});
-        document.getElementById('cornerMap').onchange=e=>{
-          if(e.target.checked && window.opener.enableCornerMapping){
-            window.opener.enableCornerMapping(window.opener.vjProjectorWindow.document.getElementById('vjCanvas'));
-          }
-        };
-        document.getElementById('useProj').onchange=e=>{window.opener.useProjectorStream=e.target.checked;};
-        function getFilter(name){
-          switch(name){
-            case 'Invert': return 'invert(100%)';
-            case 'Blur': return 'blur(5px)';
-            case 'Grayscale': return 'grayscale(1)';
-            case 'Sepia': return 'sepia(1)';
-            case 'Hue Rotate': return 'hue-rotate(90deg)';
-            default: return window.opener.currentVJFilter;
-          }
-        }
-      <\/script>
-    </body></html>`;
-  vjControlsWindow.document.write(ctrlHTML);
-  vjControlsWindow.document.close();
-
-  const srcVid = getVideoElement();
-  if (srcVid) {
-    const dest = vjProjectorWindow.document.getElementById('vjVideo');
-    const stream = srcVid.captureStream?.();
-    if (dest && stream) { dest.srcObject = stream; dest.play(); }
+function sendVJParams() {
+  if (vjProjectorWindow) {
+    vjProjectorWindow.postMessage({ type:'filterParams', data:{ params: currentVJParams, reactive: vjReactive } }, '*');
   }
 }
 

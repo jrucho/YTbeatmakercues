@@ -26,8 +26,15 @@
     }
   ],
   "web_accessible_resources": [{
-    "resources": ["sounds/*","sp303-compressor-worklet.js",
-      "sp404-compressor-worklet.js"],
+    "resources": [
+      "sounds/*",
+      "sp303-compressor-worklet.js",
+      "sp404-compressor-worklet.js",
+      "vj_projector.html",
+      "vj_controls.html",
+      "vj_projector.js",
+      "vj_controls.js"
+    ],
     "matches": ["<all_urls>"]
   }],
   "options_page": "options.html"
