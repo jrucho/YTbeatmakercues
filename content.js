@@ -746,6 +746,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       eqDragHandle = null,
       eqContentWrap = null,
       instrumentWindowContainer = null,
+      vjProjectorWindow = null,
+      vjControlsWindow = null,
+      useProjectorStream = false,
+      currentVJFilter = 'none',
       // We'll keep them to identify which button is which
       reverbButton = null,
       cassetteButton = null,
@@ -4209,9 +4213,14 @@ function startVideoRecording() {
   if (videoLooperState !== "idle") return;
   videoRecordedChunks = [];
 
-  let mv = getVideoElement();
-  if (!mv) return;
-  // forceVideoPlayOnce(mv);
+  let captureSource;
+  if (window.useProjectorStream && window.vjProjectorWindow) {
+    captureSource = window.vjProjectorWindow.document.getElementById('vjCanvas');
+  } else {
+    captureSource = getVideoElement();
+  }
+  if (!captureSource) return;
+  // forceVideoPlayOnce(captureSource);
 
   bus1RecGain.gain.value = videoAudioEnabled ? 1 : 0;
   bus2RecGain.gain.value = 1;
@@ -4224,7 +4233,7 @@ function startVideoRecording() {
   // }
   // ————————————————————————————————————————————————
 
-  let captureStream = mv.captureStream?.() || null;
+  let captureStream = captureSource.captureStream?.() || null;
   if (!captureStream) {
     alert("Unable to capture video stream!");
     return;
@@ -6362,13 +6371,13 @@ function addControls() {
   pasteCuesButton.addEventListener("click", pasteCuesFromLink);
   actionWrap.appendChild(pasteCuesButton);
 
-  // Button to open a borderless VJ monitor window
+  // Button to open a borderless VJ projector and controls
   const vjButton = document.createElement("button");
   vjButton.className = "looper-btn";
-  vjButton.innerText = "VJ Monitor";
+  vjButton.innerText = "VJ Projector";
   vjButton.style.flex = '1 1 calc(50% - 4px)';
-  vjButton.title = "Open a frameless monitor window";
-  vjButton.addEventListener("click", createVJWindow);
+  vjButton.title = "Open VJ projector and effects";
+  vjButton.addEventListener("click", openVJProjector);
   actionWrap.appendChild(vjButton);
 /*
   videoAudioToggleButton = document.createElement("button");
@@ -9023,36 +9032,105 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   document.head.appendChild(style);
 })();
 
-// ---------- VJ Monitor & Visual FX ----------
-function createVJWindow() {
+// ---------- VJ Projector & Controls ----------
+function openVJProjector() {
   const width = 1280,
     height = 720;
-  const vjWin = window.open(
+  vjProjectorWindow = window.open(
     '',
-    'vjMonitor',
+    'vjProjector',
     `width=${width},height=${height},frame=false,toolbar=0,location=0,menubar=0`
   );
-  if (!vjWin) return;
-  const html = `
-    <html><head><style>body{margin:0;overflow:hidden;background:black;}</style></head>
-    <body><canvas id="vjCanvas" width="${width}" height="${height}"></canvas>
-    <script>
-      const canvas = document.getElementById('vjCanvas');
-      const ctx = canvas.getContext('2d');
-      const video = document.createElement('video');
-      const stream = window.opener.document.querySelector('video')?.captureStream();
-      if (stream) { video.srcObject = stream; video.play(); }
-      function draw(){
-        if (!video.paused && !video.ended) {
-          ctx.filter = 'contrast(1.2) brightness(1.1) hue-rotate(15deg)';
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          ctx.filter = 'none';
+  vjControlsWindow = window.open(
+    '',
+    'vjControls',
+    'width=300,height=420,frame=false,toolbar=0,location=0,menubar=0'
+  );
+  if (!vjProjectorWindow || !vjControlsWindow) return;
+
+  const projHTML = `
+    <html><head><style>
+      body{margin:0;overflow:hidden;background:black;}
+      canvas{width:100%;height:100%;display:block;}
+      #ui{position:fixed;top:6px;right:6px;z-index:10;}
+      #ui button{margin-left:4px;font-size:12px;}
+    </style></head>
+    <body>
+      <canvas id="vjCanvas" width="${width}" height="${height}"></canvas>
+      <div id="ui">
+        <button id="hideBtn">Hide</button>
+        <button id="fsBtn">Full</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <video id="vjVideo" style="display:none"></video>
+      <script>
+        const canvas=document.getElementById('vjCanvas');
+        const ctx=canvas.getContext('2d');
+        const video=document.getElementById('vjVideo');
+        function draw(){
+          if(!video.paused && !video.ended){
+            ctx.filter=window.opener.currentVJFilter||'none';
+            ctx.drawImage(video,0,0,canvas.width,canvas.height);
+          }
+          requestAnimationFrame(draw);
         }
-        requestAnimationFrame(draw);
-      }
-      draw();
-    <\/script></body></html>`;
-  vjWin.document.write(html);
+        draw();
+        document.getElementById('fsBtn').onclick=()=>document.documentElement.requestFullscreen();
+        document.getElementById('hideBtn').onclick=()=>{canvas.style.display=canvas.style.display==='none'?'block':'none';};
+        document.getElementById('resetBtn').onclick=()=>{window.opener.currentVJFilter='none';};
+        window.addEventListener('keydown',e=>{if(e.key==='Escape')document.exitFullscreen();});
+      <\/script>
+    </body></html>`;
+  vjProjectorWindow.document.write(projHTML);
+  vjProjectorWindow.document.close();
+
+  const effects = [
+    'Invert','Blur','Grayscale','Sepia','Hue Rotate',
+    'RGB Shift (ISF)','Glitch (ISF)','Pixelate (ISF)','Kaleidoscope (ISF)','Wave (ISF)'
+  ];
+  const list = effects
+    .map(e=>`<li><label><input type="radio" name="fx" value="${e}">${e}</label></li>`)
+    .join('');
+  const ctrlHTML = `
+    <html><head><style>
+      body{font-family:sans-serif;margin:10px;}
+      ul{list-style:none;padding:0;}
+      li{margin:4px 0;}
+    </style></head><body>
+      <h3>VJ Effects</h3>
+      <ul>${list}</ul>
+      <label><input type="checkbox" id="cornerMap"> Corner Mapping</label><br>
+      <label><input type="checkbox" id="useProj"> Send to Video Looper</label>
+      <script>
+        const rad=document.querySelectorAll('input[name=fx]');
+        rad.forEach(r=>r.onchange=()=>{window.opener.currentVJFilter=getFilter(r.value);});
+        document.getElementById('cornerMap').onchange=e=>{
+          if(e.target.checked && window.opener.enableCornerMapping){
+            window.opener.enableCornerMapping(window.opener.vjProjectorWindow.document.getElementById('vjCanvas'));
+          }
+        };
+        document.getElementById('useProj').onchange=e=>{window.opener.useProjectorStream=e.target.checked;};
+        function getFilter(name){
+          switch(name){
+            case 'Invert': return 'invert(100%)';
+            case 'Blur': return 'blur(5px)';
+            case 'Grayscale': return 'grayscale(1)';
+            case 'Sepia': return 'sepia(1)';
+            case 'Hue Rotate': return 'hue-rotate(90deg)';
+            default: return window.opener.currentVJFilter;
+          }
+        }
+      <\/script>
+    </body></html>`;
+  vjControlsWindow.document.write(ctrlHTML);
+  vjControlsWindow.document.close();
+
+  const srcVid = getVideoElement();
+  if (srcVid) {
+    const dest = vjProjectorWindow.document.getElementById('vjVideo');
+    const stream = srcVid.captureStream?.();
+    if (dest && stream) { dest.srcObject = stream; dest.play(); }
+  }
 }
 
 function applyVisualEffects(ctx, video, w, h) {
