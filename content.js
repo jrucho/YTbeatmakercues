@@ -9040,12 +9040,39 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   document.head.appendChild(style);
 })();
 
+function safeMakePanelDraggable(panel, handle, key) {
+  if (typeof makePanelDraggable === 'function') {
+    makePanelDraggable(panel, handle, key);
+  } else {
+    // simple fallback drag logic
+    let offsetX = 0, offsetY = 0, dragging = false;
+    handle.addEventListener('mousedown', e => {
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const nl = e.clientX - offsetX;
+      const nt = e.clientY - offsetY;
+      panel.style.left = nl + 'px';
+      panel.style.top = nt + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      dragging = false;
+      document.body.style.userSelect = '';
+    });
+  }
+}
+
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
   if (!window.vjProjectorContainer) buildVJProjector();
   if (!window.vjControlsContainer) buildVJControls();
-  window.vjProjectorContainer.style.display = 'block';
-  window.vjControlsContainer.style.display = 'block';
+  if (window.vjProjectorContainer) window.vjProjectorContainer.style.display = 'block';
+  if (window.vjControlsContainer) window.vjControlsContainer.style.display = 'block';
   startVJRenderLoop();
 }
 
@@ -9091,7 +9118,7 @@ function buildVJProjector() {
   container.appendChild(canvas);
 
   document.body.appendChild(container);
-  makePanelDraggable(container, dh, 'ytbm_vjProjPos');
+  safeMakePanelDraggable(container, dh, 'ytbm_vjProjPos');
   restorePanelPosition(container, 'ytbm_vjProjPos');
 
   window.vjProjectorContainer = container;
@@ -9171,7 +9198,7 @@ function buildVJControls() {
   cw.appendChild(projLbl);
 
   document.body.appendChild(container);
-  makePanelDraggable(container, dh, 'ytbm_vjCtrlPos');
+  safeMakePanelDraggable(container, dh, 'ytbm_vjCtrlPos');
   restorePanelPosition(container, 'ytbm_vjCtrlPos');
 
   window.vjControlsContainer = container;
