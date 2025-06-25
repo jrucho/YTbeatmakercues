@@ -9136,6 +9136,7 @@ function openVJProjector() {
   if (!window.vjControlsWindow || window.vjControlsWindow.closed) {
     openVJControlsPopup();
   }
+  initVJVideo();
   window.vjProjectorContainer.style.display = 'block';
   startVJRenderLoop();
 }
