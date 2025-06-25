@@ -119,10 +119,7 @@ window.vjEffects           = {
   kaleido:0, edge:0, wave:0, mirror:0, posterize:0
 };
 window.vjProjectorWindow  = null;
-window.vjGl                = null;
-window.vjProgram           = null;
-window.vjTex               = null;
-window.vjUniforms          = {};
+window.vjCtx               = null;
 window.vjPrefsKey          = 'ytbm_vjPrefs';
 
 function saveVJPrefs() {
@@ -9326,8 +9323,8 @@ function initVJVideo() {
     window.vjVideo = v;
     setupAudioAnalyser(v);
   }
-  if(!window.vjGl && window.vjCanvas){
-    initVJGL(window.vjCanvas);
+  if(!window.vjCtx && window.vjCanvas){
+    initVJCanvas(window.vjCanvas);
   }
 }
 
@@ -9341,71 +9338,8 @@ function setupAudioAnalyser(video) {
   vjFreqData = new Uint8Array(vjAnalyser.frequencyBinCount);
 }
 
-function initVJGL(canvas){
-  const gl = canvas.getContext('webgl');
-  if(!gl) return;
-  const vsSource = `
-    attribute vec2 aPos;
-    attribute vec2 aTex;
-    varying vec2 vTex;
-    void main(){
-      vTex=aTex;
-      gl_Position=vec4(aPos,0.0,1.0);
-    }`;
-  const fsSource = `
-    precision mediump float;
-    varying vec2 vTex;
-    uniform sampler2D uTex;
-    uniform vec4 uParams1;
-    uniform vec4 uParams2;
-    vec3 hueShift(vec3 c,float h){
-      const mat3 m=mat3(0.299,0.587,0.114,0.596,-0.274,-0.322,0.211,-0.523,0.312);
-      vec3 yiq=m*c;float cosA=cos(h);float sinA=sin(h);yiq.yz=mat2(cosA,-sinA,sinA,cosA)*yiq.yz;
-      return inverse(m)*yiq;
-    }
-    void main(){
-      vec4 col=texture2D(uTex,vTex);
-      col.rgb*=uParams1.x;
-      col.rgb=(col.rgb-0.5)*uParams1.y+0.5;
-      float l=dot(col.rgb,vec3(0.299,0.587,0.114));
-      col.rgb=mix(vec3(l),col.rgb,uParams1.z);
-      col.rgb=hueShift(col.rgb,uParams1.w);
-      col.rgb=mix(col.rgb,1.0-col.rgb,uParams2.x);
-      float g=dot(col.rgb,vec3(0.299,0.587,0.114));
-      col.rgb=mix(col.rgb,vec3(g),uParams2.y);
-      vec3 s=vec3(dot(col.rgb,vec3(.393,.769,.189)),dot(col.rgb,vec3(.349,.686,.168)),dot(col.rgb,vec3(.272,.534,.131)));
-      col.rgb=mix(col.rgb,s,uParams2.z);
-      gl_FragColor=col;
-    }`;
-  const vs = gl.createShader(gl.VERTEX_SHADER);
-  gl.shaderSource(vs, vsSource);
-  gl.compileShader(vs);
-  const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  gl.shaderSource(fs, fsSource);
-  gl.compileShader(fs);
-  if(!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) console.warn(gl.getShaderInfoLog(vs));
-  if(!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) console.warn(gl.getShaderInfoLog(fs));
-  const prog = gl.createProgram();
-  gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);gl.useProgram(prog);
-  const posBuf=gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER,posBuf);
-  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
-  const posLoc=gl.getAttribLocation(prog,'aPos');
-  gl.enableVertexAttribArray(posLoc);gl.vertexAttribPointer(posLoc,2,gl.FLOAT,false,0,0);
-  const texBuf=gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER,texBuf);
-  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,1,1,1,0,0,1,0]),gl.STATIC_DRAW);
-  const texLoc=gl.getAttribLocation(prog,'aTex');
-  gl.enableVertexAttribArray(texLoc);gl.vertexAttribPointer(texLoc,2,gl.FLOAT,false,0,0);
-  const tex=gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D,tex);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  window.vjGl=gl;window.vjProgram=prog;window.vjTex=tex;
-  window.vjUniforms={uParams1:gl.getUniformLocation(prog,'uParams1'),uParams2:gl.getUniformLocation(prog,'uParams2')};
-  gl.viewport(0,0,canvas.width,canvas.height);
+function initVJCanvas(canvas){
+  window.vjCtx = canvas.getContext('2d');
 }
 
 function getReactiveMod() {
@@ -9464,13 +9398,18 @@ function homographyToCss(m){return [m[0],m[3],0,m[6],m[1],m[4],0,m[7],0,0,1,0,m[
 function toggleCorners(en){window.vjHandles.forEach(h=>{h.style.display=en?'block':'none';});window.cornerMapEnabled=en;}
 
 function startVJRenderLoop(){
-  if(startVJRenderLoop.running) return; startVJRenderLoop.running=true;
-  function loop(){
+  if(startVJRenderLoop.running) return; 
+  startVJRenderLoop.running=true;
+  let last=0;
+  function loop(ts){
     if(!startVJRenderLoop.running) return;
-    renderVJFrame();
+    if(ts-last>33){
+      renderVJFrame();
+      last=ts;
+    }
     requestAnimationFrame(loop);
   }
-  loop();
+  requestAnimationFrame(loop);
 }
 
 function stopVJRenderLoop(){
@@ -9480,19 +9419,26 @@ function stopVJRenderLoop(){
 }
 
 function renderVJFrame(){
-  if(!window.vjVideo||!window.vjCanvas||!window.vjGl) return;
-  const gl=window.vjGl;
-  const r=getReactiveMod();
-  const p=window.currentVJParams;
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, window.vjTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,window.vjVideo);
-  gl.useProgram(window.vjProgram);
-  gl.uniform4f(window.vjUniforms.uParams1, p.brightness+r.low, p.contrast+r.mid, p.saturate, p.hue*(Math.PI/180));
-  gl.uniform4f(window.vjUniforms.uParams2, window.vjEffects.invert, window.vjEffects.grayscale, window.vjEffects.sepia, 0);
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  if(!window.vjVideo||!window.vjCanvas||!window.vjCtx) return;
+  const ctx = window.vjCtx;
+  const r   = getReactiveMod();
+  const p   = window.currentVJParams;
+  let filt = `brightness(${p.brightness + r.low}) contrast(${p.contrast + r.mid}) saturate(${p.saturate}) hue-rotate(${p.hue}deg)`;
+  if (p.blur) filt += ` blur(${p.blur}px)`;
+  if (window.vjEffects.invert) filt += ` invert(${window.vjEffects.invert})`;
+  if (window.vjEffects.grayscale) filt += ` grayscale(${window.vjEffects.grayscale})`;
+  if (window.vjEffects.sepia) filt += ` sepia(${window.vjEffects.sepia})`;
+  ctx.filter = filt;
+  ctx.drawImage(window.vjVideo, 0, 0, window.vjCanvas.width, window.vjCanvas.height);
+  ctx.filter = 'none';
+  if (window.vjLogoImg) ctx.drawImage(window.vjLogoImg, 10, 10);
+  if (window.vjText && window.vjTextVisible) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.fillText(window.vjText, 20, window.vjCanvas.height - 30);
+  }
 }
-// CPU-intensive effects removed; using WebGL shader instead
+// Use lightweight Canvas2D filters for better compatibility
 function resetVJParams(){
   window.currentVJParams={brightness:1,contrast:1,saturate:1,hue:0,blur:0};
   window.vjReactive={low:0,mid:0,high:0};
