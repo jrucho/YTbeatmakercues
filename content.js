@@ -118,7 +118,7 @@ window.vjEffects           = {
   invert:0, grayscale:0, sepia:0, pixel:0, rgbShift:0,
   kaleido:0, edge:0, wave:0, mirror:0, posterize:0
 };
-window.vjProjectorWindow  = null;
+window.vjControlsWindow   = null;
 window.vjCtx               = null;
 window.vjPrefsKey          = 'ytbm_vjPrefs';
 
@@ -9132,17 +9132,25 @@ function safeRestorePanelPosition(panel, key) {
 
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
-  const url = chrome.runtime.getURL('vj_monitor.html');
-  if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
-    window.vjProjectorWindow.focus();
+  if (!window.vjProjectorContainer) buildVJProjector();
+  if (!window.vjControlsWindow || window.vjControlsWindow.closed) {
+    openVJControlsPopup();
+  }
+  window.vjProjectorContainer.style.display = 'block';
+  startVJRenderLoop();
+}
+
+function openVJControlsPopup() {
+  if (window.vjControlsWindow && !window.vjControlsWindow.closed) {
+    window.vjControlsWindow.focus();
     return;
   }
-  const w = window.open(url, 'ytbm_vj_monitor', 'width=800,height=450,menubar=0,toolbar=0,location=0');
-  if (!w) {
-    alert('Popup blocked');
-    return;
-  }
-  window.vjProjectorWindow = w;
+  const w = window.open('', 'ytbm_vj_ctrl', 'width=340,height=520,menubar=0,toolbar=0,location=0');
+  if (!w) { alert('Popup blocked'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>VJ Controls</title><link rel="stylesheet" href="${chrome.runtime.getURL('style.css')}"></head><body></body></html>`);
+  w.document.close();
+  buildVJControls(w.document);
+  window.vjControlsWindow = w;
 }
 
 
@@ -9167,7 +9175,13 @@ function buildVJProjector() {
   const hide = document.createElement('button');
   hide.className = 'looper-btn';
   hide.textContent = 'Hide';
-  hide.onclick = () => { c.style.display = 'none'; window.vjControlsContainer.style.display = 'none'; stopVJRenderLoop(); };
+  hide.onclick = () => {
+    c.style.display = 'none';
+    if (window.vjControlsWindow && !window.vjControlsWindow.closed) {
+      window.vjControlsWindow.close();
+    }
+    stopVJRenderLoop();
+  };
   const full = document.createElement('button');
   full.className = 'looper-btn';
   full.textContent = 'Full';
@@ -9207,18 +9221,18 @@ function buildVJProjector() {
   setupCornerMapping();
 }
 
-function buildVJControls() {
-  const c = document.createElement('div');
+function buildVJControls(doc = document) {
+  const c = doc.createElement('div');
   c.className = 'looper-midimap-container';
   c.style.width = '320px';
   loadVJPrefs();
 
-  const dh = document.createElement('div');
+  const dh = doc.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
   dh.innerText = 'VJ Controls';
   c.appendChild(dh);
 
-  const wrap = document.createElement('div');
+  const wrap = doc.createElement('div');
   wrap.className = 'looper-midimap-content';
   c.appendChild(wrap);
 
@@ -9231,9 +9245,9 @@ function buildVJControls() {
     blur:[0,10,0.5]
   };
   params.forEach(p=>{
-    const row=document.createElement('div'); row.className='midimap-row';
-    const label=document.createElement('label'); label.textContent=p;
-    const input=document.createElement('input');
+    const row=doc.createElement('div'); row.className='midimap-row';
+    const label=doc.createElement('label'); label.textContent=p;
+    const input=doc.createElement('input');
     input.type='range';
     const [min,max,step]=ranges[p];
     input.min=min; input.max=max; input.step=step; input.value=window.currentVJParams[p];
@@ -9242,68 +9256,70 @@ function buildVJControls() {
   });
 
   ['low','mid','high'].forEach(b=>{
-    const row=document.createElement('div'); row.className='midimap-row';
-    const label=document.createElement('label'); label.textContent='Audio '+b;
-    const input=document.createElement('input');
+    const row=doc.createElement('div'); row.className='midimap-row';
+    const label=doc.createElement('label'); label.textContent='Audio '+b;
+    const input=doc.createElement('input');
     input.type='range'; input.min=0; input.max=2; input.step=0.1; input.value=0;
     input.oninput=()=>{ window.vjReactive[b]=parseFloat(input.value); saveVJPrefs(); };
     label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
   });
 
-  const advanced=document.createElement('details');
-  const sum=document.createElement('summary');
+  const advanced=doc.createElement('details');
+  const sum=doc.createElement('summary');
   sum.textContent='Advanced';
   advanced.appendChild(sum);
   wrap.appendChild(advanced);
 
   const effects=['invert','grayscale','sepia','pixel','rgbShift','kaleido','edge','wave','mirror','posterize'];
   effects.forEach(name=>{
-    const row=document.createElement('div'); row.className='midimap-row';
-    const label=document.createElement('label'); label.textContent=name;
-    const input=document.createElement('input');
+    const row=doc.createElement('div'); row.className='midimap-row';
+    const label=doc.createElement('label'); label.textContent=name;
+    const input=doc.createElement('input');
     input.type='range'; input.min=0; input.max=1; input.step=0.1; input.value=window.vjEffects[name]||0;
     input.oninput=()=>{ window.vjEffects[name]=parseFloat(input.value); saveVJPrefs(); };
     label.appendChild(input); row.appendChild(label); advanced.appendChild(row);
   });
 
-  const cornerChk=document.createElement('input'); cornerChk.type='checkbox';
+  const cornerChk=doc.createElement('input'); cornerChk.type='checkbox';
   cornerChk.onchange=()=>{ toggleCorners(cornerChk.checked); saveVJPrefs(); };
-  const cornerLab=document.createElement('label'); cornerLab.textContent='Corner Map'; cornerLab.prepend(cornerChk);
+  const cornerLab=doc.createElement('label'); cornerLab.textContent='Corner Map'; cornerLab.prepend(cornerChk);
   advanced.appendChild(cornerLab);
 
-  const projChk=document.createElement('input'); projChk.type='checkbox';
+  const projChk=doc.createElement('input'); projChk.type='checkbox';
   projChk.onchange=()=>{ window.useProjectorStream = projChk.checked; saveVJPrefs(); };
-  const projLab=document.createElement('label'); projLab.textContent='Use in Looper'; projLab.prepend(projChk);
+  const projLab=doc.createElement('label'); projLab.textContent='Use in Looper'; projLab.prepend(projChk);
   advanced.appendChild(projLab);
 
-  const logoBtn=document.createElement('button'); logoBtn.className='looper-btn'; logoBtn.textContent='Set Logo';
+  const logoBtn=doc.createElement('button'); logoBtn.className='looper-btn'; logoBtn.textContent='Set Logo';
   logoBtn.onclick=()=>{ pickLogoImage(); };
   wrap.appendChild(logoBtn);
 
-  const clearLogo=document.createElement('button'); clearLogo.className='looper-btn'; clearLogo.textContent='Clear Logo';
+  const clearLogo=doc.createElement('button'); clearLogo.className='looper-btn'; clearLogo.textContent='Clear Logo';
   clearLogo.onclick=clearLogoImage;
   wrap.appendChild(clearLogo);
 
-  const textBtn=document.createElement('button'); textBtn.className='looper-btn'; textBtn.textContent='Set Text';
+  const textBtn=doc.createElement('button'); textBtn.className='looper-btn'; textBtn.textContent='Set Text';
   textBtn.onclick=()=>{ const t=prompt('Overlay text?'); if(t){ startTextLoop(t); } };
   wrap.appendChild(textBtn);
 
-  const clearText=document.createElement('button'); clearText.className='looper-btn'; clearText.textContent='Clear Text';
+  const clearText=doc.createElement('button'); clearText.className='looper-btn'; clearText.textContent='Clear Text';
   clearText.onclick=stopTextLoop;
   wrap.appendChild(clearText);
 
-  const reset=document.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
+  const reset=doc.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
   reset.onclick=resetVJParams; wrap.appendChild(reset);
 
-  const winBtn=document.createElement('button');
+  const winBtn=doc.createElement('button');
   winBtn.className='looper-btn';
   winBtn.textContent='Window';
   winBtn.onclick=openVJProjector;
   wrap.appendChild(winBtn);
 
-  document.body.appendChild(c);
-  safeMakePanelDraggable(c, dh, 'ytbm_vjCtrlPos');
-  safeRestorePanelPosition(c, 'ytbm_vjCtrlPos');
+  doc.body.appendChild(c);
+  if (doc === document) {
+    safeMakePanelDraggable(c, dh, 'ytbm_vjCtrlPos');
+    safeRestorePanelPosition(c, 'ytbm_vjCtrlPos');
+  }
   window.vjControlsContainer = c;
 }
 
