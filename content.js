@@ -118,7 +118,6 @@ window.vjEffects           = {
   invert:0, grayscale:0, sepia:0, pixel:0, rgbShift:0,
   kaleido:0, edge:0, wave:0, mirror:0, posterize:0
 };
-window.vjControlsWindow   = null;
 window.vjCtx               = null;
 window.vjPrefsKey          = 'ytbm_vjPrefs';
 
@@ -9133,25 +9132,26 @@ function safeRestorePanelPosition(panel, key) {
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
   if (!window.vjProjectorContainer) buildVJProjector();
-  if (!window.vjControlsWindow || window.vjControlsWindow.closed) {
-    openVJControlsPopup();
+  if (!window.vjControlsContainer) buildVJControls();
+
+  const visible = window.vjProjectorContainer.style.display === 'block';
+  if (visible) {
+    window.vjProjectorContainer.style.display = 'none';
+    window.vjControlsContainer.style.display  = 'none';
+    stopVJRenderLoop();
+    return;
   }
+
   initVJVideo();
   window.vjProjectorContainer.style.display = 'block';
+  window.vjControlsContainer.style.display  = 'block';
   startVJRenderLoop();
 }
 
-function openVJControlsPopup() {
-  if (window.vjControlsWindow && !window.vjControlsWindow.closed) {
-    window.vjControlsWindow.focus();
-    return;
-  }
-  const w = window.open('', 'ytbm_vj_ctrl', 'width=340,height=520,menubar=0,toolbar=0,location=0');
-  if (!w) { alert('Popup blocked'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><title>VJ Controls</title><link rel="stylesheet" href="${chrome.runtime.getURL('style.css')}"></head><body></body></html>`);
-  w.document.close();
-  buildVJControls(w.document);
-  window.vjControlsWindow = w;
+function toggleVJControls() {
+  if (!window.vjControlsContainer) buildVJControls();
+  const vis = window.vjControlsContainer.style.display === 'block';
+  window.vjControlsContainer.style.display = vis ? 'none' : 'block';
 }
 
 
@@ -9178,9 +9178,7 @@ function buildVJProjector() {
   hide.textContent = 'Hide';
   hide.onclick = () => {
     c.style.display = 'none';
-    if (window.vjControlsWindow && !window.vjControlsWindow.closed) {
-      window.vjControlsWindow.close();
-    }
+    if (window.vjControlsContainer) window.vjControlsContainer.style.display = 'none';
     stopVJRenderLoop();
   };
   const full = document.createElement('button');
@@ -9237,59 +9235,67 @@ function buildVJControls(doc = document) {
   wrap.className = 'looper-midimap-content';
   c.appendChild(wrap);
 
-  const params = ['brightness','contrast','saturate','hue','blur'];
-  const ranges = {
-    brightness:[0,2,0.1],
-    contrast:[0,2,0.1],
-    saturate:[0,2,0.1],
-    hue:[0,360,1],
-    blur:[0,10,0.5]
-  };
-  params.forEach(p=>{
-    const row=doc.createElement('div'); row.className='midimap-row';
-    const label=doc.createElement('label'); label.textContent=p;
-    const input=doc.createElement('input');
-    input.type='range';
-    const [min,max,step]=ranges[p];
-    input.min=min; input.max=max; input.step=step; input.value=window.currentVJParams[p];
-    input.oninput=()=>{ window.currentVJParams[p]=parseFloat(input.value); saveVJPrefs(); };
-    label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
+  function createSliderRow(labelTxt, value, min, max, step, cb){
+    const row = doc.createElement('div');
+    row.className = 'midimap-row';
+    const lab = doc.createElement('label');
+    lab.textContent = labelTxt;
+    const inp = doc.createElement('input');
+    inp.type = 'range';
+    inp.min = min; inp.max = max; inp.step = step; inp.value = value;
+    inp.oninput = () => cb(parseFloat(inp.value));
+    lab.appendChild(inp); row.appendChild(lab);
+    return row;
+  }
+
+  const filtersHeader = doc.createElement('h4');
+  filtersHeader.textContent = 'Filters';
+  wrap.appendChild(filtersHeader);
+
+  const ranges = { brightness:[0,2,0.1], contrast:[0,2,0.1], saturate:[0,2,0.1], hue:[0,360,1], blur:[0,10,0.5] };
+  ['brightness','contrast','saturate','hue','blur'].forEach(p=>{
+    wrap.appendChild(createSliderRow(p, window.currentVJParams[p], ...ranges[p], val=>{ window.currentVJParams[p]=val; saveVJPrefs(); }));
   });
+
+  const reactiveHeader = doc.createElement('h4');
+  reactiveHeader.textContent = 'Audio Reactive';
+  wrap.appendChild(reactiveHeader);
 
   ['low','mid','high'].forEach(b=>{
-    const row=doc.createElement('div'); row.className='midimap-row';
-    const label=doc.createElement('label'); label.textContent='Audio '+b;
-    const input=doc.createElement('input');
-    input.type='range'; input.min=0; input.max=2; input.step=0.1; input.value=0;
-    input.oninput=()=>{ window.vjReactive[b]=parseFloat(input.value); saveVJPrefs(); };
-    label.appendChild(input); row.appendChild(label); wrap.appendChild(row);
+    wrap.appendChild(createSliderRow('Audio '+b, window.vjReactive[b], 0, 2, 0.1, val=>{ window.vjReactive[b]=val; saveVJPrefs(); }));
   });
 
-  const advanced=doc.createElement('details');
-  const sum=doc.createElement('summary');
-  sum.textContent='Advanced';
-  advanced.appendChild(sum);
-  wrap.appendChild(advanced);
 
-  const effects=['invert','grayscale','sepia','pixel','rgbShift','kaleido','edge','wave','mirror','posterize'];
-  effects.forEach(name=>{
-    const row=doc.createElement('div'); row.className='midimap-row';
-    const label=doc.createElement('label'); label.textContent=name;
-    const input=doc.createElement('input');
-    input.type='range'; input.min=0; input.max=1; input.step=0.1; input.value=window.vjEffects[name]||0;
-    input.oninput=()=>{ window.vjEffects[name]=parseFloat(input.value); saveVJPrefs(); };
-    label.appendChild(input); row.appendChild(label); advanced.appendChild(row);
+  const effectsHeader = doc.createElement('h4');
+  effectsHeader.textContent = 'Effects';
+  wrap.appendChild(effectsHeader);
+
+  const effectDefs = {
+    invert:[0,1,0.1], grayscale:[0,1,0.1], sepia:[0,1,0.1],
+    pixel:[0,20,1], rgbShift:[0,20,1], kaleido:[0,12,1],
+    mirror:[0,1,1], posterize:[0,8,1]
+  };
+  Object.keys(effectDefs).forEach(name=>{
+    const def = effectDefs[name];
+    wrap.appendChild(createSliderRow(name, window.vjEffects[name]||0, def[0], def[1], def[2], val=>{ window.vjEffects[name]=val; saveVJPrefs(); }));
   });
 
-  const cornerChk=doc.createElement('input'); cornerChk.type='checkbox';
-  cornerChk.onchange=()=>{ toggleCorners(cornerChk.checked); saveVJPrefs(); };
-  const cornerLab=doc.createElement('label'); cornerLab.textContent='Corner Map'; cornerLab.prepend(cornerChk);
-  advanced.appendChild(cornerLab);
+  const cornerChk = doc.createElement('input');
+  cornerChk.type = 'checkbox';
+  cornerChk.onchange = () => { toggleCorners(cornerChk.checked); saveVJPrefs(); };
+  const cornerLab = doc.createElement('label');
+  cornerLab.textContent = 'Corner Map';
+  cornerLab.prepend(cornerChk);
+  wrap.appendChild(cornerLab);
 
-  const projChk=doc.createElement('input'); projChk.type='checkbox';
-  projChk.onchange=()=>{ window.useProjectorStream = projChk.checked; saveVJPrefs(); };
-  const projLab=doc.createElement('label'); projLab.textContent='Use in Looper'; projLab.prepend(projChk);
-  advanced.appendChild(projLab);
+  const projChk = doc.createElement('input');
+  projChk.type = 'checkbox';
+  projChk.onchange = () => { window.useProjectorStream = projChk.checked; saveVJPrefs(); };
+  const projLab = doc.createElement('label');
+  projLab.textContent = 'Use in Looper';
+  projLab.prepend(projChk);
+  wrap.appendChild(projLab);
+
 
   const logoBtn=doc.createElement('button'); logoBtn.className='looper-btn'; logoBtn.textContent='Set Logo';
   logoBtn.onclick=()=>{ pickLogoImage(); };
@@ -9307,14 +9313,23 @@ function buildVJControls(doc = document) {
   clearText.onclick=stopTextLoop;
   wrap.appendChild(clearText);
 
-  const reset=doc.createElement('button'); reset.className='looper-btn'; reset.textContent='Reset';
-  reset.onclick=resetVJParams; wrap.appendChild(reset);
+  const reset=doc.createElement('button');
+  reset.className='looper-btn';
+  reset.textContent='Reset';
+  reset.onclick=resetVJParams;
+  wrap.appendChild(reset);
 
-  const winBtn=doc.createElement('button');
-  winBtn.className='looper-btn';
-  winBtn.textContent='Window';
-  winBtn.onclick=openVJProjector;
-  wrap.appendChild(winBtn);
+  const projBtn=doc.createElement('button');
+  projBtn.className='looper-btn';
+  projBtn.textContent='Projector';
+  projBtn.onclick=openVJProjector;
+  wrap.appendChild(projBtn);
+
+  const hideBtn=doc.createElement('button');
+  hideBtn.className='looper-btn';
+  hideBtn.textContent='Hide';
+  hideBtn.onclick=toggleVJControls;
+  wrap.appendChild(hideBtn);
 
   doc.body.appendChild(c);
   if (doc === document) {
@@ -9438,22 +9453,69 @@ function stopVJRenderLoop(){
 function renderVJFrame(){
   if(!window.vjVideo||!window.vjCanvas||!window.vjCtx) return;
   const ctx = window.vjCtx;
+  const w   = window.vjCanvas.width;
+  const h   = window.vjCanvas.height;
   const r   = getReactiveMod();
+  const boost = 1 + (r.low + r.mid + r.high) / 3;
   const p   = window.currentVJParams;
+
   let filt = `brightness(${p.brightness + r.low}) contrast(${p.contrast + r.mid}) saturate(${p.saturate}) hue-rotate(${p.hue}deg)`;
   if (p.blur) filt += ` blur(${p.blur}px)`;
-  if (window.vjEffects.invert) filt += ` invert(${window.vjEffects.invert})`;
-  if (window.vjEffects.grayscale) filt += ` grayscale(${window.vjEffects.grayscale})`;
-  if (window.vjEffects.sepia) filt += ` sepia(${window.vjEffects.sepia})`;
+  if (window.vjEffects.invert)    filt += ` invert(${window.vjEffects.invert * boost})`;
+  if (window.vjEffects.grayscale) filt += ` grayscale(${window.vjEffects.grayscale * boost})`;
+  if (window.vjEffects.sepia)     filt += ` sepia(${window.vjEffects.sepia * boost})`;
+
+  ctx.save();
+  ctx.clearRect(0,0,w,h);
   ctx.filter = filt;
-  ctx.drawImage(window.vjVideo, 0, 0, window.vjCanvas.width, window.vjCanvas.height);
+  ctx.drawImage(window.vjVideo, 0, 0, w, h);
   ctx.filter = 'none';
+
+  const px = window.vjEffects.pixel * boost;
+  if (px > 0) {
+    const scale = 1 + px;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(window.vjCanvas, 0, 0, w/scale, h/scale, 0,0,w,h);
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  const shift = window.vjEffects.rgbShift * boost;
+  if (shift > 0) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(window.vjVideo, shift, 0, w, h);
+    ctx.drawImage(window.vjVideo, -shift, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  const seg = Math.round(window.vjEffects.kaleido * boost);
+  if (seg > 1) {
+    ctx.clearRect(0,0,w,h);
+    ctx.translate(w/2,h/2);
+    for(let i=0;i<seg;i++){
+      ctx.save();
+      ctx.rotate(i*2*Math.PI/seg);
+      if(i%2) ctx.scale(-1,1);
+      ctx.drawImage(window.vjVideo,-w/2,-h/2,w,h);
+      ctx.restore();
+    }
+    ctx.setTransform(1,0,0,1,0,0);
+  }
+
+  if (window.vjEffects.mirror * boost >= 0.5) {
+    ctx.save();
+    ctx.translate(w,0);
+    ctx.scale(-1,1);
+    ctx.drawImage(window.vjVideo,0,0,w,h);
+    ctx.restore();
+  }
+
   if (window.vjLogoImg) ctx.drawImage(window.vjLogoImg, 10, 10);
   if (window.vjText && window.vjTextVisible) {
     ctx.fillStyle = '#fff';
     ctx.font = '20px sans-serif';
-    ctx.fillText(window.vjText, 20, window.vjCanvas.height - 30);
+    ctx.fillText(window.vjText, 20, h - 30);
   }
+  ctx.restore();
 }
 // Use lightweight Canvas2D filters for better compatibility
 function resetVJParams(){
