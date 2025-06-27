@@ -101,6 +101,7 @@ if (typeof updateCueMarkers === "undefined") {
 
 // Global VJ overlay state (in‑page panels)
 window.vjProjectorContainer = null;
+window.vjProjectorWindow    = null;
 window.vjControlsContainer  = null;
 window.vjVideoStream        = null;
 window.vjVideo              = null;
@@ -113,13 +114,23 @@ window.vjLogoImg            = null;
 window.vjText               = '';
 window.vjTextVisible        = true;
 window.vjTextInterval       = null;
+window.projectorMode        = 'intab';
+window.vjBlinkEnabled       = false;
+window.vjBlinkRate          = 1;
+window.vjTextProps          = { alignH:'center', alignV:'bottom', size:24 };
+window.vjLogoPos            = { x:0.02, y:0.02 };
+window.vjTextureImg         = null;
+window.vjTextureEnabled     = false;
 window.ytbmBPM              = 120;
 window.vjEffects           = {
   hueCycle:0,
   rgbGlitch:0,
   kaleido:0,
   feedback:0,
-  pulse:0
+  pixelate:0,
+  mirror:0,
+  wave:0,
+  texture:0
 };
 window.vjCtx               = null;
 window.vjPrefsKey          = 'ytbm_vjPrefs';
@@ -128,7 +139,14 @@ function saveVJPrefs() {
   const obj = {
     params: window.currentVJParams,
     reactive: window.vjReactive,
-    effects: window.vjEffects
+    effects: window.vjEffects,
+    textProps: window.vjTextProps,
+    blink: window.vjBlinkEnabled,
+    blinkRate: window.vjBlinkRate,
+    logoPos: window.vjLogoPos,
+    text: window.vjText,
+    projectorMode: window.projectorMode,
+    textureEnabled: window.vjTextureEnabled
   };
   localStorage.setItem(window.vjPrefsKey, JSON.stringify(obj));
 }
@@ -141,6 +159,13 @@ function loadVJPrefs() {
     Object.assign(window.currentVJParams, obj.params || {});
     Object.assign(window.vjReactive, obj.reactive || {});
     Object.assign(window.vjEffects, obj.effects || {});
+    Object.assign(window.vjTextProps, obj.textProps || {});
+    if (typeof obj.blink === 'boolean') window.vjBlinkEnabled = obj.blink;
+    if (obj.blinkRate) window.vjBlinkRate = obj.blinkRate;
+    Object.assign(window.vjLogoPos, obj.logoPos || {});
+    if (obj.text) window.vjText = obj.text;
+    if (obj.projectorMode) window.projectorMode = obj.projectorMode;
+    if (obj.textureEnabled) window.vjTextureEnabled = obj.textureEnabled;
   } catch (e) {
     console.warn('Failed loading VJ prefs', e);
   }
@@ -9134,20 +9159,32 @@ function safeRestorePanelPosition(panel, key) {
 
 // ---------- VJ Projector & Controls ----------
 function openVJProjector() {
-  if (!window.vjProjectorContainer) buildVJProjector();
-  if (!window.vjControlsContainer) buildVJControls();
-
-  const visible = window.vjProjectorContainer.style.display === 'block';
-  if (visible) {
-    window.vjProjectorContainer.style.display = 'none';
-    window.vjControlsContainer.style.display  = 'none';
-    stopVJRenderLoop();
-    return;
+  if (window.projectorMode === 'popup') {
+    if (window.vjProjectorWindow && !window.vjProjectorWindow.closed) {
+      window.vjProjectorWindow.close();
+      stopVJRenderLoop();
+      if(window.vjControlsContainer) window.vjControlsContainer.style.display='none';
+      return;
+    }
+    window.vjProjectorWindow = window.open('', 'vjproj', 'width=660,height=380,toolbar=0,menubar=0');
+    buildVJProjector(window.vjProjectorWindow.document);
+    window.vjProjectorWindow.focus();
+  } else {
+    if (!window.vjProjectorContainer) buildVJProjector();
+    const vis = window.vjProjectorContainer.style.display === 'block';
+    if (vis) {
+      window.vjProjectorContainer.style.display = 'none';
+      if(window.vjControlsContainer) window.vjControlsContainer.style.display='none';
+      stopVJRenderLoop();
+      return;
+    }
+    window.vjProjectorContainer.style.display = 'block';
   }
 
+  if (!window.vjControlsContainer) buildVJControls();
+  window.vjControlsContainer.style.display = 'block';
+
   initVJVideo();
-  window.vjProjectorContainer.style.display = 'block';
-  window.vjControlsContainer.style.display  = 'block';
   startVJRenderLoop();
 }
 
@@ -9158,37 +9195,41 @@ function toggleVJControls() {
 }
 
 
-function buildVJProjector() {
-  const c = document.createElement('div');
+function buildVJProjector(doc = document) {
+  const c = doc.createElement('div');
   c.className = 'looper-midimap-container';
   c.style.width = '660px';
   c.style.background = 'rgba(0,0,0,0.95)';
   c.style.padding = '0';
 
-  const dh = document.createElement('div');
+  const dh = doc.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
   dh.innerText = 'VJ Monitor';
   c.appendChild(dh);
 
-  const bar = document.createElement('div');
+  const bar = doc.createElement('div');
   bar.style.position = 'absolute';
   bar.style.top = '6px';
   bar.style.right = '6px';
   bar.style.display = 'flex';
   bar.style.gap = '4px';
-  const hide = document.createElement('button');
+  const hide = doc.createElement('button');
   hide.className = 'looper-btn';
   hide.textContent = 'Hide';
   hide.onclick = () => {
-    c.style.display = 'none';
-    if (window.vjControlsContainer) window.vjControlsContainer.style.display = 'none';
+    if (doc !== document) {
+      doc.defaultView.close();
+    } else {
+      c.style.display = 'none';
+      if (window.vjControlsContainer) window.vjControlsContainer.style.display = 'none';
+    }
     stopVJRenderLoop();
   };
-  const full = document.createElement('button');
+  const full = doc.createElement('button');
   full.className = 'looper-btn';
   full.textContent = 'Full';
   full.onclick = () => c.requestFullscreen();
-  const reset = document.createElement('button');
+  const reset = doc.createElement('button');
   reset.className = 'looper-btn';
   reset.textContent = 'Reset';
   reset.onclick = resetVJParams;
@@ -9199,7 +9240,7 @@ function buildVJProjector() {
     else{bar.style.display='flex';dh.style.display='block';}
   });
 
-  const canvas = document.createElement('canvas');
+  const canvas = doc.createElement('canvas');
   canvas.id = 'vjCanvas';
   canvas.width = 640;
   canvas.height = 360;
@@ -9210,17 +9251,22 @@ function buildVJProjector() {
   window.projectorCanvasStream = canvas.captureStream();
 
   for (let i=0;i<4;i++) {
-    const h = document.createElement('div');
+    const h = doc.createElement('div');
     h.className = 'vj-corner-handle';
     h.dataset.idx = i;
     c.appendChild(h);
   }
 
-  document.body.appendChild(c);
-  safeMakePanelDraggable(c, dh, 'ytbm_vjProjPos');
-  safeRestorePanelPosition(c, 'ytbm_vjProjPos');
+  doc.body.appendChild(c);
+  if(doc === document){
+    safeMakePanelDraggable(c, dh, 'ytbm_vjProjPos');
+    safeRestorePanelPosition(c, 'ytbm_vjProjPos');
+  }
   window.vjProjectorContainer = c;
   setupCornerMapping();
+  if(doc !== document){
+    doc.defaultView.addEventListener('beforeunload', stopVJRenderLoop);
+  }
 }
 
 function buildVJControls(doc = document) {
@@ -9276,9 +9322,12 @@ function buildVJControls(doc = document) {
   const effectDefs = {
     hueCycle:[0,1,0.05],
     rgbGlitch:[0,1,0.05],
+    pixelate:[0,1,0.05],
+    mirror:[0,1,1],
     kaleido:[0,12,1],
     feedback:[0,1,0.05],
-    pulse:[0,1,0.05]
+    wave:[0,1,0.05],
+    texture:[0,1,0.05]
   };
   Object.keys(effectDefs).forEach(name=>{
     const def = effectDefs[name];
@@ -9301,6 +9350,14 @@ function buildVJControls(doc = document) {
   projLab.prepend(projChk);
   wrap.appendChild(projLab);
 
+  const modeRow = doc.createElement('div'); modeRow.className='midimap-row';
+  const modeSel = doc.createElement('select');
+  modeSel.add(new Option('in tab','intab',false,window.projectorMode==='intab'));
+  modeSel.add(new Option('popup','popup',false,window.projectorMode==='popup'));
+  modeSel.onchange=()=>{window.projectorMode=modeSel.value; saveVJPrefs();};
+  const modeLab = doc.createElement('label'); modeLab.textContent='Projector';
+  modeRow.appendChild(modeLab); modeRow.appendChild(modeSel); wrap.appendChild(modeRow);
+
 
   const logoBtn=doc.createElement('button'); logoBtn.className='looper-btn'; logoBtn.textContent='Set Logo';
   logoBtn.onclick=()=>{ pickLogoImage(); };
@@ -9311,12 +9368,30 @@ function buildVJControls(doc = document) {
   wrap.appendChild(clearLogo);
 
   const textBtn=doc.createElement('button'); textBtn.className='looper-btn'; textBtn.textContent='Set Text';
-  textBtn.onclick=()=>{ const t=prompt('Overlay text?'); if(t){ startTextLoop(t); } };
+  textBtn.onclick=()=>{ const t=prompt('Overlay text?'); if(t){ setVJText(t); } };
   wrap.appendChild(textBtn);
 
   const clearText=doc.createElement('button'); clearText.className='looper-btn'; clearText.textContent='Clear Text';
-  clearText.onclick=stopTextLoop;
+  clearText.onclick=clearVJText;
   wrap.appendChild(clearText);
+
+  wrap.appendChild(createSliderRow('Text size', window.vjTextProps.size, 10, 80, 1, v=>{window.vjTextProps.size=v; saveVJPrefs();}));
+
+  const posSelect = doc.createElement('select');
+  ['top-left','top','top-right','center','bottom-left','bottom','bottom-right'].forEach(p=>{posSelect.add(new Option(p,p,false,p===`${window.vjTextProps.alignV}-${window.vjTextProps.alignH}`));});
+  posSelect.onchange = ()=>{const val=posSelect.value.split('-');window.vjTextProps.alignV=val[0];window.vjTextProps.alignH=val[1]||'center';saveVJPrefs();};
+  const posRow = doc.createElement('div'); posRow.className='midimap-row';
+  const posLab = doc.createElement('label'); posLab.textContent='Text pos'; posRow.appendChild(posLab); posRow.appendChild(posSelect); wrap.appendChild(posRow);
+
+  const blinkChk = doc.createElement('input'); blinkChk.type='checkbox'; blinkChk.checked=window.vjBlinkEnabled; blinkChk.onchange=()=>{toggleTextBlink(blinkChk.checked);};
+  const blinkLab = doc.createElement('label'); blinkLab.textContent='Blink'; blinkLab.prepend(blinkChk); wrap.appendChild(blinkLab);
+  wrap.appendChild(createSliderRow('Blink rate', window.vjBlinkRate, 0.5, 4, 0.25, v=>{setBlinkRate(v);}));
+
+  wrap.appendChild(createSliderRow('Logo X', window.vjLogoPos.x, 0,1,0.01, v=>{window.vjLogoPos.x=v; saveVJPrefs();}));
+  wrap.appendChild(createSliderRow('Logo Y', window.vjLogoPos.y, 0,1,0.01, v=>{window.vjLogoPos.y=v; saveVJPrefs();}));
+
+  const texBtn=doc.createElement('button'); texBtn.className='looper-btn'; texBtn.textContent='Set Texture'; texBtn.onclick=pickTextureImage; wrap.appendChild(texBtn);
+  const clearTex=doc.createElement('button'); clearTex.className='looper-btn'; clearTex.textContent='Clear Texture'; clearTex.onclick=clearTexture; wrap.appendChild(clearTex);
 
   const reset=doc.createElement('button');
   reset.className='looper-btn';
@@ -9481,6 +9556,28 @@ function renderVJFrame(){
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  const pix = Math.round(window.vjEffects.pixelate * (1 + r.high) * 10);
+  if (pix > 1) {
+    if(!window.vjPixelCanvas){
+      window.vjPixelCanvas = document.createElement('canvas');
+      window.vjPixelCanvas.width = w;
+      window.vjPixelCanvas.height = h;
+      window.vjPixelCtx = window.vjPixelCanvas.getContext('2d');
+    }
+    vjPixelCtx.drawImage(window.vjVideo, 0, 0, w, h, 0, 0, w / pix, h / pix);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(window.vjPixelCanvas, 0, 0, w / pix, h / pix, 0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  if (window.vjEffects.mirror > 0) {
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(window.vjCanvas, 0, 0, w, h);
+    ctx.restore();
+  }
+
   const seg = Math.round(window.vjEffects.kaleido);
   if (seg > 1) {
     ctx.clearRect(0,0,w,h);
@@ -9513,19 +9610,37 @@ function renderVJFrame(){
     }
   }
 
-  if (window.vjEffects.pulse > 0) {
-    const alpha = window.vjEffects.pulse * r.low * 0.8;
-    if(alpha>0){
-      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-      ctx.fillRect(0,0,w,h);
+  if (window.vjEffects.wave > 0) {
+    ctx.save();
+    const amp = window.vjEffects.wave * r.low * 20;
+    for(let y=0;y<h;y+=4){
+      const offs = Math.sin(y/20)*amp;
+      ctx.drawImage(window.vjVideo,0,y,w,4,offs,y,w,4);
     }
+    ctx.restore();
   }
 
-  if (window.vjLogoImg) ctx.drawImage(window.vjLogoImg, 10, 10);
+  if (window.vjTextureEnabled && window.vjTextureImg) {
+    ctx.globalAlpha = 0.6 * (1 + r.mid) * window.vjEffects.texture;
+    ctx.drawImage(window.vjTextureImg,0,0,w,h);
+    ctx.globalAlpha = 1;
+  }
+
+  if (window.vjLogoImg) {
+    const lx=w*window.vjLogoPos.x, ly=h*window.vjLogoPos.y;
+    ctx.drawImage(window.vjLogoImg,lx,ly);
+  }
   if (window.vjText && window.vjTextVisible) {
     ctx.fillStyle = '#fff';
-    ctx.font = '20px sans-serif';
-    ctx.fillText(window.vjText, 20, h - 30);
+    ctx.font = `${window.vjTextProps.size}px sans-serif`;
+    ctx.textAlign = window.vjTextProps.alignH;
+    ctx.textBaseline = window.vjTextProps.alignV==='top'? 'top': window.vjTextProps.alignV==='bottom'? 'bottom':'middle';
+    let tx=w/2, ty=h/2;
+    if(window.vjTextProps.alignH==='left') tx=0;
+    if(window.vjTextProps.alignH==='right') tx=w;
+    if(window.vjTextProps.alignV==='top') ty=0;
+    if(window.vjTextProps.alignV==='bottom') ty=h;
+    ctx.fillText(window.vjText, tx, ty);
   }
   ctx.restore();
 }
@@ -9533,9 +9648,14 @@ function renderVJFrame(){
 function resetVJParams(){
   window.currentVJParams={brightness:1,contrast:1,saturate:1,hue:0,blur:0};
   window.vjReactive={low:0,mid:0,high:0};
-  window.vjEffects={hueCycle:0,rgbGlitch:0,kaleido:0,feedback:0,pulse:0};
-  stopTextLoop();
+  window.vjEffects={hueCycle:0,rgbGlitch:0,kaleido:0,feedback:0,pixelate:0,mirror:0,wave:0,texture:0};
+  clearVJText();
   clearLogoImage();
+  clearTexture();
+  window.vjTextProps={alignH:'center',alignV:'bottom',size:24};
+  window.vjLogoPos={x:0.02,y:0.02};
+  window.vjBlinkEnabled=false;
+  window.vjBlinkRate=1;
   const sliders=window.vjControlsContainer?.querySelectorAll('input[type="range"]')||[];
   sliders.forEach(inp=>{
     const n=inp.parentElement.textContent.trim().toLowerCase().split(' ')[0];
@@ -9543,8 +9663,12 @@ function resetVJParams(){
     else if(window.vjReactive[n]!==undefined){inp.value=window.vjReactive[n];}
     else if(window.vjEffects[n]!==undefined){inp.value=0;}
   });
-  const chk=window.vjControlsContainer?.querySelector('label input[type="checkbox"]');
-  if(chk){chk.checked=false;}
+  window.vjControlsContainer?.querySelectorAll('input[type="checkbox"]').forEach(c=>{c.checked=false;});
+  window.vjControlsContainer?.querySelectorAll('select').forEach(s=>{
+    if(s.options[0].value==='intab' || s.options[0].value==='top-left'){
+      s.value=s.options[0].value;
+    }
+  });
   window.cornerMapEnabled=false;
   if(window.vjCanvas){const w=vjCanvas.width,h=vjCanvas.height;window.vjCorners=[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];updateHandles();}
   saveVJPrefs();
@@ -9569,19 +9693,53 @@ function clearLogoImage(){
   saveVJPrefs();
 }
 
-function startTextLoop(text){
-  window.vjText=text;
-  window.vjTextVisible=true;
-  clearInterval(window.vjTextInterval);
-  const bpm=window.ytbmBPM||120;
-  const ms=60000/bpm;
-  window.vjTextInterval=setInterval(()=>{window.vjTextVisible=!window.vjTextVisible;},ms);
+function pickTextureImage(){
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='image/*';
+  input.onchange=()=>{
+    const file=input.files[0];
+    if(!file)return;
+    const r=new FileReader();
+    r.onload=()=>{const img=new Image();img.onload=()=>{window.vjTextureImg=img;window.vjTextureEnabled=true;saveVJPrefs();};img.src=r.result;};
+    r.readAsDataURL(file);
+  };
+  input.click();
+}
+
+function clearTexture(){
+  window.vjTextureImg=null;
+  window.vjTextureEnabled=false;
   saveVJPrefs();
 }
 
-function stopTextLoop(){
+function setVJText(text){
+  window.vjText = text;
+  window.vjTextVisible = true;
+  saveVJPrefs();
+}
+
+function toggleTextBlink(on){
+  window.vjBlinkEnabled = on;
   clearInterval(window.vjTextInterval);
-  window.vjText="";
-  window.vjTextVisible=false;
+  if(on){
+    const bpm = window.ytbmBPM || 120;
+    const ms  = 60000 / (bpm * window.vjBlinkRate);
+    window.vjTextInterval = setInterval(()=>{window.vjTextVisible=!window.vjTextVisible;},ms);
+  }else{
+    window.vjTextVisible = true;
+  }
+  saveVJPrefs();
+}
+
+function setBlinkRate(val){
+  window.vjBlinkRate = val;
+  if(window.vjBlinkEnabled) toggleTextBlink(true);
+}
+
+function clearVJText(){
+  toggleTextBlink(false);
+  window.vjText = '';
+  window.vjTextVisible = false;
   saveVJPrefs();
 }
