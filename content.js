@@ -115,8 +115,11 @@ window.vjTextVisible        = true;
 window.vjTextInterval       = null;
 window.ytbmBPM              = 120;
 window.vjEffects           = {
-  invert:0, grayscale:0, sepia:0, pixel:0, rgbShift:0,
-  kaleido:0, edge:0, wave:0, mirror:0, posterize:0
+  hueCycle:0,
+  rgbGlitch:0,
+  kaleido:0,
+  feedback:0,
+  pulse:0
 };
 window.vjCtx               = null;
 window.vjPrefsKey          = 'ytbm_vjPrefs';
@@ -9271,9 +9274,11 @@ function buildVJControls(doc = document) {
   wrap.appendChild(effectsHeader);
 
   const effectDefs = {
-    invert:[0,1,0.1], grayscale:[0,1,0.1], sepia:[0,1,0.1],
-    pixel:[0,20,1], rgbShift:[0,20,1], kaleido:[0,12,1],
-    mirror:[0,1,1], posterize:[0,8,1]
+    hueCycle:[0,1,0.05],
+    rgbGlitch:[0,1,0.05],
+    kaleido:[0,12,1],
+    feedback:[0,1,0.05],
+    pulse:[0,1,0.05]
   };
   Object.keys(effectDefs).forEach(name=>{
     const def = effectDefs[name];
@@ -9456,14 +9461,11 @@ function renderVJFrame(){
   const w   = window.vjCanvas.width;
   const h   = window.vjCanvas.height;
   const r   = getReactiveMod();
-  const boost = 1 + (r.low + r.mid + r.high) / 3;
   const p   = window.currentVJParams;
 
-  let filt = `brightness(${p.brightness + r.low}) contrast(${p.contrast + r.mid}) saturate(${p.saturate}) hue-rotate(${p.hue}deg)`;
+  const hueAdd = window.vjEffects.hueCycle * r.high * 360;
+  let filt = `brightness(${p.brightness + r.low}) contrast(${p.contrast + r.mid}) saturate(${p.saturate}) hue-rotate(${(p.hue + hueAdd)%360}deg)`;
   if (p.blur) filt += ` blur(${p.blur}px)`;
-  if (window.vjEffects.invert)    filt += ` invert(${window.vjEffects.invert * boost})`;
-  if (window.vjEffects.grayscale) filt += ` grayscale(${window.vjEffects.grayscale * boost})`;
-  if (window.vjEffects.sepia)     filt += ` sepia(${window.vjEffects.sepia * boost})`;
 
   ctx.save();
   ctx.clearRect(0,0,w,h);
@@ -9471,15 +9473,7 @@ function renderVJFrame(){
   ctx.drawImage(window.vjVideo, 0, 0, w, h);
   ctx.filter = 'none';
 
-  const px = window.vjEffects.pixel * boost;
-  if (px > 0) {
-    const scale = 1 + px;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(window.vjCanvas, 0, 0, w/scale, h/scale, 0,0,w,h);
-    ctx.imageSmoothingEnabled = true;
-  }
-
-  const shift = window.vjEffects.rgbShift * boost;
+  const shift = window.vjEffects.rgbGlitch * r.high * 10;
   if (shift > 0) {
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(window.vjVideo, shift, 0, w, h);
@@ -9487,7 +9481,7 @@ function renderVJFrame(){
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  const seg = Math.round(window.vjEffects.kaleido * boost);
+  const seg = Math.round(window.vjEffects.kaleido);
   if (seg > 1) {
     ctx.clearRect(0,0,w,h);
     ctx.translate(w/2,h/2);
@@ -9501,12 +9495,30 @@ function renderVJFrame(){
     ctx.setTransform(1,0,0,1,0,0);
   }
 
-  if (window.vjEffects.mirror * boost >= 0.5) {
-    ctx.save();
-    ctx.translate(w,0);
-    ctx.scale(-1,1);
-    ctx.drawImage(window.vjVideo,0,0,w,h);
-    ctx.restore();
+  if (window.vjEffects.feedback > 0) {
+    if(!window.vjFeedbackCanvas){
+      window.vjFeedbackCanvas=document.createElement('canvas');
+      window.vjFeedbackCanvas.width=w;
+      window.vjFeedbackCanvas.height=h;
+      window.vjFeedbackCtx=window.vjFeedbackCanvas.getContext('2d');
+    }
+    window.vjFeedbackCtx.clearRect(0,0,w,h);
+    window.vjFeedbackCtx.drawImage(window.vjCanvas,0,0,w,h);
+    const alpha = window.vjEffects.feedback * r.mid * 0.5;
+    if(alpha>0){
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(window.vjFeedbackCanvas,0,0,w,h);
+      ctx.restore();
+    }
+  }
+
+  if (window.vjEffects.pulse > 0) {
+    const alpha = window.vjEffects.pulse * r.low * 0.8;
+    if(alpha>0){
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.fillRect(0,0,w,h);
+    }
   }
 
   if (window.vjLogoImg) ctx.drawImage(window.vjLogoImg, 10, 10);
@@ -9521,7 +9533,7 @@ function renderVJFrame(){
 function resetVJParams(){
   window.currentVJParams={brightness:1,contrast:1,saturate:1,hue:0,blur:0};
   window.vjReactive={low:0,mid:0,high:0};
-  window.vjEffects={invert:0,grayscale:0,sepia:0,pixel:0,rgbShift:0,kaleido:0,edge:0,wave:0,mirror:0,posterize:0};
+  window.vjEffects={hueCycle:0,rgbGlitch:0,kaleido:0,feedback:0,pulse:0};
   stopTextLoop();
   clearLogoImage();
   const sliders=window.vjControlsContainer?.querySelectorAll('input[type="range"]')||[];
