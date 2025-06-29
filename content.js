@@ -496,7 +496,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverb: "q",
         cassette: "w",
         randomCues: "-",
-        instrumentToggle: "n"
+        instrumentToggle: "n",
+        fxPad: "x"
       },
       midiPresets = [],
       presetSelect = null,
@@ -528,6 +529,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         cassetteToggle: 30,
         randomCues: 28,
         instrumentToggle: 27,
+        fxPadToggle: 26,
         superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
@@ -750,7 +752,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         br: 'autopan'
       },
       fxPadActive = false,
-      fxPadToggle = null,
       fxPadBallX = 0.5,
       fxPadBallY = 0.5,
       fxPadSticky = false,
@@ -5298,6 +5299,12 @@ function onKeyDown(e) {
     showInstrumentWindowToggle();
     return;
   }
+  if (k === extensionKeys.fxPad.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    showFXPadWindowToggle();
+    return;
+  }
 
   if (instrumentPreset > 0) {
     const idx = KEYBOARD_INST_KEYS.indexOf(k);
@@ -6866,18 +6873,19 @@ async function showFXPadWindowToggle() {
   if (!fxPadContainer) {
     buildFXPadWindow();
     fxPadContainer.style.display = 'block';
-    fxPadActive = fxPadToggle.checked;
+    fxPadActive = true;
     applyAllFXRouting();
     startFXPadGamepad();
   } else {
     const visible = fxPadContainer.style.display === 'block';
     fxPadContainer.style.display = visible ? 'none' : 'block';
     if (!visible) {
-      fxPadActive = fxPadToggle.checked;
+      fxPadActive = true;
       startFXPadGamepad();
     } else {
       fxPadActive = false;
       stopFXPadGamepad();
+      resetFXPad();
     }
     applyAllFXRouting();
   }
@@ -6893,22 +6901,6 @@ function buildFXPadWindow() {
   dh.innerText = 'FX Pad';
   fxPadContainer.appendChild(dh);
 
-  const toggleWrap = document.createElement('div');
-  toggleWrap.style.display = 'flex';
-  toggleWrap.style.alignItems = 'center';
-  toggleWrap.style.justifyContent = 'flex-end';
-  toggleWrap.style.padding = '4px 8px';
-  fxPadToggle = document.createElement('input');
-  fxPadToggle.type = 'checkbox';
-  fxPadToggle.className = 'fxpad-switch';
-  fxPadToggle.checked = true;
-  fxPadToggle.addEventListener('change', () => {
-    fxPadActive = fxPadToggle.checked && fxPadContainer.style.display === 'block';
-    if (!fxPadActive) resetFXPad();
-    applyAllFXRouting();
-  });
-  toggleWrap.appendChild(fxPadToggle);
-  fxPadContainer.appendChild(toggleWrap);
 
   fxPadContent = document.createElement('div');
   fxPadContent.className = 'looper-midimap-content';
@@ -7232,6 +7224,10 @@ function handleMIDIMessage(e) {
 
   if (st === 144 && note === midiNotes.instrumentToggle) {
     showInstrumentWindowToggle();
+    return;
+  }
+  if (st === 144 && note === midiNotes.fxPadToggle) {
+    showFXPadWindowToggle();
     return;
   }
 
@@ -7643,6 +7639,10 @@ function buildKeyMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-extkey="instrumentToggle" value="${escapeHtml(extensionKeys.instrumentToggle)}" maxlength="1">
     </div>
+    <div class="keymap-row">
+      <label>FX Pad:</label>
+      <input data-extkey="fxPad" value="${escapeHtml(extensionKeys.fxPad)}" maxlength="1">
+    </div>
     <h4></h4>
     <div id="user-samples-list"></div>
     <button class="looper-keymap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
@@ -7840,6 +7840,11 @@ function buildMIDIMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-midiname="instrumentToggle" value="${escapeHtml(String(midiNotes.instrumentToggle))}" type="number">
       <button data-detect="instrumentToggle" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>FX Pad Toggle:</label>
+      <input data-midiname="fxPadToggle" value="${escapeHtml(String(midiNotes.fxPadToggle))}" type="number">
+      <button data-detect="fxPadToggle" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
@@ -9216,33 +9221,6 @@ function injectCustomCSS() {
       border:1px solid #555;
       border-radius:4px;
       font-size:11px;
-    }
-    .fxpad-switch {
-      width:34px;
-      height:18px;
-      -webkit-appearance:none;
-      background:#555;
-      border-radius:9px;
-      position:relative;
-      outline:none;
-      cursor:pointer;
-    }
-    .fxpad-switch:before {
-      content:'';
-      position:absolute;
-      width:16px;
-      height:16px;
-      border-radius:50%;
-      background:#ddd;
-      top:1px;
-      left:1px;
-      transition:transform .2s;
-    }
-    .fxpad-switch:checked {
-      background:#0a74ff;
-    }
-    .fxpad-switch:checked:before {
-      transform:translateX(16px);
     }
     input[type="range"] {
       -webkit-appearance: none;
