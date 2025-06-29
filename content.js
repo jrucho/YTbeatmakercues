@@ -3603,7 +3603,7 @@ function applyAllFXRouting() {
   bus3Gain.connect(masterGain);
   
   masterGain.connect(fxPadMasterIn);
-  if (fxPadActive && fxPadEffects.length) {
+  if (fxPadEffects.length) {
     fxPadMasterIn.connect(fxPadEffects[0].input);
     for (let i = 0; i < fxPadEffects.length - 1; i++) {
       fxPadEffects[i].output.connect(fxPadEffects[i + 1].input);
@@ -6887,6 +6887,7 @@ function buildFXPadWindow() {
   fxPadContainer.style.display = 'flex';
   fxPadContainer.style.flexDirection = 'column';
   fxPadContainer.style.alignItems = 'center';
+  fxPadContainer.style.padding = '0';
   fxPadContainer.style.boxSizing = 'border-box';
 
   const dh = document.createElement('div');
