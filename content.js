@@ -496,7 +496,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverb: "q",
         cassette: "w",
         randomCues: "-",
-        instrumentToggle: "n"
+        instrumentToggle: "n",
+        fxPadToggle: "x"
       },
       midiPresets = [],
       presetSelect = null,
@@ -528,6 +529,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         cassetteToggle: 30,
         randomCues: 28,
         instrumentToggle: 27,
+        fxPadToggle: 13,
         superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
@@ -761,7 +763,20 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       dcBlockB = null,
       activeDeck = "A",       // which deck is currently audible
       crossFadeTime = 0.20,   // 80 ms smoothed constant‑power fade
-            compMode = "off";
+            compMode = "off",
+      // FX Pad
+      fxPadWindowContainer = null,
+      fxPadPad = null,
+      fxPadBall = null,
+      fxPadLocked = false,
+      fxPadInputGain = null,
+      fxPadDryGain = null,
+      fxPadMergeGain = null,
+      fxPadEffects = [],
+      fxPadMixGains = [],
+      fxPadActive = false,
+      fxPadBallX = 0.5,
+      fxPadBallY = 0.5;
 
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 12;
@@ -1624,6 +1639,16 @@ hideYouTubePopups();
   }
 }
   addTouchSequencerButtonToAdvancedUI();
+
+  function addFXPadButtonToAdvancedUI() {
+    const fxBtn = document.createElement("button");
+    fxBtn.className = "looper-btn";
+    fxBtn.innerText = "FX Pad";
+    fxBtn.title = "Toggle FX Pad (MIDI: Note 13)";
+    fxBtn.addEventListener("click", showFXPadWindowToggle);
+    if (panelContainer) panelContainer.appendChild(fxBtn);
+  }
+  addFXPadButtonToAdvancedUI();
 
   // Attach pulse‑show hook to every MIDI input
   if (shouldRunOnThisPage() && !isSampletteEmbed && navigator.requestMIDIAccess) {
@@ -3106,6 +3131,24 @@ async function setupAudioNodes() {
   bus3Gain.connect(masterGain);
   bus4Gain.connect(masterGain);
 
+  // FX Pad audio chain
+  fxPadInputGain = audioContext.createGain();
+  fxPadDryGain = audioContext.createGain();
+  fxPadMergeGain = audioContext.createGain();
+  fxPadInputGain.connect(fxPadDryGain);
+  fxPadDryGain.connect(fxPadMergeGain);
+  for (let i = 0; i < 4; i++) {
+    const g = audioContext.createGain();
+    g.gain.value = 0;
+    fxPadMixGains[i] = g;
+    const bIn = audioContext.createGain();
+    const bOut = audioContext.createGain();
+    bIn.connect(bOut);
+    fxPadEffects[i] = { input: bIn, output: bOut, type: 'none' };
+    fxPadInputGain.connect(bIn);
+    bOut.connect(g).connect(fxPadMergeGain);
+  }
+
   eqFilterNode = audioContext.createBiquadFilter();
   eqFilterNode.type = "lowpass";
   eqFilterNode.frequency.value = 250;
@@ -3315,6 +3358,93 @@ async function createLoopRecorderNode(ctx) {
   return new AudioWorkletNode(ctx, 'loop-recorder');
 }
 
+function createFxNode(type) {
+  const input = audioContext.createGain();
+  let node = input;
+  switch (type) {
+    case 'lowpass':
+      node = audioContext.createBiquadFilter();
+      node.type = 'lowpass';
+      node.frequency.value = 800;
+      break;
+    case 'highpass':
+      node = audioContext.createBiquadFilter();
+      node.type = 'highpass';
+      node.frequency.value = 800;
+      break;
+    case 'bandpass':
+      node = audioContext.createBiquadFilter();
+      node.type = 'bandpass';
+      node.frequency.value = 1200;
+      break;
+    case 'lowshelf':
+      node = audioContext.createBiquadFilter();
+      node.type = 'lowshelf';
+      node.frequency.value = 400;
+      break;
+    case 'highshelf':
+      node = audioContext.createBiquadFilter();
+      node.type = 'highshelf';
+      node.frequency.value = 2000;
+      break;
+    case 'peaking':
+      node = audioContext.createBiquadFilter();
+      node.type = 'peaking';
+      node.frequency.value = 1000;
+      node.gain.value = 6;
+      break;
+    case 'notch':
+      node = audioContext.createBiquadFilter();
+      node.type = 'notch';
+      node.frequency.value = 1000;
+      break;
+    case 'delay':
+      node = audioContext.createDelay();
+      node.delayTime.value = 0.25;
+      break;
+    case 'distortion':
+      node = audioContext.createWaveShaper();
+      const c = new Float32Array(256);
+      for (let i = 0; i < c.length; i++) {
+        const x = i * 2 / c.length - 1;
+        c[i] = Math.tanh(x * 3);
+      }
+      node.curve = c;
+      break;
+    case 'bitcrusher':
+      node = audioContext.createWaveShaper();
+      const bc = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        bc[i] = (Math.floor(i / 16) / 8) * 2 - 1;
+      }
+      node.curve = bc;
+      break;
+    case 'reverb':
+      node = audioContext.createConvolver();
+      node.buffer = generateSimpleReverbIR(audioContext);
+      break;
+    case 'flanger':
+    case 'chorus':
+      const d = audioContext.createDelay();
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.type = 'sine';
+      lfo.frequency.value = type === 'flanger' ? 0.25 : 1.5;
+      lg.gain.value = type === 'flanger' ? 0.003 : 0.01;
+      lfo.connect(lg).connect(d.delayTime);
+      lfo.start();
+      node = d;
+      break;
+    case 'compression':
+      node = audioContext.createDynamicsCompressor();
+      break;
+    default:
+      break;
+  }
+  if (node !== input) input.connect(node);
+  return { input, output: node, type };
+}
+
 
 /**************************************
  * Single function to apply all FX routing
@@ -3332,6 +3462,14 @@ function applyAllFXRouting() {
   loFiCompNode.disconnect();
   postCompGain.disconnect();
   overallOutputGain.disconnect();
+  fxPadInputGain.disconnect();
+  fxPadDryGain.disconnect();
+  fxPadMergeGain.disconnect();
+  fxPadMixGains.forEach(g => g.disconnect());
+  fxPadEffects.forEach(fx => {
+    try { fx.input.disconnect(); } catch {}
+    try { fx.output.disconnect(); } catch {}
+  });
 
   // If you have a videoPreviewElement, ensure it has a MediaElementSource:
   if (videoPreviewElement) {
@@ -3394,10 +3532,17 @@ function applyAllFXRouting() {
     prev.connect(bus4Gain);
   }
 
-  // Now connect bus1..3 into masterGain, as normal:
+  // Now connect bus1..3 into masterGain, then through the FX Pad:
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
+
+  masterGain.connect(fxPadInputGain);
+  if (!fxPadActive) {
+    fxPadInputGain.connect(fxPadMergeGain);
+  } else {
+    fxPadInputGain.connect(fxPadDryGain); // already connected in setup
+  }
 
   // -------------------------------------------
   // COMPRESSOR BYPASS LOGIC FOR BUS4:
@@ -3406,8 +3551,8 @@ function applyAllFXRouting() {
   // but bus4 goes directly to the output (uncompressed).
   // If the compressor is OFF, bus4 merges with everyone else in masterGain.
   if (loFiCompActive) {
-    // bus1..3 => masterGain => loFiComp => postComp => destination
-    masterGain.connect(loFiCompNode);
+    // bus1..3 => FX Pad => loFiComp => postComp => destination
+    fxPadMergeGain.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
     postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
@@ -3416,9 +3561,9 @@ function applyAllFXRouting() {
     bus4Gain.connect(currentOutputNode || audioContext.destination);
     bus4Gain.connect(videoDestination);
   } else {
-    // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
+    // No compressor: just send everyone (including bus4) through FX Pad => overallOutput => out
     bus4Gain.connect(masterGain);
-    masterGain.connect(overallOutputGain);
+    fxPadMergeGain.connect(overallOutputGain);
     overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
@@ -5070,6 +5215,12 @@ function onKeyDown(e) {
     e.preventDefault();
     e.stopPropagation();
     showInstrumentWindowToggle();
+    return;
+  }
+  if (k === extensionKeys.fxPadToggle.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    showFXPadWindowToggle();
     return;
   }
 
@@ -6833,6 +6984,10 @@ function handleMIDIMessage(e) {
     showInstrumentWindowToggle();
     return;
   }
+  if (st === 144 && note === midiNotes.fxPadToggle) {
+    showFXPadWindowToggle();
+    return;
+  }
 
   if (instrumentPreset > 0) {
     if (command === 144 && e.data[2] > 0) {
@@ -7242,6 +7397,10 @@ function buildKeyMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-extkey="instrumentToggle" value="${escapeHtml(extensionKeys.instrumentToggle)}" maxlength="1">
     </div>
+    <div class="keymap-row">
+      <label>FX Pad:</label>
+      <input data-extkey="fxPadToggle" value="${escapeHtml(extensionKeys.fxPadToggle)}" maxlength="1">
+    </div>
     <h4></h4>
     <div id="user-samples-list"></div>
     <button class="looper-keymap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
@@ -7439,6 +7598,11 @@ function buildMIDIMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-midiname="instrumentToggle" value="${escapeHtml(String(midiNotes.instrumentToggle))}" type="number">
       <button data-detect="instrumentToggle" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>FX Pad:</label>
+      <input data-midiname="fxPadToggle" value="${escapeHtml(String(midiNotes.fxPadToggle))}" type="number">
+      <button data-detect="fxPadToggle" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
@@ -9013,3 +9177,138 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   `;
   document.head.appendChild(style);
 })();
+
+async function showFXPadWindowToggle() {
+  if (!fxPadWindowContainer) buildFXPadWindow();
+  const showing = fxPadWindowContainer.style.display === 'block';
+  if (showing) {
+    fxPadWindowContainer.style.display = 'none';
+    fxPadActive = false;
+    fxPadMixGains.forEach(g => g.gain.value = 0);
+  } else {
+    await ensureAudioContext();
+    fxPadWindowContainer.style.display = 'block';
+    fxPadActive = true;
+    updateFxPadMix();
+  }
+  applyAllFXRouting();
+}
+
+function buildFXPadWindow() {
+  fxPadWindowContainer = document.createElement('div');
+  fxPadWindowContainer.className = 'looper-midimap-container';
+  fxPadWindowContainer.style.width = '300px';
+  fxPadWindowContainer.style.height = '300px';
+  fxPadWindowContainer.style.display = 'block';
+
+  const dh = document.createElement('div');
+  dh.className = 'looper-midimap-drag-handle';
+  dh.innerText = 'FX Pad';
+  fxPadWindowContainer.appendChild(dh);
+
+  const cw = document.createElement('div');
+  cw.className = 'looper-midimap-content';
+  cw.style.position = 'relative';
+  cw.style.width = '100%';
+  cw.style.height = 'calc(100% - 24px)';
+  fxPadWindowContainer.appendChild(cw);
+
+  fxPadPad = document.createElement('div');
+  fxPadPad.style.position = 'absolute';
+  fxPadPad.style.left = '0';
+  fxPadPad.style.top = '0';
+  fxPadPad.style.right = '0';
+  fxPadPad.style.bottom = '0';
+  fxPadPad.style.background = '#222';
+  cw.appendChild(fxPadPad);
+
+  const effectNames = ['none','lowpass','highpass','bandpass','lowshelf','highshelf','peaking','notch','delay','distortion','bitcrusher','reverb','flanger','chorus','compression'];
+  function makeSelect(idx, left, top) {
+    const s = document.createElement('select');
+    effectNames.forEach(n => s.add(new Option(n, n)));
+    s.style.position = 'absolute';
+    s.style[left] = '2px';
+    s.style[top] = '2px';
+    s.addEventListener('change', () => {
+      setFxPadEffect(idx, s.value);
+    });
+    return s;
+  }
+  fxPadPad.appendChild(makeSelect(0, 'left', 'top'));
+  fxPadPad.appendChild(makeSelect(1, 'right', 'top'));
+  fxPadPad.appendChild(makeSelect(2, 'left', 'bottom'));
+  fxPadPad.appendChild(makeSelect(3, 'right', 'bottom'));
+
+  fxPadBall = document.createElement('div');
+  fxPadBall.style.position = 'absolute';
+  fxPadBall.style.width = '20px';
+  fxPadBall.style.height = '20px';
+  fxPadBall.style.borderRadius = '50%';
+  fxPadBall.style.background = '#ffd700';
+  fxPadPad.appendChild(fxPadBall);
+
+  fxPadPad.addEventListener('mousedown', e => {
+    if (fxPadLocked) return;
+    dragging = true;
+    moveBall(e);
+  });
+  fxPadPad.addEventListener('dblclick', e => {
+    fxPadLocked = !fxPadLocked;
+    fxPadBall.style.background = fxPadLocked ? '#0f0' : '#ffd700';
+    moveBall(e);
+  });
+  let dragging = false;
+  addTrackedListener(document,'mousemove', e => { if(dragging) moveBall(e); });
+  addTrackedListener(document,'mouseup', () => { dragging = false; });
+
+  function moveBall(e) {
+    const rect = fxPadPad.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    let factor = 1;
+    if (e.metaKey && e.altKey) factor = 0.2;
+    else if (e.metaKey) factor = 0.5;
+    fxPadBallX += (x - fxPadBallX) * factor;
+    fxPadBallY += (y - fxPadBallY) * factor;
+    fxPadBallX = Math.max(0, Math.min(rect.width, fxPadBallX));
+    fxPadBallY = Math.max(0, Math.min(rect.height, fxPadBallY));
+    updateFxPadMix();
+  }
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'looper-btn';
+  closeBtn.innerText = 'Close';
+  closeBtn.style.position = 'absolute';
+  closeBtn.style.right = '4px';
+  closeBtn.style.bottom = '4px';
+  closeBtn.addEventListener('click', showFXPadWindowToggle);
+  cw.appendChild(closeBtn);
+
+  document.body.appendChild(fxPadWindowContainer);
+  makePanelDraggable(fxPadWindowContainer, dh, 'ytbm_fxPadPos');
+  restorePanelPosition(fxPadWindowContainer, 'ytbm_fxPadPos');
+}
+
+function setFxPadEffect(idx, type) {
+  if (!audioContext) return;
+  const old = fxPadEffects[idx];
+  if (old) {
+    try { old.input.disconnect(); old.output.disconnect(); } catch {}
+  }
+  const fx = createFxNode(type);
+  fxPadEffects[idx] = fx;
+  fxPadInputGain.connect(fx.input);
+  fx.output.connect(fxPadMixGains[idx]);
+  updateFxPadMix();
+}
+
+function updateFxPadMix() {
+  if (!fxPadPad) return;
+  const rect = fxPadPad.getBoundingClientRect();
+  const nx = fxPadBallX / rect.width;
+  const ny = fxPadBallY / rect.height;
+  fxPadBall.style.left = nx * 100 + '%';
+  fxPadBall.style.top = ny * 100 + '%';
+  const w = [ (1-nx)*(1-ny), nx*(1-ny), (1-nx)*ny, nx*ny ];
+  w.forEach((val,i)=>{ fxPadMixGains[i].gain.value = fxPadActive ? val : 0; });
+}
