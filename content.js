@@ -750,6 +750,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         br: 'notch'
       },
       fxPadActive = false,
+      fxPadToggle = null,
+      fxPadBallX = 0.5,
+      fxPadBallY = 0.5,
       // FX Pad UI
       fxPadContainer = null,
       fxPadContent = null,
@@ -3446,6 +3449,8 @@ function setupFxPadNodes() {
 function resetFXPad() {
   fxPadEffects.forEach(e => e.setIntensity(0));
   if (fxPadBall) {
+    fxPadBallX = 0.5;
+    fxPadBallY = 0.5;
     fxPadBall.style.left = '50%';
     fxPadBall.style.top = '50%';
   }
@@ -6806,32 +6811,54 @@ async function showFXPadWindowToggle() {
   if (!fxPadContainer) {
     buildFXPadWindow();
     fxPadContainer.style.display = 'block';
-    fxPadActive = true;
+    fxPadActive = fxPadToggle.checked;
     applyAllFXRouting();
     startFXPadGamepad();
   } else {
     const visible = fxPadContainer.style.display === 'block';
     fxPadContainer.style.display = visible ? 'none' : 'block';
-    fxPadActive = !visible;
+    if (!visible) {
+      fxPadActive = fxPadToggle.checked;
+      startFXPadGamepad();
+    } else {
+      fxPadActive = false;
+      stopFXPadGamepad();
+    }
     applyAllFXRouting();
-    if (!visible) startFXPadGamepad(); else stopFXPadGamepad();
   }
 }
 
 function buildFXPadWindow() {
   fxPadContainer = document.createElement('div');
   fxPadContainer.className = 'looper-midimap-container';
-  fxPadContainer.style.width = '220px';
+  fxPadContainer.style.width = 'min(240px, 90vw)';
 
   const dh = document.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
   dh.innerText = 'FX Pad';
   fxPadContainer.appendChild(dh);
 
+  const toggleWrap = document.createElement('div');
+  toggleWrap.style.display = 'flex';
+  toggleWrap.style.alignItems = 'center';
+  toggleWrap.style.justifyContent = 'flex-end';
+  toggleWrap.style.padding = '4px 8px';
+  fxPadToggle = document.createElement('input');
+  fxPadToggle.type = 'checkbox';
+  fxPadToggle.className = 'fxpad-switch';
+  fxPadToggle.checked = true;
+  fxPadToggle.addEventListener('change', () => {
+    fxPadActive = fxPadToggle.checked && fxPadContainer.style.display === 'block';
+    if (!fxPadActive) resetFXPad();
+    applyAllFXRouting();
+  });
+  toggleWrap.appendChild(fxPadToggle);
+  fxPadContainer.appendChild(toggleWrap);
+
   fxPadContent = document.createElement('div');
   fxPadContent.className = 'looper-midimap-content';
-  fxPadContent.style.width = '200px';
-  fxPadContent.style.height = '200px';
+  fxPadContent.style.width = 'min(200px, 80vw)';
+  fxPadContent.style.height = fxPadContent.style.width;
   fxPadContent.style.position = 'relative';
   fxPadContent.style.background = '#111';
   fxPadContainer.appendChild(fxPadContent);
@@ -6863,6 +6890,8 @@ function buildFXPadWindow() {
   fxPadBall.style.height = '16px';
   fxPadBall.style.borderRadius = '50%';
   fxPadBall.style.background = 'orange';
+  fxPadBallX = 0.5;
+  fxPadBallY = 0.5;
   fxPadBall.style.left = '50%';
   fxPadBall.style.top = '50%';
   fxPadBall.style.transform = 'translate(-50%, -50%)';
@@ -6892,9 +6921,16 @@ function updatePadFromEvent(e) {
   let y = (e.clientY - rect.top) / rect.height;
   x = Math.min(Math.max(x, 0), 1);
   y = Math.min(Math.max(y, 0), 1);
-  fxPadBall.style.left = (x * 100) + '%';
-  fxPadBall.style.top = (y * 100) + '%';
-  updateFXPad(x, y);
+  if (e.metaKey) {
+    fxPadBallX += (x - fxPadBallX) * 0.1;
+    fxPadBallY += (y - fxPadBallY) * 0.1;
+  } else {
+    fxPadBallX = x;
+    fxPadBallY = y;
+  }
+  fxPadBall.style.left = (fxPadBallX * 100) + '%';
+  fxPadBall.style.top = (fxPadBallY * 100) + '%';
+  updateFXPad(fxPadBallX, fxPadBallY);
 }
 
 function startFXPadGamepad() {
@@ -6905,9 +6941,11 @@ function startFXPadGamepad() {
     const x = gp.axes[0] * 0.5 + 0.5;
     const y = gp.axes[1] * 0.5 + 0.5;
     if (Math.abs(gp.axes[0]) > 0.01 || Math.abs(gp.axes[1]) > 0.01) {
-      fxPadBall.style.left = (x * 100) + '%';
-      fxPadBall.style.top = (y * 100) + '%';
-      updateFXPad(x, y);
+      fxPadBallX = x;
+      fxPadBallY = y;
+      fxPadBall.style.left = (fxPadBallX * 100) + '%';
+      fxPadBall.style.top = (fxPadBallY * 100) + '%';
+      updateFXPad(fxPadBallX, fxPadBallY);
     } else {
       resetFXPad();
     }
@@ -9110,6 +9148,33 @@ function injectCustomCSS() {
       border:1px solid #555;
       border-radius:4px;
       font-size:11px;
+    }
+    .fxpad-switch {
+      width:34px;
+      height:18px;
+      -webkit-appearance:none;
+      background:#555;
+      border-radius:9px;
+      position:relative;
+      outline:none;
+      cursor:pointer;
+    }
+    .fxpad-switch:before {
+      content:'';
+      position:absolute;
+      width:16px;
+      height:16px;
+      border-radius:50%;
+      background:#ddd;
+      top:1px;
+      left:1px;
+      transition:transform .2s;
+    }
+    .fxpad-switch:checked {
+      background:#0a74ff;
+    }
+    .fxpad-switch:checked:before {
+      transform:translateX(16px);
     }
     input[type="range"] {
       -webkit-appearance: none;
