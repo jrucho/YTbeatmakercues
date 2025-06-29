@@ -3608,11 +3608,10 @@ function applyAllFXRouting() {
   let masterOut = fxPadMasterOut;
 
   // -------------------------------------------
-  // COMPRESSOR BYPASS LOGIC FOR BUS4:
+  // COMPRESSOR ROUTING
   // -------------------------------------------
-  // If the compressor is ON, bus1..3 get compressed,
-  // but bus4 goes directly to the output (uncompressed).
-  // If the compressor is OFF, bus4 merges with everyone else in masterGain.
+  // When the compressor is active, the entire mix (including bus4)
+  // runs through the compressor. Otherwise it is bypassed.
   if (loFiCompActive) {
     // bus1..3 => masterOut => loFiComp => postComp => destination
     masterOut.connect(loFiCompNode);
@@ -3620,9 +3619,8 @@ function applyAllFXRouting() {
     postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
 
-    // bus4 => directly to output (skips compressor)
-    bus4Gain.connect(currentOutputNode || audioContext.destination);
-    bus4Gain.connect(videoDestination);
+    // bus4 => also compressed
+    bus4Gain.connect(masterGain);
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
@@ -6878,7 +6876,7 @@ function buildFXPadWindow() {
   fxPadContainer.style.width = '220px';
   fxPadContainer.style.height = '220px';
   fxPadContainer.style.resize = 'both';
-  fxPadContainer.style.overflow = 'hidden';
+  fxPadContainer.style.overflow = 'visible';
   fxPadContainer.style.display = 'flex';
   fxPadContainer.style.flexDirection = 'column';
   fxPadContainer.style.alignItems = 'center';
@@ -6896,20 +6894,24 @@ function buildFXPadWindow() {
   fxPadContent.style.position = 'relative';
   fxPadContent.style.background = '#111';
   fxPadContent.style.touchAction = 'none';
+  fxPadContent.style.zIndex = '1';
   fxPadContainer.appendChild(fxPadContent);
 
   const applySize = () => {
+    const dhh = dh.offsetHeight;
     const size = Math.min(
       fxPadContainer.clientWidth,
-      fxPadContainer.clientHeight - dh.offsetHeight
+      fxPadContainer.clientHeight - dhh
     );
     fxPadContent.style.width = size + 'px';
     fxPadContent.style.height = size + 'px';
-    fxPadContent.style.marginTop = ((fxPadContainer.clientHeight - dh.offsetHeight - size) / 2) + 'px';
+    fxPadContent.style.marginTop = ((fxPadContainer.clientHeight - dhh - size) / 2) + 'px';
+    fxPadContent.style.marginLeft = ((fxPadContainer.clientWidth - size) / 2) + 'px';
   };
   const resizeObs = new ResizeObserver(applySize);
   resizeObs.observe(fxPadContainer);
   applySize();
+  window.addEventListener('resize', applySize);
 
   const positions = ['tl','tr','bl','br'];
   positions.forEach(pos => {
@@ -6938,6 +6940,7 @@ function buildFXPadWindow() {
   fxPadBall.style.height = '16px';
   fxPadBall.style.borderRadius = '50%';
   fxPadBall.style.background = 'orange';
+  fxPadBall.style.zIndex = '2';
   fxPadBallX = 0.5;
   fxPadBallY = 0.5;
   fxPadBall.style.left = '50%';
@@ -6945,10 +6948,15 @@ function buildFXPadWindow() {
   fxPadBall.style.transform = 'translate(-50%, -50%)';
   fxPadContent.appendChild(fxPadBall);
 
-  fxPadBall.addEventListener('dblclick', () => {
+  fxPadContent.addEventListener('dblclick', e => {
     fxPadSticky = !fxPadSticky;
-    fxPadBall.style.background = fxPadSticky ? 'lime' : 'orange';
-    if (!fxPadSticky && !fxPadDragging) resetFXPad();
+    if (fxPadSticky) {
+      updatePadFromEvent(e, true);
+      fxPadBall.style.background = 'lime';
+    } else {
+      fxPadBall.style.background = 'orange';
+      resetFXPad();
+    }
   });
 
   makePanelDraggable(fxPadContainer, dh, 'ytbm_fxPadPos');
@@ -6973,7 +6981,7 @@ function buildFXPadWindow() {
   startFXPadGamepad();
 }
 
-function updatePadFromEvent(e) {
+function updatePadFromEvent(e, force) {
   const rect = fxPadContent.getBoundingClientRect();
   let x = (e.clientX - rect.left) / rect.width;
   let y = (e.clientY - rect.top) / rect.height;
@@ -6985,7 +6993,7 @@ function updatePadFromEvent(e) {
   } else if (e.metaKey) {
     speed = 0.1;
   }
-  if (speed < 1) {
+  if (!force && speed < 1) {
     fxPadBallX += (x - fxPadBallX) * speed;
     fxPadBallY += (y - fxPadBallY) * speed;
   } else {
@@ -9228,6 +9236,8 @@ function injectCustomCSS() {
       border:1px solid #555;
       border-radius:4px;
       font-size:11px;
+      position:absolute;
+      z-index:3;
     }
     input[type="range"] {
       -webkit-appearance: none;
