@@ -3457,34 +3457,6 @@ function createFxPadEffect(type) {
       obj.setIntensity = v => { lg.gain.value = v; };
       obj.cleanup = () => { lfo.stop(); dc.stop(); };
       break; }
-    case 'tremolo': {
-      const g = audioContext.createGain();
-      const lfo = audioContext.createOscillator();
-      const lg = audioContext.createGain();
-      lfo.frequency.value = 5;
-      lg.gain.value = 0;
-      lfo.connect(lg).connect(g.gain);
-      lfo.start();
-      input.connect(g);
-      output = g;
-      obj.output = g;
-      obj.setIntensity = v => { lg.gain.value = v; };
-      obj.cleanup = () => { lfo.stop(); };
-      break; }
-    case 'autopan': {
-      const p = audioContext.createStereoPanner();
-      const lfo = audioContext.createOscillator();
-      const lg = audioContext.createGain();
-      lfo.frequency.value = 5;
-      lg.gain.value = 0;
-      lfo.connect(lg).connect(p.pan);
-      lfo.start();
-      input.connect(p);
-      output = p;
-      obj.output = p;
-      obj.setIntensity = v => { lg.gain.value = v; };
-      obj.cleanup = () => { lfo.stop(); };
-      break; }
   }
   obj.input = input;
   obj.output = output;
@@ -6894,7 +6866,12 @@ async function showFXPadWindowToggle() {
 function buildFXPadWindow() {
   fxPadContainer = document.createElement('div');
   fxPadContainer.className = 'looper-midimap-container';
-  fxPadContainer.style.width = 'min(240px, 90vw)';
+  fxPadContainer.style.width = '220px';
+  fxPadContainer.style.height = '220px';
+  fxPadContainer.style.resize = 'both';
+  fxPadContainer.style.overflow = 'hidden';
+  fxPadContainer.style.display = 'flex';
+  fxPadContainer.style.flexDirection = 'column';
 
   const dh = document.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
@@ -6904,11 +6881,22 @@ function buildFXPadWindow() {
 
   fxPadContent = document.createElement('div');
   fxPadContent.className = 'looper-midimap-content';
-  fxPadContent.style.width = 'min(200px, 80vw)';
-  fxPadContent.style.height = fxPadContent.style.width;
+  fxPadContent.style.flex = '1';
   fxPadContent.style.position = 'relative';
   fxPadContent.style.background = '#111';
   fxPadContainer.appendChild(fxPadContent);
+
+  const applySize = () => {
+    const size = Math.min(
+      fxPadContainer.clientWidth,
+      fxPadContainer.clientHeight - dh.offsetHeight
+    );
+    fxPadContent.style.width = size + 'px';
+    fxPadContent.style.height = size + 'px';
+  };
+  const resizeObs = new ResizeObserver(applySize);
+  resizeObs.observe(fxPadContainer);
+  applySize();
 
   const positions = ['tl','tr','bl','br'];
   positions.forEach(pos => {
@@ -6978,9 +6966,15 @@ function updatePadFromEvent(e) {
   let y = (e.clientY - rect.top) / rect.height;
   x = Math.min(Math.max(x, 0), 1);
   y = Math.min(Math.max(y, 0), 1);
-  if (e.metaKey) {
-    fxPadBallX += (x - fxPadBallX) * 0.1;
-    fxPadBallY += (y - fxPadBallY) * 0.1;
+  let speed = 1;
+  if (e.metaKey && e.altKey) {
+    speed = 0.02;
+  } else if (e.metaKey) {
+    speed = 0.1;
+  }
+  if (speed < 1) {
+    fxPadBallX += (x - fxPadBallX) * speed;
+    fxPadBallY += (y - fxPadBallY) * speed;
   } else {
     fxPadBallX = x;
     fxPadBallY = y;
