@@ -741,6 +741,17 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // CASSETTE
       cassetteNode = null,
       cassetteActive = false,
+      // FX Pad nodes
+      fxPadFilter = null,
+      fxPadHigh = null,
+      fxPadDelay = null,
+      fxPadDelayFb = null,
+      fxPadDistortion = null,
+      // FX Pad UI
+      fxPadContainer = null,
+      fxPadContent = null,
+      fxPadBall = null,
+      fxPadPolling = null,
       // UI windows
       eqWindowContainer = null,
       eqDragHandle = null,
@@ -3119,6 +3130,20 @@ async function setupAudioNodes() {
   // Cassette node using the AudioWorklet version.
   cassetteNode = await createCassetteNode(audioContext);
 
+  fxPadFilter = audioContext.createBiquadFilter();
+  fxPadFilter.type = 'lowpass';
+  fxPadFilter.frequency.value = 22050;
+  fxPadHigh = audioContext.createBiquadFilter();
+  fxPadHigh.type = 'highpass';
+  fxPadHigh.frequency.value = 0;
+  fxPadDelay = audioContext.createDelay();
+  fxPadDelay.delayTime.value = 0;
+  fxPadDelayFb = audioContext.createGain();
+  fxPadDelayFb.gain.value = 0;
+  fxPadDistortion = audioContext.createWaveShaper();
+  fxPadDistortion.curve = makeDistortionCurve(0);
+  fxPadDistortion.oversample = '4x';
+
   applyAllFXRouting();
 }
 
@@ -3316,6 +3341,39 @@ async function createLoopRecorderNode(ctx) {
 }
 
 
+function makeDistortionCurve(amount) {
+  const n = 44100;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = ((3 + amount) * x * 20) / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
+function resetFXPad() {
+  if (!fxPadFilter) return;
+  fxPadFilter.frequency.value = 22050;
+  fxPadHigh.frequency.value = 0;
+  fxPadDelay.delayTime.value = 0;
+  fxPadDelayFb.gain.value = 0;
+  fxPadDistortion.curve = makeDistortionCurve(0);
+  if (fxPadBall) {
+    fxPadBall.style.left = '50%';
+    fxPadBall.style.top = '50%';
+  }
+}
+
+function updateFXPad(x, y) {
+  if (!fxPadFilter) return;
+  fxPadFilter.frequency.value = 300 + x * 19000;
+  fxPadHigh.frequency.value = 20 + y * 5000;
+  fxPadDelay.delayTime.value = y * 0.4;
+  fxPadDelayFb.gain.value = y;
+  fxPadDistortion.curve = makeDistortionCurve(x * 400);
+}
+
+
 /**************************************
  * Single function to apply all FX routing
  **************************************/
@@ -3329,6 +3387,11 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
+  if (fxPadFilter) fxPadFilter.disconnect();
+  if (fxPadHigh) fxPadHigh.disconnect();
+  if (fxPadDelay) fxPadDelay.disconnect();
+  if (fxPadDelayFb) fxPadDelayFb.disconnect();
+  if (fxPadDistortion) fxPadDistortion.disconnect();
   loFiCompNode.disconnect();
   postCompGain.disconnect();
   overallOutputGain.disconnect();
@@ -3399,6 +3462,14 @@ function applyAllFXRouting() {
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
 
+  // Chain master effects from the FX pad
+  masterGain.connect(fxPadFilter);
+  fxPadFilter.connect(fxPadHigh);
+  fxPadHigh.connect(fxPadDelay);
+  fxPadDelay.connect(fxPadDelayFb).connect(fxPadDelay);
+  fxPadDelay.connect(fxPadDistortion);
+  let masterOut = fxPadDistortion;
+
   // -------------------------------------------
   // COMPRESSOR BYPASS LOGIC FOR BUS4:
   // -------------------------------------------
@@ -3406,8 +3477,8 @@ function applyAllFXRouting() {
   // but bus4 goes directly to the output (uncompressed).
   // If the compressor is OFF, bus4 merges with everyone else in masterGain.
   if (loFiCompActive) {
-    // bus1..3 => masterGain => loFiComp => postComp => destination
-    masterGain.connect(loFiCompNode);
+    // bus1..3 => masterOut => loFiComp => postComp => destination
+    masterOut.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
     postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
@@ -3418,7 +3489,7 @@ function applyAllFXRouting() {
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
-    masterGain.connect(overallOutputGain);
+    masterOut.connect(overallOutputGain);
     overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
@@ -6443,6 +6514,13 @@ function addControls() {
   });
   actionWrap.appendChild(eqButton);
 
+  const fxPadButton = document.createElement("button");
+  fxPadButton.className = "looper-btn";
+  fxPadButton.innerText = "FX Pad";
+  fxPadButton.style.flex = '1 1 calc(50% - 4px)';
+  fxPadButton.addEventListener("click", showFXPadWindowToggle);
+  actionWrap.appendChild(fxPadButton);
+
   loFiCompButton = document.createElement("button");
   loFiCompButton.className = "looper-btn";
   loFiCompButton.innerText = "LoFiComp:Off";
@@ -6627,6 +6705,100 @@ function buildEQWindow() {
     eqWindowContainer.style.display = "none";
   });
 }
+
+async function showFXPadWindowToggle() {
+  await ensureAudioContext();
+  if (!fxPadContainer) {
+    buildFXPadWindow();
+    fxPadContainer.style.display = 'block';
+  } else {
+    const visible = fxPadContainer.style.display === 'block';
+    fxPadContainer.style.display = visible ? 'none' : 'block';
+    if (!visible) startFXPadGamepad(); else stopFXPadGamepad();
+  }
+}
+
+function buildFXPadWindow() {
+  fxPadContainer = document.createElement('div');
+  fxPadContainer.className = 'looper-midimap-container';
+  fxPadContainer.style.width = '220px';
+
+  const dh = document.createElement('div');
+  dh.className = 'looper-midimap-drag-handle';
+  dh.innerText = 'FX Pad';
+  fxPadContainer.appendChild(dh);
+
+  fxPadContent = document.createElement('div');
+  fxPadContent.className = 'looper-midimap-content';
+  fxPadContent.style.width = '200px';
+  fxPadContent.style.height = '200px';
+  fxPadContent.style.position = 'relative';
+  fxPadContent.style.background = '#111';
+  fxPadContainer.appendChild(fxPadContent);
+
+  fxPadBall = document.createElement('div');
+  fxPadBall.style.position = 'absolute';
+  fxPadBall.style.width = '16px';
+  fxPadBall.style.height = '16px';
+  fxPadBall.style.borderRadius = '50%';
+  fxPadBall.style.background = 'orange';
+  fxPadBall.style.left = '50%';
+  fxPadBall.style.top = '50%';
+  fxPadBall.style.transform = 'translate(-50%, -50%)';
+  fxPadContent.appendChild(fxPadBall);
+
+  makePanelDraggable(fxPadContainer, dh, 'ytbm_fxPadPos');
+  restorePanelPosition(fxPadContainer, 'ytbm_fxPadPos');
+
+  fxPadContent.addEventListener('pointerdown', e => {
+    fxPadContent.setPointerCapture(e.pointerId);
+    updatePadFromEvent(e);
+  });
+  fxPadContent.addEventListener('pointermove', e => {
+    if (e.pressure) updatePadFromEvent(e);
+  });
+  const end = () => { resetFXPad(); };
+  fxPadContent.addEventListener('pointerup', end);
+  fxPadContent.addEventListener('pointerleave', end);
+
+  document.body.appendChild(fxPadContainer);
+  startFXPadGamepad();
+}
+
+function updatePadFromEvent(e) {
+  const rect = fxPadContent.getBoundingClientRect();
+  let x = (e.clientX - rect.left) / rect.width;
+  let y = (e.clientY - rect.top) / rect.height;
+  x = Math.min(Math.max(x, 0), 1);
+  y = Math.min(Math.max(y, 0), 1);
+  fxPadBall.style.left = (x * 100) + '%';
+  fxPadBall.style.top = (y * 100) + '%';
+  updateFXPad(x, y);
+}
+
+function startFXPadGamepad() {
+  if (fxPadPolling) return;
+  fxPadPolling = setInterval(() => {
+    const gp = navigator.getGamepads && navigator.getGamepads()[0];
+    if (!gp) return;
+    const x = gp.axes[0] * 0.5 + 0.5;
+    const y = gp.axes[1] * 0.5 + 0.5;
+    if (Math.abs(gp.axes[0]) > 0.01 || Math.abs(gp.axes[1]) > 0.01) {
+      fxPadBall.style.left = (x * 100) + '%';
+      fxPadBall.style.top = (y * 100) + '%';
+      updateFXPad(x, y);
+    }
+  }, 33);
+}
+
+function stopFXPadGamepad() {
+  if (fxPadPolling) {
+    clearInterval(fxPadPolling);
+    fxPadPolling = null;
+  }
+  resetFXPad();
+}
+
 
 
 /**************************************
