@@ -6880,13 +6880,11 @@ async function showFXPadWindowToggle() {
 function buildFXPadWindow() {
   fxPadContainer = document.createElement('div');
   fxPadContainer.className = 'looper-midimap-container';
-  fxPadContainer.style.width = '220px';
-  fxPadContainer.style.height = '220px';
+  fxPadContainer.style.width = '260px';
+  fxPadContainer.style.height = '260px';
   fxPadContainer.style.resize = 'both';
   fxPadContainer.style.overflow = 'visible';
-  fxPadContainer.style.display = 'flex';
-  fxPadContainer.style.flexDirection = 'column';
-  fxPadContainer.style.alignItems = 'center';
+  fxPadContainer.style.display = 'block';
   fxPadContainer.style.padding = '0';
   fxPadContainer.style.boxSizing = 'border-box';
 
@@ -6899,12 +6897,12 @@ function buildFXPadWindow() {
 
   fxPadContent = document.createElement('div');
   fxPadContent.className = 'looper-midimap-content';
-  fxPadContent.style.flex = '0 0 auto';
   fxPadContent.style.position = 'relative';
   fxPadContent.style.background = '#111';
   fxPadContent.style.touchAction = 'none';
   fxPadContent.style.zIndex = '1';
   fxPadContent.style.padding = '0';
+  fxPadContent.style.margin = '0 auto';
   fxPadContent.style.boxSizing = 'border-box';
   fxPadContainer.appendChild(fxPadContent);
 
