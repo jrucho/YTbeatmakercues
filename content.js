@@ -3416,17 +3416,24 @@ function createFxPadEffect(type) {
       break; }
     case 'tremolo': {
       const g = audioContext.createGain();
+      const base = audioContext.createConstantSource();
       const lfo = audioContext.createOscillator();
       const lg = audioContext.createGain();
+      base.offset.value = 1;
+      base.connect(g.gain);
       lfo.frequency.value = 5;
       lg.gain.value = 0;
       lfo.connect(lg).connect(g.gain);
+      base.start();
       lfo.start();
       input.connect(g);
       output = g;
       obj.output = g;
-      obj.setIntensity = v => { lg.gain.value = v; };
-      obj.cleanup = () => { lfo.stop(); };
+      obj.setIntensity = v => {
+        base.offset.value = 1 - v / 2;
+        lg.gain.value = v / 2;
+      };
+      obj.cleanup = () => { lfo.stop(); base.stop(); };
       break; }
     case 'autopan': {
       const p = audioContext.createStereoPanner();
@@ -6880,6 +6887,7 @@ function buildFXPadWindow() {
   fxPadContainer.style.display = 'flex';
   fxPadContainer.style.flexDirection = 'column';
   fxPadContainer.style.alignItems = 'center';
+  fxPadContainer.style.boxSizing = 'border-box';
 
   const dh = document.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
@@ -6895,6 +6903,8 @@ function buildFXPadWindow() {
   fxPadContent.style.background = '#111';
   fxPadContent.style.touchAction = 'none';
   fxPadContent.style.zIndex = '1';
+  fxPadContent.style.padding = '0';
+  fxPadContent.style.boxSizing = 'border-box';
   fxPadContainer.appendChild(fxPadContent);
 
   const applySize = () => {
