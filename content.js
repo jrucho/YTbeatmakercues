@@ -745,14 +745,16 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadEffects = [],
       fxPadEffectTypes = {
         tl: 'lowpass',
-        tr: 'highpass',
-        bl: 'bandpass',
-        br: 'notch'
+        tr: 'flanger',
+        bl: 'phaser',
+        br: 'autopan'
       },
       fxPadActive = false,
       fxPadToggle = null,
       fxPadBallX = 0.5,
       fxPadBallY = 0.5,
+      fxPadSticky = false,
+      fxPadDragging = false,
       // FX Pad UI
       fxPadContainer = null,
       fxPadContent = null,
@@ -782,7 +784,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 12;
-  const FX_PAD_TYPES = ['lowpass','highpass','bandpass','notch','lowshelf','highshelf','tremolo','autopan'];
+  const FX_PAD_TYPES = ['lowpass','highpass','bandpass','flanger','phaser','tremolo','autopan','stutter'];
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -3369,35 +3371,90 @@ function createFxPadEffect(type) {
       obj.output = f;
       obj.setIntensity = v => { f.Q.value = 0.0001 + v * 20; };
       break; }
-    case 'notch': {
-      const f = audioContext.createBiquadFilter();
-      f.type = 'notch';
-      f.frequency.value = 1000;
-      f.Q.value = 0.0001;
-      input.connect(f);
-      output = f;
-      obj.output = f;
-      obj.setIntensity = v => { f.Q.value = 0.0001 + v * 20; };
+    case 'flanger': {
+      const d = audioContext.createDelay();
+      d.delayTime.value = 0;
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.frequency.value = 0.3;
+      lg.gain.value = 0;
+      lfo.connect(lg).connect(d.delayTime);
+      lfo.start();
+      input.connect(d);
+      output = audioContext.createGain();
+      d.connect(output);
+      obj.output = output;
+      obj.setIntensity = v => { lg.gain.value = v * 0.008; };
+      obj.cleanup = () => { lfo.stop(); };
       break; }
-    case 'lowshelf': {
-      const f = audioContext.createBiquadFilter();
-      f.type = 'lowshelf';
-      f.frequency.value = 400;
-      f.gain.value = 0;
-      input.connect(f);
-      output = f;
-      obj.output = f;
-      obj.setIntensity = v => { f.gain.value = -30 * v; };
+    case 'phaser': {
+      const ap1 = audioContext.createBiquadFilter();
+      ap1.type = 'allpass';
+      ap1.frequency.value = 700;
+      const ap2 = audioContext.createBiquadFilter();
+      ap2.type = 'allpass';
+      ap2.frequency.value = 1500;
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.frequency.value = 0.2;
+      lg.gain.value = 0;
+      lfo.connect(lg);
+      lg.connect(ap1.frequency);
+      lg.connect(ap2.frequency);
+      lfo.start();
+      input.connect(ap1);
+      ap1.connect(ap2);
+      output = ap2;
+      obj.output = ap2;
+      obj.setIntensity = v => { lg.gain.value = v * 800; };
+      obj.cleanup = () => { lfo.stop(); };
       break; }
-    case 'highshelf': {
-      const f = audioContext.createBiquadFilter();
-      f.type = 'highshelf';
-      f.frequency.value = 4000;
-      f.gain.value = 0;
-      input.connect(f);
-      output = f;
-      obj.output = f;
-      obj.setIntensity = v => { f.gain.value = 30 * v; };
+    case 'tremolo': {
+      const g = audioContext.createGain();
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.frequency.value = 5;
+      lg.gain.value = 0;
+      lfo.connect(lg).connect(g.gain);
+      lfo.start();
+      input.connect(g);
+      output = g;
+      obj.output = g;
+      obj.setIntensity = v => { lg.gain.value = v; };
+      obj.cleanup = () => { lfo.stop(); };
+      break; }
+    case 'autopan': {
+      const p = audioContext.createStereoPanner();
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.frequency.value = 3;
+      lg.gain.value = 0;
+      lfo.connect(lg).connect(p.pan);
+      lfo.start();
+      input.connect(p);
+      output = p;
+      obj.output = p;
+      obj.setIntensity = v => { lg.gain.value = v; };
+      obj.cleanup = () => { lfo.stop(); };
+      break; }
+    case 'stutter': {
+      const g = audioContext.createGain();
+      const lfo = audioContext.createOscillator();
+      lfo.type = 'square';
+      lfo.frequency.value = 6;
+      const dc = audioContext.createConstantSource();
+      dc.offset.value = 1;
+      const lg = audioContext.createGain();
+      lg.gain.value = 0;
+      dc.connect(g.gain);
+      lfo.connect(lg).connect(g.gain);
+      dc.start();
+      lfo.start();
+      input.connect(g);
+      output = g;
+      obj.output = g;
+      obj.setIntensity = v => { lg.gain.value = v; };
+      obj.cleanup = () => { lfo.stop(); dc.stop(); };
       break; }
     case 'tremolo': {
       const g = audioContext.createGain();
@@ -3458,13 +3515,11 @@ function resetFXPad() {
 
 function updateFXPad(x, y) {
   if (!fxPadActive) return;
-  const dx = x - 0.5;
-  const dy = y - 0.5;
-  const center = Math.sqrt(dx*dx + dy*dy) * Math.SQRT2;
-  const tl = Math.max(0, (1 - Math.sqrt(x*x + y*y) * Math.SQRT2)) * center;
-  const tr = Math.max(0, (1 - Math.sqrt((1-x)*(1-x) + y*y) * Math.SQRT2)) * center;
-  const bl = Math.max(0, (1 - Math.sqrt(x*x + (1-y)*(1-y)) * Math.SQRT2)) * center;
-  const br = Math.max(0, (1 - Math.sqrt((1-x)*(1-x) + (1-y)*(1-y)) * Math.SQRT2)) * center;
+  const r = Math.max(Math.abs(x - 0.5), Math.abs(y - 0.5)) * 2;
+  const tl = (1 - x) * (1 - y) * r * 2;
+  const tr = x * (1 - y) * r * 2;
+  const bl = (1 - x) * y * r * 2;
+  const br = x * y * r * 2;
   const amounts = [tl, tr, bl, br];
   amounts.forEach((v,i) => {
     if (fxPadEffects[i]) fxPadEffects[i].setIntensity(Math.min(1, Math.max(0, v)));
@@ -6897,17 +6952,27 @@ function buildFXPadWindow() {
   fxPadBall.style.transform = 'translate(-50%, -50%)';
   fxPadContent.appendChild(fxPadBall);
 
+  fxPadBall.addEventListener('dblclick', () => {
+    fxPadSticky = !fxPadSticky;
+    fxPadBall.style.background = fxPadSticky ? 'lime' : 'orange';
+    if (!fxPadSticky && !fxPadDragging) resetFXPad();
+  });
+
   makePanelDraggable(fxPadContainer, dh, 'ytbm_fxPadPos');
   restorePanelPosition(fxPadContainer, 'ytbm_fxPadPos');
 
   fxPadContent.addEventListener('pointerdown', e => {
+    fxPadDragging = true;
     fxPadContent.setPointerCapture(e.pointerId);
     updatePadFromEvent(e);
   });
   fxPadContent.addEventListener('pointermove', e => {
-    if (e.pressure) updatePadFromEvent(e);
+    if (fxPadDragging) updatePadFromEvent(e);
   });
-  const end = () => { resetFXPad(); };
+  const end = () => {
+    fxPadDragging = false;
+    if (!fxPadSticky) resetFXPad();
+  };
   fxPadContent.addEventListener('pointerup', end);
   fxPadContent.addEventListener('pointerleave', end);
 
@@ -6941,13 +7006,15 @@ function startFXPadGamepad() {
     const x = gp.axes[0] * 0.5 + 0.5;
     const y = gp.axes[1] * 0.5 + 0.5;
     if (Math.abs(gp.axes[0]) > 0.01 || Math.abs(gp.axes[1]) > 0.01) {
+      fxPadDragging = true;
       fxPadBallX = x;
       fxPadBallY = y;
       fxPadBall.style.left = (fxPadBallX * 100) + '%';
       fxPadBall.style.top = (fxPadBallY * 100) + '%';
       updateFXPad(fxPadBallX, fxPadBallY);
     } else {
-      resetFXPad();
+      fxPadDragging = false;
+      if (!fxPadSticky) resetFXPad();
     }
   }, 33);
 }
@@ -6957,7 +7024,8 @@ function stopFXPadGamepad() {
     clearInterval(fxPadPolling);
     fxPadPolling = null;
   }
-  resetFXPad();
+  fxPadDragging = false;
+  if (!fxPadSticky) resetFXPad();
 }
 
 
