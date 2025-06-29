@@ -9129,54 +9129,24 @@ async function initialize() {
     `;
     document.head.appendChild(playheadStyle);
 
+    // Make minimal UI bar responsive on smaller videos
+    const respStyle = document.createElement('style');
+    respStyle.id = 'ytbm-minimal-ui-responsive';
+    respStyle.textContent = `
+      .ytbm-minimal-bar {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        overflow-x: auto !important;
+        gap: 4px !important;
+      }
+    `;
+    document.head.appendChild(respStyle);
+
   } catch (err) {
     console.error("Initialization error:", err.message || err);
   }
 }
 
-initialize();
-})();
-
-// --- MIDI integration for random cues / suggest cues ---
-if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
-  // Attach MIDI handler if possible
-  if (typeof window.handleMidiNote === "function") {
-    // If there's a global MIDI handler, wrap it
-    const origMidiHandler = window.handleMidiNote;
-    window.handleMidiNote = function(note, velocity, opts) {
-      // Check for randomCues note
-      if (note === midiNotes.randomCues) {
-        // If modifier is pressed (Shift note or isModPressed), suggest cues
-        if ((typeof isModPressed !== "undefined" && isModPressed) ||
-            (opts && opts.shift)) {
-          suggestCuesFromTransients();
-        } else {
-          placeRandomCues();
-        }
-        return;
-      }
-      return origMidiHandler(note, velocity, opts);
-    };
-  } else if (typeof window.onMidiMessage === "function") {
-    // If onMidiMessage exists, you could patch it here similarly
-    // (left as a comment for further integration)
-  }
-}
-
-// Make minimal UI bar responsive on smaller videos
-(() => {
-  const style = document.createElement('style');
-  style.id = 'ytbm-minimal-ui-responsive';
-  style.textContent = `
-    .ytbm-minimal-bar {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      overflow-x: auto !important;
-      gap: 4px !important;
-    }
-  `;
-  document.head.appendChild(style);
-})();
 
 async function showFXPadWindowToggle() {
   if (!fxPadWindowContainer) buildFXPadWindow();
@@ -9312,3 +9282,33 @@ function updateFxPadMix() {
   const w = [ (1-nx)*(1-ny), nx*(1-ny), (1-nx)*ny, nx*ny ];
   w.forEach((val,i)=>{ fxPadMixGains[i].gain.value = fxPadActive ? val : 0; });
 }
+
+initialize();
+})();
+
+// --- MIDI integration for random cues / suggest cues ---
+if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
+  // Attach MIDI handler if possible
+  if (typeof window.handleMidiNote === "function") {
+    // If there's a global MIDI handler, wrap it
+    const origMidiHandler = window.handleMidiNote;
+    window.handleMidiNote = function(note, velocity, opts) {
+      // Check for randomCues note
+      if (note === midiNotes.randomCues) {
+        // If modifier is pressed (Shift note or isModPressed), suggest cues
+        if ((typeof isModPressed !== "undefined" && isModPressed) ||
+            (opts && opts.shift)) {
+          suggestCuesFromTransients();
+        } else {
+          placeRandomCues();
+        }
+        return;
+      }
+      return origMidiHandler(note, velocity, opts);
+    };
+  } else if (typeof window.onMidiMessage === "function") {
+    // If onMidiMessage exists, you could patch it here similarly
+    // (left as a comment for further integration)
+  }
+}
+
