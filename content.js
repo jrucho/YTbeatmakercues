@@ -761,6 +761,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadContent = null,
       fxPadBall = null,
       fxPadPolling = null,
+      fxPadMasterIn = null,
+      fxPadMasterOut = null,
       // UI windows
       eqWindowContainer = null,
       eqDragHandle = null,
@@ -3080,6 +3082,8 @@ async function setupAudioNodes() {
   bus4Gain = audioContext.createGain();
   masterGain = audioContext.createGain();
   masterGain.gain.value = 1;
+  fxPadMasterIn = audioContext.createGain();
+  fxPadMasterOut = audioContext.createGain();
   overallOutputGain = audioContext.createGain();
   overallOutputGain.gain.value = 1;
 
@@ -3513,6 +3517,8 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
+  fxPadMasterIn.disconnect();
+  fxPadMasterOut.disconnect();
   fxPadEffects.forEach(fx => {
     if (fx && fx.input && fx.output) {
       try { fx.input.disconnect(); } catch(e) {}
@@ -3588,15 +3594,18 @@ function applyAllFXRouting() {
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
-
-  let masterOut = masterGain;
+  
+  masterGain.connect(fxPadMasterIn);
   if (fxPadActive && fxPadEffects.length) {
-    masterGain.connect(fxPadEffects[0].input);
+    fxPadMasterIn.connect(fxPadEffects[0].input);
     for (let i = 0; i < fxPadEffects.length - 1; i++) {
       fxPadEffects[i].output.connect(fxPadEffects[i + 1].input);
     }
-    masterOut = fxPadEffects[fxPadEffects.length - 1].output;
+    fxPadEffects[fxPadEffects.length - 1].output.connect(fxPadMasterOut);
+  } else {
+    fxPadMasterIn.connect(fxPadMasterOut);
   }
+  let masterOut = fxPadMasterOut;
 
   // -------------------------------------------
   // COMPRESSOR BYPASS LOGIC FOR BUS4:
@@ -6872,18 +6881,21 @@ function buildFXPadWindow() {
   fxPadContainer.style.overflow = 'hidden';
   fxPadContainer.style.display = 'flex';
   fxPadContainer.style.flexDirection = 'column';
+  fxPadContainer.style.alignItems = 'center';
 
   const dh = document.createElement('div');
   dh.className = 'looper-midimap-drag-handle';
   dh.innerText = 'FX Pad';
+  dh.style.width = '100%';
   fxPadContainer.appendChild(dh);
 
 
   fxPadContent = document.createElement('div');
   fxPadContent.className = 'looper-midimap-content';
-  fxPadContent.style.flex = '1';
+  fxPadContent.style.flex = '0 0 auto';
   fxPadContent.style.position = 'relative';
   fxPadContent.style.background = '#111';
+  fxPadContent.style.touchAction = 'none';
   fxPadContainer.appendChild(fxPadContent);
 
   const applySize = () => {
@@ -6893,6 +6905,7 @@ function buildFXPadWindow() {
     );
     fxPadContent.style.width = size + 'px';
     fxPadContent.style.height = size + 'px';
+    fxPadContent.style.marginTop = ((fxPadContainer.clientHeight - dh.offsetHeight - size) / 2) + 'px';
   };
   const resizeObs = new ResizeObserver(applySize);
   resizeObs.observe(fxPadContainer);
