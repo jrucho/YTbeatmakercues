@@ -741,12 +741,15 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // CASSETTE
       cassetteNode = null,
       cassetteActive = false,
-      // FX Pad nodes
-      fxPadFilter = null,
-      fxPadHigh = null,
-      fxPadDelay = null,
-      fxPadDelayFb = null,
-      fxPadDistortion = null,
+      // FX Pad
+      fxPadEffects = [],
+      fxPadEffectTypes = {
+        tl: 'lowpass',
+        tr: 'highpass',
+        bl: 'bandpass',
+        br: 'notch'
+      },
+      fxPadActive = false,
       // FX Pad UI
       fxPadContainer = null,
       fxPadContent = null,
@@ -776,6 +779,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 12;
+  const FX_PAD_TYPES = ['lowpass','highpass','bandpass','notch','lowshelf','highshelf','tremolo','autopan'];
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -3130,19 +3134,7 @@ async function setupAudioNodes() {
   // Cassette node using the AudioWorklet version.
   cassetteNode = await createCassetteNode(audioContext);
 
-  fxPadFilter = audioContext.createBiquadFilter();
-  fxPadFilter.type = 'lowpass';
-  fxPadFilter.frequency.value = 22050;
-  fxPadHigh = audioContext.createBiquadFilter();
-  fxPadHigh.type = 'highpass';
-  fxPadHigh.frequency.value = 0;
-  fxPadDelay = audioContext.createDelay();
-  fxPadDelay.delayTime.value = 0;
-  fxPadDelayFb = audioContext.createGain();
-  fxPadDelayFb.gain.value = 0;
-  fxPadDistortion = audioContext.createWaveShaper();
-  fxPadDistortion.curve = makeDistortionCurve(0);
-  fxPadDistortion.oversample = '4x';
+  setupFxPadNodes();
 
   applyAllFXRouting();
 }
@@ -3341,23 +3333,118 @@ async function createLoopRecorderNode(ctx) {
 }
 
 
-function makeDistortionCurve(amount) {
-  const n = 44100;
-  const curve = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const x = (i * 2) / n - 1;
-    curve[i] = ((3 + amount) * x * 20) / (Math.PI + amount * Math.abs(x));
+function createFxPadEffect(type) {
+  const input = audioContext.createGain();
+  let output = input;
+  const obj = { input, output, setIntensity: v => {} };
+  switch (type) {
+    case 'lowpass': {
+      const f = audioContext.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 22050;
+      input.connect(f);
+      output = f;
+      obj.output = f;
+      obj.setIntensity = v => { f.frequency.value = 22050 - v * 21000; };
+      break; }
+    case 'highpass': {
+      const f = audioContext.createBiquadFilter();
+      f.type = 'highpass';
+      f.frequency.value = 0;
+      input.connect(f);
+      output = f;
+      obj.output = f;
+      obj.setIntensity = v => { f.frequency.value = v * 8000; };
+      break; }
+    case 'bandpass': {
+      const f = audioContext.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = 1000;
+      f.Q.value = 0.0001;
+      input.connect(f);
+      output = f;
+      obj.output = f;
+      obj.setIntensity = v => { f.Q.value = 0.0001 + v * 20; };
+      break; }
+    case 'notch': {
+      const f = audioContext.createBiquadFilter();
+      f.type = 'notch';
+      f.frequency.value = 1000;
+      f.Q.value = 0.0001;
+      input.connect(f);
+      output = f;
+      obj.output = f;
+      obj.setIntensity = v => { f.Q.value = 0.0001 + v * 20; };
+      break; }
+    case 'lowshelf': {
+      const f = audioContext.createBiquadFilter();
+      f.type = 'lowshelf';
+      f.frequency.value = 400;
+      f.gain.value = 0;
+      input.connect(f);
+      output = f;
+      obj.output = f;
+      obj.setIntensity = v => { f.gain.value = -30 * v; };
+      break; }
+    case 'highshelf': {
+      const f = audioContext.createBiquadFilter();
+      f.type = 'highshelf';
+      f.frequency.value = 4000;
+      f.gain.value = 0;
+      input.connect(f);
+      output = f;
+      obj.output = f;
+      obj.setIntensity = v => { f.gain.value = 30 * v; };
+      break; }
+    case 'tremolo': {
+      const g = audioContext.createGain();
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.frequency.value = 5;
+      lg.gain.value = 0;
+      lfo.connect(lg).connect(g.gain);
+      lfo.start();
+      input.connect(g);
+      output = g;
+      obj.output = g;
+      obj.setIntensity = v => { lg.gain.value = v; };
+      obj.cleanup = () => { lfo.stop(); };
+      break; }
+    case 'autopan': {
+      const p = audioContext.createStereoPanner();
+      const lfo = audioContext.createOscillator();
+      const lg = audioContext.createGain();
+      lfo.frequency.value = 5;
+      lg.gain.value = 0;
+      lfo.connect(lg).connect(p.pan);
+      lfo.start();
+      input.connect(p);
+      output = p;
+      obj.output = p;
+      obj.setIntensity = v => { lg.gain.value = v; };
+      obj.cleanup = () => { lfo.stop(); };
+      break; }
   }
-  return curve;
+  obj.input = input;
+  obj.output = output;
+  return obj;
 }
 
+function setupFxPadNodes() {
+  fxPadEffects.forEach(fx => {
+    try { fx.input.disconnect(); } catch(e) {}
+    if (fx.cleanup) try { fx.cleanup(); } catch(e) {}
+  });
+  fxPadEffects = [];
+  ['tl','tr','bl','br'].forEach(key => {
+    const fx = createFxPadEffect(fxPadEffectTypes[key]);
+    fxPadEffects.push(fx);
+  });
+}
+
+
 function resetFXPad() {
-  if (!fxPadFilter) return;
-  fxPadFilter.frequency.value = 22050;
-  fxPadHigh.frequency.value = 0;
-  fxPadDelay.delayTime.value = 0;
-  fxPadDelayFb.gain.value = 0;
-  fxPadDistortion.curve = makeDistortionCurve(0);
+  fxPadEffects.forEach(e => e.setIntensity(0));
   if (fxPadBall) {
     fxPadBall.style.left = '50%';
     fxPadBall.style.top = '50%';
@@ -3365,12 +3452,18 @@ function resetFXPad() {
 }
 
 function updateFXPad(x, y) {
-  if (!fxPadFilter) return;
-  fxPadFilter.frequency.value = 300 + x * 19000;
-  fxPadHigh.frequency.value = 20 + y * 5000;
-  fxPadDelay.delayTime.value = y * 0.4;
-  fxPadDelayFb.gain.value = y;
-  fxPadDistortion.curve = makeDistortionCurve(x * 400);
+  if (!fxPadActive) return;
+  const dx = x - 0.5;
+  const dy = y - 0.5;
+  const center = Math.sqrt(dx*dx + dy*dy) * Math.SQRT2;
+  const tl = Math.max(0, (1 - Math.sqrt(x*x + y*y) * Math.SQRT2)) * center;
+  const tr = Math.max(0, (1 - Math.sqrt((1-x)*(1-x) + y*y) * Math.SQRT2)) * center;
+  const bl = Math.max(0, (1 - Math.sqrt(x*x + (1-y)*(1-y)) * Math.SQRT2)) * center;
+  const br = Math.max(0, (1 - Math.sqrt((1-x)*(1-x) + (1-y)*(1-y)) * Math.SQRT2)) * center;
+  const amounts = [tl, tr, bl, br];
+  amounts.forEach((v,i) => {
+    if (fxPadEffects[i]) fxPadEffects[i].setIntensity(Math.min(1, Math.max(0, v)));
+  });
 }
 
 
@@ -3387,11 +3480,12 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
-  if (fxPadFilter) fxPadFilter.disconnect();
-  if (fxPadHigh) fxPadHigh.disconnect();
-  if (fxPadDelay) fxPadDelay.disconnect();
-  if (fxPadDelayFb) fxPadDelayFb.disconnect();
-  if (fxPadDistortion) fxPadDistortion.disconnect();
+  fxPadEffects.forEach(fx => {
+    if (fx && fx.input && fx.output) {
+      try { fx.input.disconnect(); } catch(e) {}
+      try { fx.output.disconnect(); } catch(e) {}
+    }
+  });
   loFiCompNode.disconnect();
   postCompGain.disconnect();
   overallOutputGain.disconnect();
@@ -3462,13 +3556,14 @@ function applyAllFXRouting() {
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
 
-  // Chain master effects from the FX pad
-  masterGain.connect(fxPadFilter);
-  fxPadFilter.connect(fxPadHigh);
-  fxPadHigh.connect(fxPadDelay);
-  fxPadDelay.connect(fxPadDelayFb).connect(fxPadDelay);
-  fxPadDelay.connect(fxPadDistortion);
-  let masterOut = fxPadDistortion;
+  let masterOut = masterGain;
+  if (fxPadActive && fxPadEffects.length) {
+    masterGain.connect(fxPadEffects[0].input);
+    for (let i = 0; i < fxPadEffects.length - 1; i++) {
+      fxPadEffects[i].output.connect(fxPadEffects[i + 1].input);
+    }
+    masterOut = fxPadEffects[fxPadEffects.length - 1].output;
+  }
 
   // -------------------------------------------
   // COMPRESSOR BYPASS LOGIC FOR BUS4:
@@ -6711,9 +6806,14 @@ async function showFXPadWindowToggle() {
   if (!fxPadContainer) {
     buildFXPadWindow();
     fxPadContainer.style.display = 'block';
+    fxPadActive = true;
+    applyAllFXRouting();
+    startFXPadGamepad();
   } else {
     const visible = fxPadContainer.style.display === 'block';
     fxPadContainer.style.display = visible ? 'none' : 'block';
+    fxPadActive = !visible;
+    applyAllFXRouting();
     if (!visible) startFXPadGamepad(); else stopFXPadGamepad();
   }
 }
@@ -6735,6 +6835,27 @@ function buildFXPadWindow() {
   fxPadContent.style.position = 'relative';
   fxPadContent.style.background = '#111';
   fxPadContainer.appendChild(fxPadContent);
+
+  const positions = ['tl','tr','bl','br'];
+  positions.forEach(pos => {
+    const sel = document.createElement('select');
+    sel.className = 'fxpad-select';
+    sel.style.position = 'absolute';
+    sel.style[pos[0]=='t' ? 'top' : 'bottom'] = '2px';
+    sel.style[pos[1]=='l' ? 'left' : 'right'] = '2px';
+    FX_PAD_TYPES.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.innerText = t; sel.appendChild(opt);
+    });
+    sel.value = fxPadEffectTypes[pos];
+    sel.addEventListener('change', () => {
+      fxPadEffectTypes[pos] = sel.value;
+      setupFxPadNodes();
+      applyAllFXRouting();
+    });
+    fxPadContent.appendChild(sel);
+  });
+  setupFxPadNodes();
 
   fxPadBall = document.createElement('div');
   fxPadBall.style.position = 'absolute';
@@ -6787,6 +6908,8 @@ function startFXPadGamepad() {
       fxPadBall.style.left = (x * 100) + '%';
       fxPadBall.style.top = (y * 100) + '%';
       updateFXPad(x, y);
+    } else {
+      resetFXPad();
     }
   }, 33);
 }
@@ -8980,6 +9103,13 @@ function injectCustomCSS() {
       padding: 3px 6px;
       cursor: pointer;
       font-size: 11px;
+    }
+    .fxpad-select {
+      background:#222;
+      color:#fff;
+      border:1px solid #555;
+      border-radius:4px;
+      font-size:11px;
     }
     input[type="range"] {
       -webkit-appearance: none;
