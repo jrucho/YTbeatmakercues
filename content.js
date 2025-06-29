@@ -3603,7 +3603,7 @@ function applyAllFXRouting() {
   bus3Gain.connect(masterGain);
   
   masterGain.connect(fxPadMasterIn);
-  if (fxPadEffects.length) {
+  if (fxPadActive && fxPadEffects.length) {
     fxPadMasterIn.connect(fxPadEffects[0].input);
     for (let i = 0; i < fxPadEffects.length - 1; i++) {
       fxPadEffects[i].output.connect(fxPadEffects[i + 1].input);
@@ -6910,14 +6910,14 @@ function buildFXPadWindow() {
 
   const applySize = () => {
     const dhh = dh.offsetHeight;
-    const size = Math.min(
+    let size = Math.min(
       fxPadContainer.clientWidth,
       fxPadContainer.clientHeight - dhh
     );
+    fxPadContainer.style.width = size + 'px';
+    fxPadContainer.style.height = (size + dhh) + 'px';
     fxPadContent.style.width = size + 'px';
     fxPadContent.style.height = size + 'px';
-    fxPadContent.style.marginTop = ((fxPadContainer.clientHeight - dhh - size) / 2) + 'px';
-    fxPadContent.style.marginLeft = ((fxPadContainer.clientWidth - size) / 2) + 'px';
   };
   const resizeObs = new ResizeObserver(applySize);
   resizeObs.observe(fxPadContainer);
