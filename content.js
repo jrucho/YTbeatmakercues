@@ -593,6 +593,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiMapButton = null,
       eqButton = null,
       loFiCompButton = null,
+      fxPadButton = null,
       // Sample faders
       kickFader = null, kickDBLabel = null,
       hihatFader = null, hihatDBLabel = null,
@@ -3558,6 +3559,213 @@ async function createPhaserSweepEffect(ctx){
   return createPhaserEffect(ctx);
 }
 
+function createLevelComp(ctx){
+  const c=ctx.createDynamicsCompressor();
+  c.threshold.value=-12;
+  c.knee.value=10;
+  c.ratio.value=4;
+  c.attack.value=0.01;
+  c.release.value=0.1;
+  return c;
+}
+
+function makeDriveCurve(a){
+  const n=1024;
+  const curve=new Float32Array(n);
+  for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=(1+a)*x/(1+a*Math.abs(x));}
+  return curve;
+}
+
+function createFilterDriveEffect(ctx){
+  const input=ctx.createGain();
+  const filt=ctx.createBiquadFilter();
+  filt.type='lowpass';
+  const shaper=ctx.createWaveShaper();
+  shaper.curve=makeDriveCurve(1);
+  const out=createLevelComp(ctx);
+  input.connect(filt).connect(shaper).connect(out);
+  return {in:input,out,out,update(x,y){filt.frequency.value=300+15000*y;shaper.curve=makeDriveCurve(1+5*x);}};
+}
+
+function createPitchEffect(ctx){
+  const input=ctx.createGain();
+  const delay=ctx.createDelay();
+  const lfo=ctx.createOscillator();
+  const depth=ctx.createGain();
+  depth.gain.value=0;
+  lfo.type='sine';
+  lfo.frequency.value=1;
+  lfo.connect(depth).connect(delay.delayTime); lfo.start();
+  input.connect(delay);
+  const out=createLevelComp(ctx); delay.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=0.002*x; lfo.frequency.value=0.5+5*y;}};
+}
+
+function createDelayEffect(ctx){
+  const input=ctx.createGain();
+  const del=ctx.createDelay();
+  const fb=ctx.createGain(); fb.gain.value=0.3;
+  del.connect(fb).connect(del);
+  input.connect(del);
+  const out=createLevelComp(ctx); del.connect(out);
+  return {in:input,out,out,update(x,y){del.delayTime.value=0.05+0.45*y; fb.gain.value=x;}};
+}
+
+function createIsolatorEffect(ctx){
+  const input=ctx.createGain();
+  const hpf=ctx.createBiquadFilter(); hpf.type='highpass';
+  const lpf=ctx.createBiquadFilter(); lpf.type='lowpass';
+  input.connect(hpf).connect(lpf);
+  const out=createLevelComp(ctx); lpf.connect(out);
+  return {in:input,out,out,update(x,y){hpf.frequency.value=20+200*x; lpf.frequency.value=5000+15000*y;}};
+}
+
+function createVinylSimEffect(ctx){
+  const input=ctx.createGain();
+  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=8000;
+  const noise=ctx.createBufferSource();
+  const buf=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);
+  const data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*0.02;
+  noise.buffer=buf; noise.loop=true; noise.start();
+  const mix=ctx.createGain(); mix.gain.value=0.2;
+  noise.connect(mix);
+  const out=createLevelComp(ctx);
+  input.connect(lp).connect(out);
+  mix.connect(out);
+  return {in:input,out,out,update(x,y){lp.frequency.value=4000+8000*y; mix.gain.value=0.05+0.4*x;}};
+}
+
+function createTapeEchoEffect(ctx){
+  const e=createDelayEffect(ctx);
+  return e;
+}
+
+function createChorusEffect(ctx){
+  const input=ctx.createGain();
+  const delay=ctx.createDelay(); delay.delayTime.value=0.03;
+  const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=0.01;
+  lfo.frequency.value=1.5; lfo.connect(depth).connect(delay.delayTime); lfo.start();
+  input.connect(delay);
+  const out=createLevelComp(ctx); delay.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=0.002+0.02*x; lfo.frequency.value=0.2+5*y;}};
+}
+
+function createTremoloPanEffect(ctx){
+  const input=ctx.createGain();
+  const pan=ctx.createStereoPanner();
+  const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=0;
+  lfo.type='sine'; lfo.frequency.value=2; lfo.connect(depth).connect(pan.pan); lfo.start();
+  input.connect(pan);
+  const out=createLevelComp(ctx); pan.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=x; lfo.frequency.value=0.5+10*y;}};
+}
+
+function createDistortionEffect(ctx,amt){
+  const input=ctx.createGain();
+  const sh=ctx.createWaveShaper(); sh.curve=makeDriveCurve(amt||2);
+  const out=createLevelComp(ctx); input.connect(sh).connect(out);
+  return {in:input,out,out,update(x){sh.curve=makeDriveCurve(1+amt*x*5);}};
+}
+
+function createWahEffect(ctx){
+  const input=ctx.createGain();
+  const bp=ctx.createBiquadFilter(); bp.type='bandpass';
+  const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=300;
+  lfo.frequency.value=2; lfo.connect(depth).connect(bp.frequency); lfo.start();
+  input.connect(bp);
+  const out=createLevelComp(ctx); bp.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=200+2000*x; lfo.frequency.value=0.5+5*y;}};
+}
+
+function createOctaveEffect(ctx){
+  return createPitchEffect(ctx);
+}
+
+function createCompressorEffect(ctx){
+  const input=ctx.createGain();
+  const comp=createLevelComp(ctx);
+  input.connect(comp);
+  return {in:input,out:comp,update(){}};
+}
+
+function createEqualizerEffect(ctx){
+  const input=ctx.createGain();
+  const low=ctx.createBiquadFilter(); low.type='lowshelf';
+  const mid=ctx.createBiquadFilter(); mid.type='peaking'; mid.frequency.value=1000;
+  const high=ctx.createBiquadFilter(); high.type='highshelf'; high.frequency.value=6000;
+  input.connect(low).connect(mid).connect(high);
+  const out=createLevelComp(ctx); high.connect(out);
+  return {in:input,out,out,update(x,y){low.gain.value=10*(x-0.5); high.gain.value=10*(y-0.5);}};
+}
+
+async function createBitCrashEffect(ctx){
+  return createBitDecimatorEffect(ctx);
+}
+
+function createNoiseGenEffect(ctx){
+  const input=ctx.createGain();
+  const noise=ctx.createBufferSource();
+  const buf=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);
+  const data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
+  noise.buffer=buf; noise.loop=true; noise.start();
+  const mix=ctx.createGain(); mix.gain.value=0.3;
+  noise.connect(mix);
+  const out=createLevelComp(ctx); input.connect(out); mix.connect(out);
+  return {in:input,out,out,update(x){mix.gain.value=x;}};
+}
+
+function createVinylSimMfxEffect(ctx){
+  const base=createVinylSimEffect(ctx);
+  base.out.connect(base.out.context.createGain());
+  return base;
+}
+
+function createRadioTuningEffect(ctx){
+  const input=ctx.createGain();
+  const bp=ctx.createBiquadFilter(); bp.type='bandpass';
+  const noise=createNoiseGenEffect(ctx);
+  input.connect(bp);
+  const out=createLevelComp(ctx); bp.connect(out); noise.out.connect(out);
+  return {in:input,out,out,update(x,y){bp.frequency.value=500+5000*y; noise.update(x);}};
+}
+
+function createSlicerFlangerEffect(ctx){
+  const flg=createFlangerEffect(ctx);
+  const gate=ctx.createGain(); gate.gain.value=1;
+  const lfo=ctx.createOscillator(); lfo.type='square'; lfo.frequency.value=4; lfo.connect(gate.gain); lfo.start();
+  const input=ctx.createGain();
+  input.connect(gate).connect(flg.in);
+  return {in:input,out:flg.out,update(x,y){gate.gain.value=x; flg.update(x,y);}};
+}
+
+function createRingModEffect(ctx){
+  const input=ctx.createGain();
+  const mult=ctx.createGain();
+  const osc=ctx.createOscillator(); osc.frequency.value=440; osc.connect(mult.gain); osc.start();
+  input.connect(mult);
+  const out=createLevelComp(ctx); mult.connect(out);
+  return {in:input,out,out,update(x,y){osc.frequency.value=50+1000*y; mult.gain.value=x;}};
+}
+
+function createChromPitchShiftEffect(ctx){
+  return createPitchEffect(ctx);
+}
+
+function createPitchFineEffect(ctx){
+  return createPitchEffect(ctx);
+}
+
+function createSubsonicEffect(ctx){
+  const input=ctx.createGain();
+  const bp=ctx.createBiquadFilter(); bp.type='lowpass'; bp.frequency.value=80;
+  const out=createLevelComp(ctx); input.connect(bp).connect(out);
+  return {in:input,out,out,update(x){bp.frequency.value=40+120*x;}};
+}
+
+function createBpmLooperEffect(ctx){
+  return createBeatRepeatEffect(ctx);
+}
+
 async function createFxPadEngine(ctx){
   const nodeIn=ctx.createGain();
   const nodeOut=ctx.createGain();
@@ -3576,28 +3784,35 @@ async function createFxPadEngine(ctx){
   async function setEffect(i,type){
     if(effects[i]){ nodeIn.disconnect(effects[i].in); effects[i].out.disconnect(wetGains[i]); }
     let e=null;
-    if(type==='vinylBreak') e=await createVinylBreakEffect(ctx);
-    else if(type==='duckComp') e=createDuckCompEffect(ctx);
-    else if(type==='echoBreak') e=createEchoBreakEffect(ctx);
-    else if(type==='oneShotDelay') e=createOneShotDelayEffect(ctx);
-    else if(type==='stutterGrain') e=await createStutterGrainEffect(ctx);
-    else if(type==='freezeLooper') e=createFreezeLooperEffect(ctx);
-    else if(type==='jagFilter') e=createJagFilterEffect(ctx);
-    else if(type==='bitDecimator') e=await createBitDecimatorEffect(ctx);
-    else if(type==='centerCancel') e=createCenterCancelEffect(ctx);
-    else if(type==='loopBreaker') e=await createLoopBreakerEffect(ctx);
-    else if(type==='resonator') e=createResonatorEffect(ctx);
-    else if(type==='reverbBreak') e=createReverbBreakEffect(ctx);
-    else if(type==='pitchUp') e=await createPitchUpEffect(ctx);
-    else if(type==='flangerJet') e=createFlangerJetEffect(ctx);
-    else if(type==='phaserSweep') e=await createPhaserSweepEffect(ctx);
+    if(type==='filterDrive') e=createFilterDriveEffect(ctx);
+    else if(type==='pitch') e=createPitchEffect(ctx);
+    else if(type==='delay') e=createDelayEffect(ctx);
+    else if(type==='isolator') e=createIsolatorEffect(ctx);
+    else if(type==='vinylSim') e=createVinylSimEffect(ctx);
+    else if(type==='reverb') e=createReverbEffect(ctx);
+    else if(type==='tapeEcho') e=createTapeEchoEffect(ctx);
+    else if(type==='chorus') e=createChorusEffect(ctx);
     else if(type==='flanger') e=createFlangerEffect(ctx);
     else if(type==='phaser') e=await createPhaserEffect(ctx);
-    else if(type==='tremolo') e=createTremoloEffect(ctx);
-    else if(type==='autopan') e=createAutopanEffect(ctx);
-    else if(type==='stutter') e=await createStutterEffect(ctx);
-    else if(type==='beatRepeat') e=await createBeatRepeatEffect(ctx);
-    else if(type==='reverb') e=createReverbEffect(ctx);
+    else if(type==='tremoloPan') e=createTremoloPanEffect(ctx);
+    else if(type==='distortion') e=createDistortionEffect(ctx,2);
+    else if(type==='overdrive') e=createDistortionEffect(ctx,4);
+    else if(type==='fuzz') e=createDistortionEffect(ctx,8);
+    else if(type==='wah') e=createWahEffect(ctx);
+    else if(type==='octave') e=createOctaveEffect(ctx);
+    else if(type==='compressor') e=createCompressorEffect(ctx);
+    else if(type==='equalizer') e=createEqualizerEffect(ctx);
+    else if(type==='bitCrash') e=await createBitCrashEffect(ctx);
+    else if(type==='noiseGen') e=createNoiseGenEffect(ctx);
+    else if(type==='vinylSimMfx') e=createVinylSimMfxEffect(ctx);
+    else if(type==='radioTuning') e=createRadioTuningEffect(ctx);
+    else if(type==='slicerFlanger') e=createSlicerFlangerEffect(ctx);
+    else if(type==='ringMod') e=createRingModEffect(ctx);
+    else if(type==='chromPitchShift') e=createChromPitchShiftEffect(ctx);
+    else if(type==='pitchFine') e=createPitchFineEffect(ctx);
+    else if(type==='centerCancel') e=createCenterCancelEffect(ctx);
+    else if(type==='subsonic') e=createSubsonicEffect(ctx);
+    else if(type==='bpmLooper') e=createBpmLooperEffect(ctx);
     if(e){ nodeIn.connect(e.in); e.out.connect(wetGains[i]); effects[i]=e; wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04); }
   }
   function triggerCorner(x,y,held){
@@ -3612,10 +3827,10 @@ async function createFxPadEngine(ctx){
       if(effects[k]&&effects[k].update) effects[k].update(x,y,held);
     }
   }
-  await setEffect(0,'vinylBreak');
-  await setEffect(1,'echoBreak');
+  await setEffect(0,'filterDrive');
+  await setEffect(1,'delay');
   await setEffect(2,'flanger');
-  await setEffect(3,'tremolo');
+  await setEffect(3,'reverb');
   console.log('KaossPad OK');
   return {nodeIn,nodeOut,setEffect,triggerCorner,setMultiMode};
 }
@@ -6778,6 +6993,13 @@ function addControls() {
   });
   actionWrap.appendChild(eqButton);
 
+  fxPadButton = document.createElement("button");
+  fxPadButton.className = "looper-btn";
+  fxPadButton.innerText = "FX Pad";
+  fxPadButton.style.flex = '1 1 calc(50% - 4px)';
+  fxPadButton.addEventListener("click", showFxPadWindowToggle);
+  actionWrap.appendChild(fxPadButton);
+
   loFiCompButton = document.createElement("button");
   loFiCompButton.className = "looper-btn";
   loFiCompButton.innerText = "LoFiComp:Off";
@@ -8557,10 +8779,11 @@ function buildFxPadWindow() {
   wrap.appendChild(fxPadCanvas);
 
   const types = [
-    'vinylBreak','duckComp','echoBreak','oneShotDelay','stutterGrain','freezeLooper',
-    'jagFilter','bitDecimator','centerCancel','loopBreaker','resonator','reverbBreak',
-    'pitchUp','flangerJet','phaserSweep','flanger','phaser','tremolo','autopan',
-    'stutter','reverb','beatRepeat'
+    'filterDrive','pitch','delay','isolator','vinylSim','reverb','tapeEcho','chorus',
+    'flanger','phaser','tremoloPan','distortion','overdrive','fuzz','wah','octave',
+    'compressor','equalizer','bitCrash','noiseGen','vinylSimMfx','radioTuning',
+    'slicerFlanger','ringMod','chromPitchShift','pitchFine','centerCancel',
+    'subsonic','bpmLooper'
   ];
   for (let i=0;i<4;i++) {
     const sel=document.createElement('select');
@@ -8665,7 +8888,10 @@ function toggleFxPadSticky(){
 function toggleFxPadMode(){
   fxPadMultiMode = !fxPadMultiMode;
   if (fxPadModeBtn) fxPadModeBtn.textContent = fxPadMultiMode ? '4-Corner' : 'Single FX';
-  if (fxPadEngine && fxPadEngine.setMultiMode) fxPadEngine.setMultiMode(fxPadMultiMode);
+  if (fxPadEngine && fxPadEngine.setMultiMode){
+    fxPadEngine.setMultiMode(fxPadMultiMode);
+    fxPadEngine.triggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
+  }
   for(let i=1;i<fxPadDropdowns.length;i++){
     fxPadDropdowns[i].style.display = fxPadMultiMode ? 'block' : 'none';
   }
