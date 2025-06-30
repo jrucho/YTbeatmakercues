@@ -771,6 +771,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadEngine = null,
       fxPadMasterIn = null,
       fxPadMasterOut = null,
+      fxPadLeveler = null,
       fxPadSetEffect = null,
       fxPadTriggerCorner = null,
       fxPadActive = false,
@@ -3802,7 +3803,10 @@ async function createFxPadEngine(ctx){
     }
   }
   async function setEffect(i,type){
-    if(effects[i]){ nodeIn.disconnect(effects[i].in); effects[i].out.disconnect(wetGains[i]); }
+    if(effects[i]){
+      try{ nodeIn.disconnect(effects[i].in); }catch(e){}
+      try{ effects[i].out.disconnect(wetGains[i]); }catch(e){}
+    }
     let e=null;
     if(type==='filterDrive') e=createFilterDriveEffect(ctx);
     else if(type==='pitch') e=createPitchEffect(ctx);
@@ -3859,11 +3863,13 @@ async function setupFxPadNodes() {
   fxPadEngine = await createFxPadEngine(audioContext);
   fxPadMasterIn = audioContext.createGain();
   fxPadMasterOut = audioContext.createGain();
+  fxPadLeveler = createLevelComp(audioContext);
   fxPadSetEffect = fxPadEngine.setEffect;
   fxPadTriggerCorner = fxPadEngine.triggerCorner;
   fxPadEngine.setMultiMode(fxPadMultiMode);
   fxPadMasterIn.connect(fxPadEngine.nodeIn);
-  fxPadEngine.nodeOut.connect(fxPadMasterOut);
+  fxPadEngine.nodeOut.connect(fxPadLeveler);
+  fxPadLeveler.connect(fxPadMasterOut);
 }
 
 
@@ -3874,6 +3880,7 @@ function applyAllFXRouting() {
   if (!audioContext) return;
   if (!fxPadMasterIn) fxPadMasterIn = audioContext.createGain();
   if (!fxPadMasterOut) fxPadMasterOut = audioContext.createGain();
+  if (!fxPadLeveler) fxPadLeveler = createLevelComp(audioContext);
   // First, disconnect everything that may have been connected:
   videoGain.disconnect();
   if (antiClickGain) antiClickGain.disconnect();
@@ -3885,6 +3892,7 @@ function applyAllFXRouting() {
   masterGain.disconnect();
   if (fxPadMasterIn) fxPadMasterIn.disconnect();
   if (fxPadMasterOut) fxPadMasterOut.disconnect();
+  if (fxPadLeveler) fxPadLeveler.disconnect();
   loFiCompNode.disconnect();
   postCompGain.disconnect();
   overallOutputGain.disconnect();
@@ -3958,9 +3966,11 @@ function applyAllFXRouting() {
   masterGain.connect(fxPadMasterIn);
   if (fxPadActive && fxPadEngine) {
     fxPadMasterIn.connect(fxPadEngine.nodeIn);
-    fxPadEngine.nodeOut.connect(fxPadMasterOut);
+    fxPadEngine.nodeOut.connect(fxPadLeveler);
+    fxPadLeveler.connect(fxPadMasterOut);
   } else {
-    fxPadMasterIn.connect(fxPadMasterOut);
+    fxPadMasterIn.connect(fxPadLeveler);
+    fxPadLeveler.connect(fxPadMasterOut);
   }
 
   // -------------------------------------------
