@@ -3145,7 +3145,7 @@ async function setupAudioNodes() {
   // Cassette node using the AudioWorklet version.
   cassetteNode = await createCassetteNode(audioContext);
 
-  setupFxPadNodes();
+  await setupFxPadNodes();
 
   applyAllFXRouting();
 }
@@ -3344,12 +3344,16 @@ async function createLoopRecorderNode(ctx) {
 }
 
 
-function createFxPadEffect(type, ctx, transport) {
+async function createFxPadEffect(type, ctx, transport) {
   switch (type) {
-    case 'vinylBreak':   return makeVinylBreak(ctx);
-    case 'echoBreak':    return makeEchoBreak(ctx, transport);
-    case 'jagFilter':    return makeJagFilter(ctx);
-    case 'reverbBreak':  return makeReverbBreak(ctx);
+    case 'vinylBreak':
+      return await makeVinylBreak(ctx);
+    case 'echoBreak':
+      return makeEchoBreak(ctx, transport);
+    case 'jagFilter':
+      return makeJagFilter(ctx);
+    case 'reverbBreak':
+      return makeReverbBreak(ctx);
     default:
       console.warn('Unknown FX type:', type);
       return { in: ctx.createGain(), out: ctx.createGain(), update(){} };
@@ -3492,17 +3496,17 @@ function makeReverbBreak(ctx){
 
 const fxPadEffectTypes = ['vinylBreak', 'echoBreak', 'jagFilter', 'reverbBreak'];
 
-function setupFxPadNodes() {
+async function setupFxPadNodes() {
   fxPadEffects.forEach(fx => {
     try { fx.in.disconnect(); } catch {}
     try { fx.out.disconnect(); } catch {}
   });
   fxPadEffects = [];
   const transport = { get bpm() { return sequencerBPM; } };
-  fxPadEffectTypes.forEach(type => {
-    const fx = createFxPadEffect(type, audioContext, transport);
+  for (const type of fxPadEffectTypes) {
+    const fx = await createFxPadEffect(type, audioContext, transport);
     fxPadEffects.push(fx);
-  });
+  }
 }
 
 
@@ -6871,7 +6875,7 @@ function buildEQWindow() {
 async function showFXPadWindowToggle() {
   await ensureAudioContext();
   if (!fxPadContainer) {
-    buildFXPadWindow();
+    await buildFXPadWindow();
     fxPadContainer.style.display = 'block';
     fxPadActive = true;
     applyAllFXRouting();
@@ -6891,7 +6895,7 @@ async function showFXPadWindowToggle() {
   }
 }
 
-function buildFXPadWindow() {
+async function buildFXPadWindow() {
   fxPadContainer = document.createElement('div');
   fxPadContainer.className = 'looper-midimap-container';
   fxPadContainer.style.width = '300px';
@@ -6925,7 +6929,7 @@ function buildFXPadWindow() {
     const dhh = dh.offsetHeight;
     let w = fxPadContainer.clientWidth;
     let h = fxPadContainer.clientHeight - dhh;
-    let size = Math.max(w, h);
+    let size = Math.min(w, h);
     if (size < 200) size = 200;
     fxPadContainer.style.width = size + 'px';
     fxPadContainer.style.height = (size + dhh) + 'px';
@@ -6949,14 +6953,14 @@ function buildFXPadWindow() {
       opt.value = t; opt.innerText = t; sel.appendChild(opt);
     });
     sel.value = fxPadEffectTypes[idx];
-    sel.addEventListener('change', () => {
+    sel.addEventListener('change', async () => {
       fxPadEffectTypes[idx] = sel.value;
-      setupFxPadNodes();
+      await setupFxPadNodes();
       applyAllFXRouting();
     });
     fxPadContent.appendChild(sel);
   });
-  setupFxPadNodes();
+  await setupFxPadNodes();
 
   fxPadBall = document.createElement('div');
   fxPadBall.style.position = 'absolute';
@@ -7013,7 +7017,7 @@ function updatePadFromEvent(e, force) {
   y = Math.min(Math.max(y, 0), 1);
   let speed = 1;
   if (e.metaKey && e.altKey) {
-    speed = 0.02;
+    speed = 0.01;
   } else if (e.metaKey) {
     speed = 0.1;
   }
