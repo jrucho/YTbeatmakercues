@@ -3546,7 +3546,8 @@ function createCenterCancelEffect(ctx){
   const merger=ctx.createChannelMerger(2);
   input.connect(splitter);
   splitter.connect(merger,0,0);
-  splitter.connect(invert).connect(merger,1);
+  splitter.connect(invert,1,0);
+  invert.connect(merger,0,1);
   const out=ctx.createGain(); merger.connect(out);
   return {in:input,out,out,update(x,y){out.gain.value=x;}};
 }
@@ -3735,11 +3736,6 @@ function createNoiseGenEffect(ctx){
   return {in:input,out,out,update(x){mix.gain.value=x;}};
 }
 
-function createVinylSimMfxEffect(ctx){
-  const base=createVinylSimEffect(ctx);
-  base.out.connect(base.out.context.createGain());
-  return base;
-}
 
 function createRadioTuningEffect(ctx){
   const input=ctx.createGain();
@@ -3783,8 +3779,23 @@ function createSubsonicEffect(ctx){
   return {in:input,out,out,update(x){bp.frequency.value=40+120*x;}};
 }
 
-function createBpmLooperEffect(ctx){
-  return createBeatRepeatEffect(ctx);
+async function createBpmLooperEffect(ctx){
+  const input = ctx.createGain();
+  const node = await createStutterNode(ctx);
+  const mix = ctx.createGain();
+  input.connect(node).connect(mix);
+  const rate = ctx.sampleRate;
+  return {
+    in: input,
+    out: mix,
+    update(x,y){
+      const beat = 60 / (typeof sequencerBPM === 'number' ? sequencerBPM : 120);
+      const beats = 0.25 + 3.75 * y; // 1/4 to 4 beats
+      const len = Math.floor(rate * beat * beats);
+      node.port.postMessage({loop: true, length: len});
+      mix.gain.value = x;
+    }
+  };
 }
 
 async function createFxPadEngine(ctx){
@@ -3828,7 +3839,6 @@ async function createFxPadEngine(ctx){
     else if(type==='equalizer') e=createEqualizerEffect(ctx);
     else if(type==='bitCrash') e=await createBitCrashEffect(ctx);
     else if(type==='noiseGen') e=createNoiseGenEffect(ctx);
-    else if(type==='vinylSimMfx') e=createVinylSimMfxEffect(ctx);
     else if(type==='radioTuning') e=createRadioTuningEffect(ctx);
     else if(type==='slicerFlanger') e=createSlicerFlangerEffect(ctx);
     else if(type==='ringMod') e=createRingModEffect(ctx);
@@ -3836,7 +3846,7 @@ async function createFxPadEngine(ctx){
     else if(type==='pitchFine') e=createPitchFineEffect(ctx);
     else if(type==='centerCancel') e=createCenterCancelEffect(ctx);
     else if(type==='subsonic') e=createSubsonicEffect(ctx);
-    else if(type==='bpmLooper') e=createBpmLooperEffect(ctx);
+    else if(type==='bpmLooper') e=await createBpmLooperEffect(ctx);
     if(e){ nodeIn.connect(e.in); e.out.connect(wetGains[i]); effects[i]=e; wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04); }
   }
   function triggerCorner(x,y,held){
@@ -8832,7 +8842,7 @@ function buildFxPadWindow() {
   const types = [
     'filterDrive','pitch','delay','isolator','vinylSim','reverb','tapeEcho','chorus',
     'flanger','phaser','tremoloPan','distortion','overdrive','fuzz','wah','octave',
-    'compressor','equalizer','bitCrash','noiseGen','vinylSimMfx','radioTuning',
+    'compressor','equalizer','bitCrash','noiseGen','radioTuning',
     'slicerFlanger','ringMod','chromPitchShift','pitchFine','centerCancel',
     'subsonic','bpmLooper'
   ];
