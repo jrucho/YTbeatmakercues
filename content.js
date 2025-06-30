@@ -3592,6 +3592,11 @@ function createLevelComp(ctx){
   return c;
 }
 
+function createBypassEffect(ctx){
+  const g = ctx.createGain();
+  return { in: g, out: g, update(){} };
+}
+
 function makeDriveCurve(a){
   const n=1024;
   const curve=new Float32Array(n);
@@ -3825,7 +3830,8 @@ async function createFxPadEngine(ctx){
       try{ effects[i].out.disconnect(wetGains[i]); }catch(e){}
     }
     let e=null;
-    if(type==='filterDrive') e=createFilterDriveEffect(ctx);
+    if(type==='none') e=createBypassEffect(ctx);
+    else if(type==='filterDrive') e=createFilterDriveEffect(ctx);
     else if(type==='pitch') e=createPitchEffect(ctx);
     else if(type==='delay') e=createDelayEffect(ctx);
     else if(type==='isolator') e=createIsolatorEffect(ctx);
@@ -3869,7 +3875,15 @@ async function createFxPadEngine(ctx){
     else if(type==='pitchUp') e=await createPitchUpEffect(ctx);
     else if(type==='flangerJet') e=createFlangerJetEffect(ctx);
     else if(type==='phaserSweep') e=await createPhaserSweepEffect(ctx);
-    if(e){ nodeIn.connect(e.in); e.out.connect(wetGains[i]); effects[i]=e; wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04); }
+    if(e){
+      nodeIn.connect(e.in);
+      e.out.connect(wetGains[i]);
+      effects[i]=e;
+      wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04);
+    } else {
+      effects[i] = null;
+      wetGains[i].gain.setValueAtTime(0, ctx.currentTime);
+    }
   }
   function triggerCorner(x,y,held){
     if(!multiMode){
@@ -8860,6 +8874,7 @@ function buildFxPadWindow() {
   wrap.appendChild(fxPadCanvas);
 
   const types = [
+    'none',
     'filterDrive','pitch','delay','isolator','vinylSim','reverb','tapeEcho','chorus',
     'flanger','phaser','tremoloPan','autopan','beatRepeat','distortion','overdrive','fuzz','wah','octave',
     'compressor','equalizer','bitCrash','noiseGen','radioTuning',
