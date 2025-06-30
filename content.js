@@ -759,14 +759,18 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadCanvas = null,
       fxPadDragHandle = null,
       fxPadDropdowns = [],
-      fxPadToggleBtn = null,
+      fxPadPhysBtn = null,
+      fxPadPhysics = false,
+      fxPadAnimId = 0,
+      fxPadPrev = {x:0,y:0},
+      fxPadLastTime = 0,
       fxPadEngine = null,
       fxPadMasterIn = null,
       fxPadMasterOut = null,
       fxPadSetEffect = null,
       fxPadTriggerCorner = null,
       fxPadActive = false,
-      fxPadBall = {x:0.5,y:0.5},
+      fxPadBall = {x:0.5,y:0.5,vx:0,vy:0},
       fxPadSticky = false,
       fxPadDragging = false;
       deckA = null,
@@ -3455,6 +3459,96 @@ async function createPhaserEffect(ctx){
   const node=await createPhaserNode(ctx); return {in:node,out:node,update(x,y){ node.port.postMessage({}); }};
 }
 
+function createDuckCompEffect(ctx){
+  const input=ctx.createGain();
+  const comp=ctx.createDynamicsCompressor();
+  comp.threshold.value=-30;
+  comp.ratio.value=12;
+  const out=ctx.createGain();
+  input.connect(comp).connect(out);
+  return {in:input,out,out,update(x,y){comp.threshold.value=-60+30*x; comp.release.value=0.05+0.45*y;}};
+}
+
+function createOneShotDelayEffect(ctx){
+  const input=ctx.createGain();
+  const delay=ctx.createDelay();
+  delay.delayTime.value=0.25;
+  const out=ctx.createGain();
+  input.connect(delay).connect(out);
+  return {in:input,out,out,update(x,y){delay.delayTime.value=0.05+0.45*y; out.gain.value=x;}};
+}
+
+async function createStutterGrainEffect(ctx){
+  return createStutterEffect(ctx);
+}
+
+function createFreezeLooperEffect(ctx){
+  const del=ctx.createDelay(1);
+  const fb=ctx.createGain(); fb.gain.value=0;
+  del.connect(fb).connect(del);
+  const input=ctx.createGain(); input.connect(del);
+  const out=ctx.createGain(); del.connect(out);
+  return {in:input,out,out,update(x,y,held){fb.gain.value=held?1:0; del.delayTime.value=0.1+0.9*y;}};
+}
+
+function createJagFilterEffect(ctx){
+  const input=ctx.createGain();
+  const lpf=ctx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=1000;
+  const gate=ctx.createGain(); const lfo=ctx.createOscillator(); lfo.type='square'; lfo.frequency.value=4; lfo.connect(gate.gain); lfo.start();
+  input.connect(lpf).connect(gate);
+  const out=ctx.createGain(); gate.connect(out);
+  return {in:input,out,out,update(x,y){lpf.frequency.value=300+3000*y; lfo.frequency.value=1+9*x;}};
+}
+
+async function createBitDecimatorEffect(ctx){
+  const code=`class BitDec extends AudioWorkletProcessor{constructor(){super();this.bits=4;this.port.onmessage=e=>{if(e.data.bits) this.bits=e.data.bits;};}process(i,o){const input=i[0],out=o[0];if(!input) return true;for(let c=0;c<input.length;c++){for(let n=0;n<input[c].length;n++){let v=input[c][n];const step=1/((1<<this.bits)-1);out[c][n]=Math.round(v/step)*step;}}return true;} }registerProcessor('bit-dec',BitDec);`;
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  const node=new AudioWorkletNode(ctx,'bit-dec');
+  return {in:node,out:node,update(x,y){node.port.postMessage({bits:4+Math.round(8*(1-x))});}};
+}
+
+function createCenterCancelEffect(ctx){
+  const input=ctx.createGain();
+  const splitter=ctx.createChannelSplitter(2);
+  const invert=ctx.createGain(); invert.gain.value=-1;
+  const merger=ctx.createChannelMerger(2);
+  input.connect(splitter);
+  splitter.connect(merger,0,0);
+  splitter.connect(invert).connect(merger,1);
+  const out=ctx.createGain(); merger.connect(out);
+  return {in:input,out,out,update(x,y){out.gain.value=x;}};
+}
+
+async function createLoopBreakerEffect(ctx){
+  const vinyl=await createVinylBreakEffect(ctx);
+  const stut=await createStutterEffect(ctx);
+  vinyl.out.connect(stut.in);
+  return {in:vinyl.in,out:stut.out,update(x,y,held){vinyl.update(x,y); stut.update(x,y,held);}};
+}
+
+function createResonatorEffect(ctx){
+  const input=ctx.createGain(); const out=ctx.createGain();
+  const freqs=[400,800,1200]; const filters=freqs.map(f=>{const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=10; input.connect(bp); bp.connect(out); return bp;});
+  return {in:input,out,out,update(x,y){filters.forEach((bp,i)=>{bp.frequency.value=freqs[i]*(0.5+y);}); out.gain.value=x;}};
+}
+
+function createReverbBreakEffect(ctx){
+  const input=ctx.createGain(); const conv=ctx.createConvolver(); conv.buffer=generateSimpleReverbIR(ctx); const dry=ctx.createGain(); const wet=ctx.createGain(); input.connect(dry); input.connect(conv).connect(wet); const out=ctx.createGain(); dry.connect(out); wet.connect(out); return {in:input,out,out,update(x,y){dry.gain.value=1-x; wet.gain.value=x;}};
+}
+
+async function createPitchUpEffect(ctx){
+  const node=await createVinylBreakNode(ctx); node.port.postMessage({speed:Math.pow(2,7/12)}); return {in:node,out:node,update(){}};
+}
+
+function createFlangerJetEffect(ctx){
+  const input=ctx.createGain(); const delay=ctx.createDelay(); const fb=ctx.createGain(); const lfo=ctx.createOscillator(); const lfoGain=ctx.createGain(); lfo.type='triangle'; lfo.frequency.value=0.2; lfoGain.gain.value=0.005; lfo.connect(lfoGain).connect(delay.delayTime); lfo.start(); input.connect(delay); delay.connect(fb).connect(delay); const out=ctx.createGain(); delay.connect(out); return {in:input,out,out,update(x,y){lfoGain.gain.value=0.002+0.008*x; fb.gain.value=-0.5+1*y; lfo.frequency.value=0.1+4*y;}};
+}
+
+async function createPhaserSweepEffect(ctx){
+  return createPhaserEffect(ctx);
+}
+
 async function createFxPadEngine(ctx){
   const nodeIn=ctx.createGain(); const nodeOut=ctx.createGain(); const dry=ctx.createGain(); nodeIn.connect(dry).connect(nodeOut);
   const wetGains=[0,1,2,3].map(()=>{const g=ctx.createGain(); g.gain.value=0; g.connect(nodeOut); return g;});
@@ -3463,7 +3557,20 @@ async function createFxPadEngine(ctx){
     if(effects[i]){ nodeIn.disconnect(effects[i].in); effects[i].out.disconnect(wetGains[i]); }
     let e=null;
     if(type==='vinylBreak') e=await createVinylBreakEffect(ctx);
+    else if(type==='duckComp') e=createDuckCompEffect(ctx);
     else if(type==='echoBreak') e=createEchoBreakEffect(ctx);
+    else if(type==='oneShotDelay') e=createOneShotDelayEffect(ctx);
+    else if(type==='stutterGrain') e=await createStutterGrainEffect(ctx);
+    else if(type==='freezeLooper') e=createFreezeLooperEffect(ctx);
+    else if(type==='jagFilter') e=createJagFilterEffect(ctx);
+    else if(type==='bitDecimator') e=await createBitDecimatorEffect(ctx);
+    else if(type==='centerCancel') e=createCenterCancelEffect(ctx);
+    else if(type==='loopBreaker') e=await createLoopBreakerEffect(ctx);
+    else if(type==='resonator') e=createResonatorEffect(ctx);
+    else if(type==='reverbBreak') e=createReverbBreakEffect(ctx);
+    else if(type==='pitchUp') e=await createPitchUpEffect(ctx);
+    else if(type==='flangerJet') e=createFlangerJetEffect(ctx);
+    else if(type==='phaserSweep') e=await createPhaserSweepEffect(ctx);
     else if(type==='flanger') e=createFlangerEffect(ctx);
     else if(type==='phaser') e=await createPhaserEffect(ctx);
     else if(type==='tremolo') e=createTremoloEffect(ctx);
@@ -8407,10 +8514,20 @@ function buildFxPadWindow() {
   fxPadCanvas.style.width = "100%";
   fxPadCanvas.style.height = "100%";
   fxPadCanvas.style.display = "block";
-  fxPadCanvas.addEventListener('pointerdown',e=>{fxPadDragging=true;handleFxPadPointer(e);if(e.detail===2) fxPadSticky=!fxPadSticky;});
+  fxPadCanvas.addEventListener('pointerdown',e=>{
+    fxPadDragging=true;
+    fxPadPrev={x:fxPadBall.x,y:fxPadBall.y};
+    fxPadLastTime=performance.now();
+    handleFxPadPointer(e);
+    if(e.detail===2) fxPadSticky=!fxPadSticky;
+  });
   wrap.appendChild(fxPadCanvas);
 
-  const types = ['vinylBreak','echoBreak','flanger','phaser','tremolo','autopan','stutter','reverb'];
+  const types = [
+    'vinylBreak','duckComp','echoBreak','oneShotDelay','stutterGrain','freezeLooper',
+    'jagFilter','bitDecimator','centerCancel','loopBreaker','resonator','reverbBreak',
+    'pitchUp','flangerJet','phaserSweep'
+  ];
   for (let i=0;i<4;i++) {
     const sel=document.createElement('select');
     types.forEach(t=>sel.add(new Option(t,t)));
@@ -8424,15 +8541,15 @@ function buildFxPadWindow() {
     fxPadDropdowns[i]=sel; wrap.appendChild(sel);
   }
 
-  fxPadToggleBtn = document.createElement('button');
-  fxPadToggleBtn.className='looper-btn';
-  fxPadToggleBtn.textContent='Disable';
-  fxPadToggleBtn.style.position='absolute';
-  fxPadToggleBtn.style.left='50%';
-  fxPadToggleBtn.style.bottom='4px';
-  fxPadToggleBtn.style.transform='translateX(-50%)';
-  fxPadToggleBtn.addEventListener('click',toggleFxPadActive);
-  wrap.appendChild(fxPadToggleBtn);
+  fxPadPhysBtn = document.createElement('button');
+  fxPadPhysBtn.className = 'looper-btn';
+  fxPadPhysBtn.textContent = 'Physics Off';
+  fxPadPhysBtn.style.position = 'absolute';
+  fxPadPhysBtn.style.left = '50%';
+  fxPadPhysBtn.style.bottom = '4px';
+  fxPadPhysBtn.style.transform = 'translateX(-50%)';
+  fxPadPhysBtn.addEventListener('click',toggleFxPadPhysics);
+  wrap.appendChild(fxPadPhysBtn);
 
   document.body.appendChild(fxPadContainer);
   makePanelDraggable(fxPadContainer, fxPadDragHandle, 'ytbm_fxPadPos');
@@ -8466,29 +8583,58 @@ function handleFxPadPointer(e){
   y=Math.max(0,Math.min(1,y));
   if(e.metaKey&&e.altKey){x=fxPadBall.x+(x-fxPadBall.x)*0.2;y=fxPadBall.y+(y-fxPadBall.y)*0.2;}
   else if(e.metaKey){x=fxPadBall.x+(x-fxPadBall.x)*0.5;y=fxPadBall.y+(y-fxPadBall.y)*0.5;}
+  const now=performance.now();
+  const dt=Math.max(1,now-fxPadLastTime);
+  fxPadBall.vx=(x-fxPadBall.x)/(dt/16);
+  fxPadBall.vy=(y-fxPadBall.y)/(dt/16);
+  fxPadLastTime=now;
   fxPadBall.x=x; fxPadBall.y=y;
   drawFxPadBall();
   if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(0,x,y,fxPadSticky);
 }
 
-function toggleFxPadActive(){
-  fxPadActive = !fxPadActive;
-  fxPadToggleBtn.textContent = fxPadActive ? 'Disable' : 'Enable';
-  applyAllFXRouting();
+function startFxPadAnim(){
+  cancelAnimationFrame(fxPadAnimId);
+  const step=()=>{
+    if(!fxPadDragging && !fxPadSticky){
+      if(fxPadPhysics){
+        fxPadBall.vx*=0.95; fxPadBall.vy*=0.95;
+        fxPadBall.vx+=(0.5-fxPadBall.x)*0.02;
+        fxPadBall.vy+=(0.5-fxPadBall.y)*0.02;
+        fxPadBall.x+=fxPadBall.vx*0.016;
+        fxPadBall.y+=fxPadBall.vy*0.016;
+      }else{
+        fxPadBall.x+= (0.5-fxPadBall.x)*0.2;
+        fxPadBall.y+= (0.5-fxPadBall.y)*0.2;
+        fxPadBall.vx=fxPadBall.vy=0;
+      }
+      if(Math.abs(fxPadBall.x-0.5)<0.001) fxPadBall.x=0.5;
+      if(Math.abs(fxPadBall.y-0.5)<0.001) fxPadBall.y=0.5;
+    }
+    drawFxPadBall();
+    if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(0,fxPadBall.x,fxPadBall.y,fxPadSticky);
+    fxPadAnimId=requestAnimationFrame(step);
+  };
+  step();
+}
+
+function toggleFxPadPhysics(){
+  fxPadPhysics = !fxPadPhysics;
+  fxPadPhysBtn.textContent = fxPadPhysics ? 'Physics On' : 'Physics Off';
 }
 
 async function showFxPadWindowToggle(){
   if(!fxPadContainer) buildFxPadWindow();
-  if(fxPadContainer.style.display==='block'){ fxPadContainer.style.display='none'; fxPadActive=false; applyAllFXRouting(); return; }
+  if(fxPadContainer.style.display==='block'){ fxPadContainer.style.display='none'; fxPadActive=false; cancelAnimationFrame(fxPadAnimId); return; }
   fxPadContainer.style.display='block';
   await ensureAudioContext();
   if(!fxPadEngine) await setupFxPadNodes();
   fxPadActive=true; applyAllFXRouting();
-  drawFxPadBall();
+  startFxPadAnim();
 }
 
 addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPointer(e);});
-addTrackedListener(document,'pointerup',()=>{fxPadDragging=false;});
+addTrackedListener(document,'pointerup',()=>{fxPadDragging=false; fxPadBall.vx*=0.5; fxPadBall.vy*=0.5;});
 
 /* ------------------------------------------------------
    1.  Persistence
