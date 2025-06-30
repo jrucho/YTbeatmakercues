@@ -8852,11 +8852,9 @@ function buildFxPadWindow() {
     fxPadPrev={x:fxPadBall.x,y:fxPadBall.y};
     fxPadLastTime=performance.now();
     handleFxPadPointer(e);
-    if(e.detail===2){
-      fxPadSticky=!fxPadSticky;
-      if(fxPadStickyBtn) fxPadStickyBtn.textContent = fxPadSticky ? 'Stick On' : 'Stick Off';
-      drawFxPadBall();
-    }
+  });
+  fxPadCanvas.addEventListener('dblclick',()=>{
+    toggleFxPadSticky();
   });
   wrap.appendChild(fxPadCanvas);
 
@@ -8969,9 +8967,7 @@ async function handleFxPadJoystick(x, y) {
   fxPadBall.x = Math.max(0, Math.min(1, x));
   fxPadBall.y = Math.max(0, Math.min(1, y));
   if (!fxPadActive) {
-    fxPadActive = true;
-    applyAllFXRouting();
-    startFxPadAnim();
+    await activateFxPad();
   }
   if (fxPadTriggerCorner) fxPadTriggerCorner(fxPadBall.x, fxPadBall.y, fxPadSticky);
   if (fxPadContainer && fxPadContainer.style.display === 'block') drawFxPadBall();
@@ -8988,27 +8984,45 @@ function toggleFxPadMode(){
   if (fxPadModeBtn) fxPadModeBtn.textContent = fxPadMultiMode ? '4-Corner' : 'Single FX';
   if (fxPadEngine && fxPadEngine.setMultiMode){
     fxPadEngine.setMultiMode(fxPadMultiMode);
-    fxPadEngine.triggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
+    fxPadBall.x = 0.5;
+    fxPadBall.y = 0.5;
+    fxPadEngine.triggerCorner(0.5,0.5,false);
+    drawFxPadBall();
   }
   for(let i=1;i<fxPadDropdowns.length;i++){
     fxPadDropdowns[i].style.display = fxPadMultiMode ? 'block' : 'none';
   }
 }
 
+function deactivateFxPad(){
+  fxPadActive = false;
+  fxPadSticky = false;
+  fxPadBall.x = 0.5;
+  fxPadBall.y = 0.5;
+  if (fxPadEngine) fxPadEngine.triggerCorner(0.5,0.5,false);
+  cancelAnimationFrame(fxPadAnimId);
+  drawFxPadBall();
+  applyAllFXRouting();
+}
+
+async function activateFxPad(){
+  await ensureAudioContext();
+  if(!fxPadEngine) await setupFxPadNodes();
+  fxPadActive = true;
+  applyAllFXRouting();
+  fxPadEngine.triggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
+  startFxPadAnim();
+}
+
 async function showFxPadWindowToggle(){
   if(!fxPadContainer) buildFxPadWindow();
   if(fxPadContainer.style.display==='block'){
     fxPadContainer.style.display='none';
-    fxPadActive=false;
-    cancelAnimationFrame(fxPadAnimId);
-    applyAllFXRouting();
+    deactivateFxPad();
     return;
   }
   fxPadContainer.style.display='block';
-  await ensureAudioContext();
-  if(!fxPadEngine) await setupFxPadNodes();
-  fxPadActive=true; applyAllFXRouting();
-  startFxPadAnim();
+  await activateFxPad();
 }
 
 addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPointer(e);});
