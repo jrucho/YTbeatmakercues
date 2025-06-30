@@ -3539,6 +3539,14 @@ async function createBitDecimatorEffect(ctx){
   const node=new AudioWorkletNode(ctx,'bit-dec');
   return {in:node,out:node,update(x,y){node.port.postMessage({bits:4+Math.round(8*(1-x))});}};
 }
+async function createTwelveBitEffect(ctx){
+  const code=`class Bit12Proc extends AudioWorkletProcessor{process(i,o){const input=i[0],out=o[0];if(!input) return true;const step=1/((1<<12)-1);for(let c=0;c<input.length;c++){for(let n=0;n<input[c].length;n++){out[c][n]=Math.round(input[c][n]/step)*step;}}return true;}}registerProcessor("bit12-proc",Bit12Proc);`;
+  const url=URL.createObjectURL(new Blob([code],{type:"application/javascript"}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  const node=new AudioWorkletNode(ctx,"bit12-proc");
+  return {in:node,out:node,update(){}};
+}
+
 
 function createCenterCancelEffect(ctx){
   const input=ctx.createGain();
@@ -3804,7 +3812,7 @@ async function createBpmLooperEffect(ctx){
         currentLen = len;
         node.port.postMessage({loop: true, length: len});
       }
-      mix.gain.value = x;
+      mix.gain.value = 1;
     }
   };
 }
@@ -3869,6 +3877,7 @@ async function createFxPadEngine(ctx){
     else if(type==='freezeLooper') e=createFreezeLooperEffect(ctx);
     else if(type==='jagFilter') e=createJagFilterEffect(ctx);
     else if(type==='bitDecimator') e=await createBitDecimatorEffect(ctx);
+    else if(type==='twelveBit') e=await createTwelveBitEffect(ctx);
     else if(type==='loopBreaker') e=await createLoopBreakerEffect(ctx);
     else if(type==='resonator') e=createResonatorEffect(ctx);
     else if(type==='reverbBreak') e=createReverbBreakEffect(ctx);
@@ -3897,7 +3906,7 @@ async function createFxPadEngine(ctx){
       if(effects[k]&&effects[k].update) effects[k].update(x,y,held);
     }
   }
-  await setEffect(0,'filterDrive');
+  await setEffect(0,'stutterGrain');
   await setEffect(1,'delay');
   await setEffect(2,'flanger');
   await setEffect(3,'reverb');
@@ -8880,7 +8889,7 @@ function buildFxPadWindow() {
     'compressor','equalizer','bitCrash','noiseGen','radioTuning',
     'slicerFlanger','ringMod','chromPitchShift','pitchFine','centerCancel',
     'subsonic','bpmLooper','vinylBreak','duckComp','echoBreak','oneShotDelay',
-    'stutterGrain','freezeLooper','jagFilter','bitDecimator','loopBreaker',
+    'stutterGrain','freezeLooper','jagFilter','bitDecimator','twelveBit','loopBreaker',
     'resonator','reverbBreak','pitchUp','flangerJet','phaserSweep'
   ];
   for (let i=0;i<4;i++) {
