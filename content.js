@@ -753,6 +753,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       cassetteButtonMin = null,
       pitchTargetButton = null,
       pitchTargetButtonMin = null;
+      fxPadEngine = null,
+      setFxPadBank = null,
+      triggerFxCorner = null,
+      fxPadLamp = null,
       deckA = null,
       deckB = null,
       gainA = null,
@@ -8939,8 +8943,10 @@ async function initialize() {
     }
     addControls();
     buildMinimalUIBar();
+    injectFXPadUI();
     addTouchButtonToMinimalUI();
     addTouchSequencerButtonToAdvancedUI();
+    setupFxPadNodes();
     attachAudioPriming();
     loadCuePointsAtStartup();
     handleProgressBarDoubleClickForNewCue();
@@ -8998,6 +9004,86 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
     // (left as a comment for further integration)
   }
 }
+
+// --------------------- FX Pad Engine ---------------------
+function clamp(v,min=0,max=1){return Math.min(max,Math.max(min,v));}
+
+function createFxPadEngine(ctx){
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  dry.gain.value = 1; wet.gain.value = 0;
+  const nodeIn = ctx.createGain();
+  const nodeOut = ctx.createGain();
+  nodeIn.connect(dry).connect(nodeOut);
+  wet.connect(nodeOut);
+
+  const worklets = [
+    ['vinyl-break',`registerProcessor('vinyl-break',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'rate',defaultValue:1}]};constructor(){super();this.b=new Float32Array(96000);this.w=0;this.r=0;}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];const R=p.rate;for(let k=0;k<O.length;k++){this.b[this.w++%this.b.length]=I[k];this.r+=R.length>1?R[k]:R[0];const j=Math.floor(this.r)%this.b.length;O[k]=this.b[j];}return true;})`],
+    ['stutter',`registerProcessor('stutter',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'size',defaultValue:0.1}]};constructor(){super();this.b=new Float32Array(96000);this.w=0;}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];const S=p.size;for(let k=0;k<O.length;k++){this.b[this.w%this.b.length]=I[k];const L=(S.length>1?S[k]:S[0])*this.b.length|0;const r=(this.w-L+this.b.length)%this.b.length;O[k]=this.b[r];this.w++;}return true;})`],
+    ['bitcrush',`registerProcessor('bitcrush',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'bits',defaultValue:4},{name:'freq',defaultValue:0.5}]};constructor(){super();this.phase=0;this.hold=0;}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];const B=p.bits;const F=p.freq;for(let k=0;k<O.length;k++){this.phase+=F.length>1?F[k]:F[0];if(this.phase>=1){this.phase-=1;this.hold=I[k];}const q=1<< (B.length>1?B[k]:B[0]);O[k]=Math.round(this.hold*q)/q;}return true;})`],
+    ['loop-break',`registerProcessor('loop-break',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'size',defaultValue:0.1},{name:'rate',defaultValue:1}]};constructor(){super();this.b=new Float32Array(96000);this.w=0;this.r=0;}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];const S=p.size;const R=p.rate;for(let k=0;k<O.length;k++){this.b[this.w%this.b.length]=I[k];const L=(S.length>1?S[k]:S[0])*this.b.length|0;this.r+=R.length>1?R[k]:R[0];const idx=(this.w-L+Math.floor(this.r))%this.b.length;O[k]=this.b[(idx+this.b.length)%this.b.length];this.w++;}return true;})`],
+    ['pitch-shift',`registerProcessor('pitch-shift',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'ratio',defaultValue:1}]};constructor(){super();this.b=new Float32Array(96000);this.w=0;this.r=0;}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];const R=p.ratio;for(let k=0;k<O.length;k++){this.b[this.w++%this.b.length]=I[k];this.r+=R.length>1?R[k]:R[0];const j=Math.floor(this.r)%this.b.length;O[k]=this.b[j];}return true;})`],
+    ['flanger',`registerProcessor('flanger',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'d',defaultValue:0.005},{name:'fb',defaultValue:0.5},{name:'lfo',defaultValue:0}]};constructor(){super();this.buf=new Float32Array(48000);this.w=0;}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];for(let k=0;k<O.length;k++){this.buf[this.w%this.buf.length]=I[k]+(O[k-1]||0)*(p.fb[0]);const d=(p.d[0]+Math.sin(2*Math.PI*(this.w/128)*p.lfo[0])*p.d[0])*48000;const r=(this.w-d+this.buf.length)|0;O[k]=this.buf[r%this.buf.length];this.w++;}return true;})`],
+    ['phaser',`registerProcessor('phaser',class extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'freq',defaultValue:0.5}]};constructor(){super();this.a=[0,0,0,0];}process(i,o,p){const I=i[0][0]||new Float32Array(128);const O=o[0][0];const f=2*Math.PI*p.freq[0]/sampleRate;for(let k=0;k<O.length;k++){let x=I[k];for(let s=0;s<4;s++){const y=this.a[s];this.a[s]=y+f*(x-y);x=x-y;}O[k]=x;}return true;})`]
+  ];
+
+  const constructors = [];
+  worklets.forEach(w=>constructors.push(async()=>{if(ctx.audioWorklet){await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([w[1]],{type:'application/javascript'})));}return w[0];}));
+
+  const progs=[
+    ctx=>({in:nodeIn,out:dry,update:()=>{}}),
+    ctx=>{const c=ctx.createDynamicsCompressor();c.threshold.value=-30;nodeIn.connect(c);return{in:nodeIn,out:c,update:(x,y)=>{c.threshold.value=-60*x;c.ratio.value=1+19*y;}}},
+    ctx=>{const d=ctx.createDelay(1);const f=ctx.createGain();f.gain.value=0;nodeIn.connect(f).connect(d);return{in:nodeIn,out:d,update:(x,y)=>{d.delayTime.value=0.5*x;f.gain.value=held?0:1;}}},
+    ctx=>{const d=ctx.createDelay();const g=ctx.createGain();nodeIn.connect(g).connect(d);return{in:nodeIn,out:d,update:(x)=>{d.delayTime.value=0.05+0.45*x;g.gain.setTargetAtTime(0,ctx.currentTime,0.1);}}},
+    async ctx=>{await constructors[1]();const n=new AudioWorkletNode(ctx,'stutter');return{in:n,out:n,update:(x)=>{n.parameters.get('size').value=0.05+0.45*x;}}},
+    ctx=>{const d=ctx.createDelay(1);const fb=ctx.createGain();fb.gain.value=0.7;nodeIn.connect(d);d.connect(fb).connect(d);return{in:nodeIn,out:d,update:(x)=>{fb.gain.value=x;}}},
+    ctx=>{const lfo=ctx.createOscillator();const g=ctx.createGain();const f=ctx.createBiquadFilter();f.type='lowpass';nodeIn.connect(g).connect(f);lfo.connect(g.gain);lfo.start();return{in:nodeIn,out:f,update:(x,y)=>{lfo.frequency.value=0.5+9.5*x;f.frequency.value=500+5000*y;}}},
+    async ctx=>{await constructors[2]();const n=new AudioWorkletNode(ctx,'bitcrush');return{in:n,out:n,update:(x,y)=>{n.parameters.get('bits').value=4+8*x;n.parameters.get('freq').value=y;}}},
+    ctx=>{const s=ctx.createGain();const m=ctx.createGain();const inv=ctx.createGain();inv.gain.value=-1;const mix=ctx.createGain();mix.gain.value=0;nodeIn.connect(s);s.connect(m);s.connect(inv);inv.connect(m);m.connect(mix);return{in:nodeIn,out:mix,update:(x)=>{mix.gain.value=x;}}},
+    async ctx=>{await constructors[3]();const n=new AudioWorkletNode(ctx,'loop-break');return{in:n,out:n,update:(x,y)=>{n.parameters.get('size').value=x;n.parameters.get('rate').value=1-y;}}},
+    ctx=>{const f1=ctx.createBiquadFilter();const f2=ctx.createBiquadFilter();const f3=ctx.createBiquadFilter();f1.type=f2.type=f3.type='bandpass';nodeIn.connect(f1).connect(f2).connect(f3);return{in:nodeIn,out:f3,update:(x,y)=>{f1.frequency.value=200+800*x;f2.frequency.value=400+1200*y;f3.frequency.value=800+1600*x;}}},
+    ctx=>{const con=ctx.createConvolver();const g=ctx.createGain();g.gain.value=0;nodeIn.connect(g).connect(con);return{in:nodeIn,out:con,update:(x,y)=>{g.gain.value=1-x;}}},
+    async ctx=>{await constructors[4]();const n=new AudioWorkletNode(ctx,'pitch-shift');return{in:n,out:n,update:(x)=>{n.parameters.get('ratio').value=Math.pow(2,(7/12))*x;}}},
+    async ctx=>{await constructors[5]();const n=new AudioWorkletNode(ctx,'flanger');return{in:n,out:n,update:(x,y)=>{n.parameters.get('d').value=0.001+0.009*x;n.parameters.get('fb').value=y;n.parameters.get('lfo').value=0.25;}}},
+    async ctx=>{await constructors[6]();const n=new AudioWorkletNode(ctx,'phaser');return{in:n,out:n,update:(x)=>{n.parameters.get('freq').value=0.1+4.9*x;}}}
+  ];
+
+  Promise.all(constructors.map(c=>c())).then(()=>{console.log('KaossPad OK');startDemoTone();});
+
+  let activeBank=0;let current=null;let currentIdx=-1;
+  function setBank(b){activeBank=b|0;}
+  function triggerCorner(i,x,y,held){const idx=activeBank*4+i;if(idx!==currentIdx){const maker=progs[idx];if(maker){const fx=maker(ctx);nodeIn.disconnect();nodeIn.connect(dry);nodeIn.connect(fx.in);fx.out.connect(wet);const t=ctx.currentTime;dry.gain.setValueAtTime(1,t);wet.gain.setValueAtTime(0,t);dry.gain.linearRampToValueAtTime(0,t+0.04);wet.gain.linearRampToValueAtTime(1,t+0.04);setTimeout(()=>{if(current){try{nodeIn.disconnect(current.in);current.out.disconnect(wet);}catch{}}current=fx;currentIdx=idx;},50);}}if(current&&current.update)current.update(clamp(x),clamp(y),held);}
+  return{nodeIn,nodeOut,setBank,triggerCorner};
+}
+
+function setupFxPadNodes(){
+  if(!audioContext) return;fxPadEngine=createFxPadEngine(audioContext);masterGain.connect(fxPadEngine.nodeIn);fxPadEngine.nodeOut.connect(videoGain);setFxPadBank=fxPadEngine.setBank;triggerFxCorner=fxPadEngine.triggerCorner;}
+
+function updateFXPad(x,y,held){if(triggerFxCorner){const c=(y<0.5?0:2)+(x>0.5?1:0);triggerFxCorner(c,clamp(x),clamp(y),held);}}
+
+function injectFXPadUI(){
+  const html=`<div id="fxpad-wrap" style="position:fixed;right:20px;bottom:20px;z-index:2147483647;font-family:sans-serif;user-select:none;">
+  <div id="fxpad" style="width:256px;height:256px;background:#222;touch-action:none"></div>
+  <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
+    <button class="bank-btn">BANK 1</button>
+    <button class="bank-btn">BANK 2</button>
+    <button class="bank-btn">BANK 3</button>
+    <button class="bank-btn">BANK 4</button>
+    <div id="fxLamp" style="width:12px;height:12px;border-radius:50%;background:red;margin-left:8px;"></div>
+  </div></div>`;
+  const temp=document.createElement('div');temp.innerHTML=html;document.body.appendChild(temp.firstChild);
+  const pad=document.getElementById('fxpad');fxPadLamp=document.getElementById('fxLamp');
+  const btns=document.querySelectorAll('#fxpad-wrap .bank-btn');btns.forEach((b,i)=>b.addEventListener('click',()=>{if(setFxPadBank)setFxPadBank(i);}));
+  function pos(e){const r=pad.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];}
+  pad.addEventListener('pointerdown',e=>{if(audioContext.state==='suspended')audioContext.resume();const [x,y]=pos(e);updateFXPad(x,y,true);pad.setPointerCapture(e.pointerId);});
+  pad.addEventListener('pointermove',e=>{if(e.buttons){const [x,y]=pos(e);updateFXPad(x,y,true);}});
+  pad.addEventListener('pointerup',e=>{const [x,y]=pos(e);updateFXPad(x,y,false);pad.releasePointerCapture(e.pointerId);});
+}
+
+document.addEventListener('pointerdown',async()=>{if(audioContext.state==='suspended')await audioContext.resume();if(fxPadLamp)fxPadLamp.style.background='lime';},{once:true});
+if(audioContext)audioContext.onstatechange=()=>{if(fxPadLamp)fxPadLamp.style.background=audioContext.state==='running'?'lime':'red';};
+
+function startDemoTone(){const osc=audioContext.createOscillator();const g=audioContext.createGain();g.gain.value=0.2;osc.frequency.value=440;osc.connect(g).connect(fxPadEngine.nodeIn);const a=audioContext.createAnalyser();fxPadEngine.nodeOut.connect(a);osc.start();osc.stop(audioContext.currentTime+2);const buf=new Float32Array(a.fftSize);let ok=false;const check=()=>{a.getFloatTimeDomainData(buf);let s=0;for(const v of buf)s+=v*v;if(Math.sqrt(s/buf.length)>Math.pow(10,-60/20))ok=true;};const int=setInterval(check,100);setTimeout(()=>{clearInterval(int);console.log(ok?'PASS':'FAIL');},2100);for(let i=0;i<=20;i++){const x=i/20;const y=1-x;updateFXPad(x,y,true);}updateFXPad(1,0,false);} 
 
 // Make minimal UI bar responsive on smaller videos
 (() => {
