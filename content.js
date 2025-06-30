@@ -762,7 +762,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadCanvas = null,
       fxPadDragHandle = null,
       fxPadDropdowns = [],
-      fxPadStickyBtn = null,
       fxPadModeBtn = null,
       fxPadDragOnlyBtn = null,
       fxPadMultiMode = false,
@@ -8885,21 +8884,14 @@ function buildFxPadWindow() {
     fxPadDropdowns[i]=sel; wrap.appendChild(sel);
   }
 
-  fxPadStickyBtn = document.createElement('button');
-  fxPadStickyBtn.className = 'looper-btn';
-  fxPadStickyBtn.textContent = fxPadSticky ? 'Active On' : 'Active Off';
-  fxPadStickyBtn.style.position = 'absolute';
-  fxPadStickyBtn.style.left = '4px';
-  fxPadStickyBtn.style.bottom = '4px';
-  fxPadStickyBtn.addEventListener('click',toggleFxPadSticky);
-  wrap.appendChild(fxPadStickyBtn);
-
   fxPadDragOnlyBtn = document.createElement('button');
   fxPadDragOnlyBtn.className = 'looper-btn';
-  fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag On' : 'On Drag Off';
+  fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag' : 'Active';
   fxPadDragOnlyBtn.style.position = 'absolute';
-  fxPadDragOnlyBtn.style.left = '70px';
+  fxPadDragOnlyBtn.style.left = '4px';
   fxPadDragOnlyBtn.style.bottom = '4px';
+  fxPadDragOnlyBtn.style.background = fxPadDragOnly ? '#555' : '#0a0';
+  fxPadDragOnlyBtn.style.color = '#fff';
   fxPadDragOnlyBtn.addEventListener('click',toggleFxPadDragOnly);
   wrap.appendChild(fxPadDragOnlyBtn);
 
@@ -8997,13 +8989,15 @@ async function handleFxPadJoystick(x, y) {
 
 function toggleFxPadSticky(){
   fxPadSticky = !fxPadSticky;
-  if (fxPadStickyBtn) fxPadStickyBtn.textContent = fxPadSticky ? 'Active On' : 'Active Off';
   drawFxPadBall();
 }
 
 function toggleFxPadDragOnly(){
   fxPadDragOnly = !fxPadDragOnly;
-  if (fxPadDragOnlyBtn) fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag On' : 'On Drag Off';
+  if (fxPadDragOnlyBtn){
+    fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag' : 'Active';
+    fxPadDragOnlyBtn.style.background = fxPadDragOnly ? '#555' : '#0a0';
+  }
   if(fxPadDragOnly && !fxPadDragging && fxPadEngine){
     fxPadBall.x = 0.5;
     fxPadBall.y = 0.5;
