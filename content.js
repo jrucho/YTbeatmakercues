@@ -761,6 +761,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadDropdowns = [],
       fxPadPhysBtn = null,
       fxPadPhysics = false,
+      fxPadModeBtn = null,
+      fxPadMultiMode = false,
       fxPadAnimId = 0,
       fxPadPrev = {x:0,y:0},
       fxPadLastTime = 0,
@@ -3553,6 +3555,12 @@ async function createFxPadEngine(ctx){
   const nodeIn=ctx.createGain(); const nodeOut=ctx.createGain(); const dry=ctx.createGain(); nodeIn.connect(dry).connect(nodeOut);
   const wetGains=[0,1,2,3].map(()=>{const g=ctx.createGain(); g.gain.value=0; g.connect(nodeOut); return g;});
   const effects=[null,null,null,null];
+  let multiMode=false;
+  function setMultiMode(m){
+    multiMode=m;
+    for(let i=1;i<4;i++) wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04);
+    dry.gain.setTargetAtTime(1,ctx.currentTime,0.04);
+  }
   async function setEffect(i,type){
     if(effects[i]){ nodeIn.disconnect(effects[i].in); effects[i].out.disconnect(wetGains[i]); }
     let e=null;
@@ -3579,9 +3587,23 @@ async function createFxPadEngine(ctx){
     else if(type==='reverb') e=createReverbEffect(ctx);
     if(e){ nodeIn.connect(e.in); e.out.connect(wetGains[i]); effects[i]=e; wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04); }
   }
-  function triggerCorner(active,x,y,held){
+  function triggerCorner(x,y,held){
+    if(!multiMode){
+      const mix=Math.min(1,Math.hypot(x-0.5,y-0.5)*Math.SQRT2);
+      wetGains[0].gain.linearRampToValueAtTime(mix,ctx.currentTime+0.04);
+      dry.gain.linearRampToValueAtTime(1-mix,ctx.currentTime+0.04);
+      if(effects[0]&&effects[0].update) effects[0].update(x,y,held);
+      return;
+    }
     const corners=[[0,0],[1,0],[0,1],[1,1]]; let mixes=[];
-    for(let k=0;k<4;k++){ const [cx,cy]=corners[k]; const d=Math.hypot(x-cx,y-cy); const m=Math.max(0,1-d/Math.SQRT2); mixes[k]=m; wetGains[k].gain.linearRampToValueAtTime(m,ctx.currentTime+0.04); if(effects[k]&&effects[k].update) effects[k].update(x,y,held); }
+    for(let k=0;k<4;k++){
+      const [cx,cy]=corners[k];
+      const d=Math.hypot(x-cx,y-cy);
+      const m=Math.max(0,1-d/Math.SQRT2);
+      mixes[k]=m;
+      wetGains[k].gain.linearRampToValueAtTime(m,ctx.currentTime+0.04);
+      if(effects[k]&&effects[k].update) effects[k].update(x,y,held);
+    }
     dry.gain.linearRampToValueAtTime(1-Math.max(...mixes),ctx.currentTime+0.04);
   }
   await setEffect(0,'vinylBreak');
@@ -3589,7 +3611,7 @@ async function createFxPadEngine(ctx){
   await setEffect(2,'flanger');
   await setEffect(3,'tremolo');
   console.log('KaossPad OK');
-  return {nodeIn,nodeOut,setEffect,triggerCorner};
+  return {nodeIn,nodeOut,setEffect,triggerCorner,setMultiMode};
 }
 
 async function setupFxPadNodes() {
@@ -3598,6 +3620,7 @@ async function setupFxPadNodes() {
   fxPadMasterOut = audioContext.createGain();
   fxPadSetEffect = fxPadEngine.setEffect;
   fxPadTriggerCorner = fxPadEngine.triggerCorner;
+  fxPadEngine.setMultiMode(fxPadMultiMode);
   fxPadMasterIn.connect(fxPadEngine.nodeIn);
   fxPadEngine.nodeOut.connect(fxPadMasterOut);
 }
@@ -8538,6 +8561,7 @@ function buildFxPadWindow() {
     if(i===2){sel.style.left='0';sel.style.bottom='0';}
     if(i===3){sel.style.right='0';sel.style.bottom='0';}
     sel.addEventListener('change',()=>{fxPadSetEffect&&fxPadSetEffect(i,sel.value);});
+    if(i>0 && !fxPadMultiMode) sel.style.display='none';
     fxPadDropdowns[i]=sel; wrap.appendChild(sel);
   }
 
@@ -8545,11 +8569,19 @@ function buildFxPadWindow() {
   fxPadPhysBtn.className = 'looper-btn';
   fxPadPhysBtn.textContent = 'Physics Off';
   fxPadPhysBtn.style.position = 'absolute';
-  fxPadPhysBtn.style.left = '50%';
+  fxPadPhysBtn.style.left = '4px';
   fxPadPhysBtn.style.bottom = '4px';
-  fxPadPhysBtn.style.transform = 'translateX(-50%)';
   fxPadPhysBtn.addEventListener('click',toggleFxPadPhysics);
   wrap.appendChild(fxPadPhysBtn);
+
+  fxPadModeBtn = document.createElement('button');
+  fxPadModeBtn.className = 'looper-btn';
+  fxPadModeBtn.textContent = fxPadMultiMode ? '4-Corner' : 'Single FX';
+  fxPadModeBtn.style.position = 'absolute';
+  fxPadModeBtn.style.right = '4px';
+  fxPadModeBtn.style.bottom = '4px';
+  fxPadModeBtn.addEventListener('click',toggleFxPadMode);
+  wrap.appendChild(fxPadModeBtn);
 
   document.body.appendChild(fxPadContainer);
   makePanelDraggable(fxPadContainer, fxPadDragHandle, 'ytbm_fxPadPos');
@@ -8590,7 +8622,7 @@ function handleFxPadPointer(e){
   fxPadLastTime=now;
   fxPadBall.x=x; fxPadBall.y=y;
   drawFxPadBall();
-  if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(0,x,y,fxPadSticky);
+  if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(x,y,fxPadSticky);
 }
 
 function startFxPadAnim(){
@@ -8612,7 +8644,7 @@ function startFxPadAnim(){
       if(Math.abs(fxPadBall.y-0.5)<0.001) fxPadBall.y=0.5;
     }
     drawFxPadBall();
-    if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(0,fxPadBall.x,fxPadBall.y,fxPadSticky);
+    if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
     fxPadAnimId=requestAnimationFrame(step);
   };
   step();
@@ -8623,9 +8655,24 @@ function toggleFxPadPhysics(){
   fxPadPhysBtn.textContent = fxPadPhysics ? 'Physics On' : 'Physics Off';
 }
 
+function toggleFxPadMode(){
+  fxPadMultiMode = !fxPadMultiMode;
+  if (fxPadModeBtn) fxPadModeBtn.textContent = fxPadMultiMode ? '4-Corner' : 'Single FX';
+  if (fxPadEngine && fxPadEngine.setMultiMode) fxPadEngine.setMultiMode(fxPadMultiMode);
+  for(let i=1;i<fxPadDropdowns.length;i++){
+    fxPadDropdowns[i].style.display = fxPadMultiMode ? 'block' : 'none';
+  }
+}
+
 async function showFxPadWindowToggle(){
   if(!fxPadContainer) buildFxPadWindow();
-  if(fxPadContainer.style.display==='block'){ fxPadContainer.style.display='none'; fxPadActive=false; cancelAnimationFrame(fxPadAnimId); return; }
+  if(fxPadContainer.style.display==='block'){
+    fxPadContainer.style.display='none';
+    fxPadActive=false;
+    cancelAnimationFrame(fxPadAnimId);
+    applyAllFXRouting();
+    return;
+  }
   fxPadContainer.style.display='block';
   await ensureAudioContext();
   if(!fxPadEngine) await setupFxPadNodes();
