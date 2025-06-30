@@ -9029,11 +9029,12 @@ function toggleFxPadMode(){
 
 function deactivateFxPad(){
   fxPadActive = false;
-  fxPadSticky = false;
-  fxPadBall.x = 0.5;
-  fxPadBall.y = 0.5;
   if (fxPadEngine) fxPadEngine.triggerCorner(0.5,0.5,false);
   cancelAnimationFrame(fxPadAnimId);
+  if(!fxPadSticky){
+    fxPadBall.x = 0.5;
+    fxPadBall.y = 0.5;
+  }
   drawFxPadBall();
   applyAllFXRouting();
 }
