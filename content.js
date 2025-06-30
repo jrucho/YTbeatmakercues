@@ -9472,9 +9472,3 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   document.head.appendChild(style);
 })();
 
-document.addEventListener('pointerdown', async () => {
-  if (audioContext && audioContext.state === 'suspended') {
-    try { await audioContext.resume(); }
-    catch (err) { console.error('AudioContext resume failed:', err); }
-  }
-}, { once: true });
