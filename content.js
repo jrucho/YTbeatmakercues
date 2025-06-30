@@ -496,7 +496,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverb: "q",
         cassette: "w",
         randomCues: "-",
-        instrumentToggle: "n"
+        instrumentToggle: "n",
+        fxPad: "x"
       },
       midiPresets = [],
       presetSelect = null,
@@ -528,6 +529,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         cassetteToggle: 30,
         randomCues: 28,
         instrumentToggle: 27,
+        fxPadToggle: 26,
         superKnob: 71          // MIDI CC to move selected cue
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
@@ -752,7 +754,21 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       reverbButtonMin = null,
       cassetteButtonMin = null,
       pitchTargetButton = null,
-      pitchTargetButtonMin = null;
+      pitchTargetButtonMin = null,
+      fxPadContainer = null,
+      fxPadCanvas = null,
+      fxPadDragHandle = null,
+      fxPadDropdowns = [],
+      fxPadToggleBtn = null,
+      fxPadEngine = null,
+      fxPadMasterIn = null,
+      fxPadMasterOut = null,
+      fxPadSetEffect = null,
+      fxPadTriggerCorner = null,
+      fxPadActive = false,
+      fxPadBall = {x:0.5,y:0.5},
+      fxPadSticky = false,
+      fxPadDragging = false;
       deckA = null,
       deckB = null,
       gainA = null,
@@ -3104,6 +3120,14 @@ async function setupAudioNodes() {
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
+
+  masterGain.connect(fxPadMasterIn);
+  if (fxPadActive && fxPadEngine) {
+    fxPadMasterIn.connect(fxPadEngine.nodeIn);
+    fxPadEngine.nodeOut.connect(fxPadMasterOut);
+  } else {
+    fxPadMasterIn.connect(fxPadMasterOut);
+  }
   bus4Gain.connect(masterGain);
 
   eqFilterNode = audioContext.createBiquadFilter();
@@ -3118,6 +3142,8 @@ async function setupAudioNodes() {
 
   // Cassette node using the AudioWorklet version.
   cassetteNode = await createCassetteNode(audioContext);
+
+  await setupFxPadNodes();
 
   applyAllFXRouting();
 }
@@ -3315,6 +3341,167 @@ async function createLoopRecorderNode(ctx) {
   return new AudioWorkletNode(ctx, 'loop-recorder');
 }
 
+async function createVinylBreakNode(ctx) {
+  const code = `
+    class VinylBreakProc extends AudioWorkletProcessor {
+      constructor(){
+        super();
+        this.speed = 1;
+        this.len = sampleRate * 2;
+        this.buf = [new Float32Array(this.len), new Float32Array(this.len)];
+        this.w = 0; this.r = 0;
+        this.port.onmessage = e=>{ if(e.data.speed!==undefined) this.speed=e.data.speed; };
+      }
+      process(inputs,outputs){
+        const i=inputs[0],o=outputs[0];
+        if(!i.length) return true;
+        for(let n=0;n<i[0].length;n++){
+          for(let c=0;c<i.length;c++){
+            this.buf[c][this.w]=i[c][n];
+            const ri = this.r|0;
+            o[c][n]=this.buf[c][ri];
+          }
+          this.w=(this.w+1)%this.len;
+          this.r+=this.speed;
+          if(this.r>=this.len) this.r-=this.len;
+        }
+        return true;
+      }
+    }
+    registerProcessor('vinyl-break', VinylBreakProc);
+  `;
+  const url = URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  return new AudioWorkletNode(ctx,'vinyl-break');
+}
+
+async function createStutterNode(ctx) {
+  const code = `
+    class StutterProc extends AudioWorkletProcessor {
+      constructor(){
+        super();
+        this.loop=false; this.length=2048; this.bufLen=sampleRate; this.buf=[new Float32Array(this.bufLen),new Float32Array(this.bufLen)]; this.pos=0;
+        this.port.onmessage=e=>{ if(e.data.loop!==undefined) this.loop=e.data.loop; if(e.data.length) this.length=Math.min(this.bufLen,e.data.length); };
+      }
+      process(inputs,outputs){
+        const i=inputs[0],o=outputs[0];
+        if(!i.length) return true;
+        for(let n=0;n<i[0].length;n++){
+          for(let c=0;c<i.length;c++){
+            if(!this.loop) this.buf[c][this.pos]=i[c][n];
+            o[c][n]=this.buf[c][(this.pos)%this.length];
+          }
+          this.pos=(this.pos+1)%this.bufLen;
+          if(this.loop) this.pos%=this.length;
+        }
+        return true;
+      }
+    }
+    registerProcessor('stutter-proc', StutterProc);
+  `;
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  return new AudioWorkletNode(ctx,'stutter-proc');
+}
+
+async function createPhaserNode(ctx) {
+  const code = `
+    class PhaserProc extends AudioWorkletProcessor {
+      constructor(){ super(); this.phase=0; this.rate=0.5; this.state=[]; }
+      process(inputs,outputs){
+        const i=inputs[0],o=outputs[0]; if(!i.length) return true;
+        for(let c=0;c<i.length;c++) if(!this.state[c]) this.state[c]=new Array(8).fill(0);
+        const len=i[0].length;
+        for(let n=0;n<len;n++){
+          const f=1000+800*Math.sin(this.phase); this.phase+=this.rate/sampleRate*2*Math.PI; const w=2*Math.PI*f/sampleRate; const a=(Math.sin(w)-1)/(Math.sin(w)+1);
+          for(let c=0;c<i.length;c++){
+            let x=i[c][n];
+            for(let s=0;s<4;s++){ const y=-a*x+this.state[c][s*2]; this.state[c][s*2]=x; this.state[c][s*2+1]=y; x=y; }
+            o[c][n]=x;
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor('phaser-proc', PhaserProc);
+  `;
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  return new AudioWorkletNode(ctx,'phaser-proc');
+}
+
+function createEchoBreakEffect(ctx){
+  const input=ctx.createGain(); const delay=ctx.createDelay(); delay.delayTime.value=0.2; const fb=ctx.createGain(); fb.gain.value=0.3; input.connect(delay); delay.connect(fb).connect(delay); const out=ctx.createGain(); delay.connect(out); return {in:input,out,out,update(x,y){delay.delayTime.value=0.05+0.45*y; fb.gain.value=x;}};
+}
+
+function createFlangerEffect(ctx){
+  const input=ctx.createGain(); const delay=ctx.createDelay(); const fb=ctx.createGain(); const lfo=ctx.createOscillator(); const lfoGain=ctx.createGain(); lfo.type='sine'; lfo.frequency.value=0.25; lfoGain.gain.value=0.005; lfo.connect(lfoGain).connect(delay.delayTime); lfo.start(); input.connect(delay); delay.connect(fb).connect(delay); const out=ctx.createGain(); delay.connect(out); return {in:input,out,out,update(x,y){lfoGain.gain.value=0.001+0.009*x; lfo.frequency.value=0.1+5*y; fb.gain.value=0.1+0.8*x;}};
+}
+
+function createTremoloEffect(ctx){
+  const input=ctx.createGain(); const out=ctx.createGain(); const lfo=ctx.createOscillator(); const depth=ctx.createGain(); lfo.type='sine'; lfo.frequency.value=5; depth.gain.value=0; lfo.connect(depth).connect(out.gain); input.connect(out); lfo.start(); return {in:input,out,out,update(x,y){depth.gain.value=x; lfo.frequency.value=0.5+10*y;}};
+}
+
+function createAutopanEffect(ctx){
+  const input=ctx.createGain(); const panner=ctx.createStereoPanner(); const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=0; lfo.type='sine'; lfo.frequency.value=2; lfo.connect(depth).connect(panner.pan); lfo.start(); input.connect(panner); const out=ctx.createGain(); panner.connect(out); return {in:input,out,out,update(x,y){depth.gain.value=x; lfo.frequency.value=0.5+8*y;}};
+}
+
+function createReverbEffect(ctx){
+  const input=ctx.createGain(); const conv=ctx.createConvolver(); conv.buffer=generateSimpleReverbIR(ctx); const mix=ctx.createGain(); input.connect(conv).connect(mix); return {in:input,out:mix,update(x,y){mix.gain.value=Math.max(0,Math.min(1,x));}};
+}
+
+async function createVinylBreakEffect(ctx){
+  const node=await createVinylBreakNode(ctx); return {in:node, out:node, update(x,y){ node.port.postMessage({speed:0.2+0.8*(1-y)}); }};
+}
+
+async function createStutterEffect(ctx){
+  const node=await createStutterNode(ctx); return {in:node,out:node,update(x,y,held){ node.port.postMessage({loop:held,length:Math.floor(2048*(0.2+y*0.8))}); }};
+}
+
+async function createPhaserEffect(ctx){
+  const node=await createPhaserNode(ctx); return {in:node,out:node,update(x,y){ node.port.postMessage({}); }};
+}
+
+async function createFxPadEngine(ctx){
+  const nodeIn=ctx.createGain(); const nodeOut=ctx.createGain(); const dry=ctx.createGain(); nodeIn.connect(dry).connect(nodeOut);
+  const wetGains=[0,1,2,3].map(()=>{const g=ctx.createGain(); g.gain.value=0; g.connect(nodeOut); return g;});
+  const effects=[null,null,null,null];
+  async function setEffect(i,type){
+    if(effects[i]){ nodeIn.disconnect(effects[i].in); effects[i].out.disconnect(wetGains[i]); }
+    let e=null;
+    if(type==='vinylBreak') e=await createVinylBreakEffect(ctx);
+    else if(type==='echoBreak') e=createEchoBreakEffect(ctx);
+    else if(type==='flanger') e=createFlangerEffect(ctx);
+    else if(type==='phaser') e=await createPhaserEffect(ctx);
+    else if(type==='tremolo') e=createTremoloEffect(ctx);
+    else if(type==='autopan') e=createAutopanEffect(ctx);
+    else if(type==='stutter') e=await createStutterEffect(ctx);
+    else if(type==='reverb') e=createReverbEffect(ctx);
+    if(e){ nodeIn.connect(e.in); e.out.connect(wetGains[i]); effects[i]=e; wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04); }
+  }
+  function triggerCorner(active,x,y,held){
+    const corners=[[0,0],[1,0],[0,1],[1,1]]; let mixes=[];
+    for(let k=0;k<4;k++){ const [cx,cy]=corners[k]; const d=Math.hypot(x-cx,y-cy); const m=Math.max(0,1-d/Math.SQRT2); mixes[k]=m; wetGains[k].gain.linearRampToValueAtTime(m,ctx.currentTime+0.04); if(effects[k]&&effects[k].update) effects[k].update(x,y,held); }
+    dry.gain.linearRampToValueAtTime(1-Math.max(...mixes),ctx.currentTime+0.04);
+  }
+  await setEffect(0,'vinylBreak');
+  await setEffect(1,'echoBreak');
+  await setEffect(2,'flanger');
+  await setEffect(3,'tremolo');
+  console.log('KaossPad OK');
+  return {nodeIn,nodeOut,setEffect,triggerCorner};
+}
+
+async function setupFxPadNodes() {
+  fxPadEngine = await createFxPadEngine(audioContext);
+  fxPadMasterIn = audioContext.createGain();
+  fxPadMasterOut = audioContext.createGain();
+  fxPadSetEffect = fxPadEngine.setEffect;
+  fxPadTriggerCorner = fxPadEngine.triggerCorner;
+  fxPadMasterIn.connect(fxPadEngine.nodeIn);
+  fxPadEngine.nodeOut.connect(fxPadMasterOut);
+}
+
 
 /**************************************
  * Single function to apply all FX routing
@@ -3329,6 +3516,8 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
+  if (fxPadMasterIn) fxPadMasterIn.disconnect();
+  if (fxPadMasterOut) fxPadMasterOut.disconnect();
   loFiCompNode.disconnect();
   postCompGain.disconnect();
   overallOutputGain.disconnect();
@@ -3406,8 +3595,8 @@ function applyAllFXRouting() {
   // but bus4 goes directly to the output (uncompressed).
   // If the compressor is OFF, bus4 merges with everyone else in masterGain.
   if (loFiCompActive) {
-    // bus1..3 => masterGain => loFiComp => postComp => destination
-    masterGain.connect(loFiCompNode);
+    // bus1..3 => masterGain => fxPad => loFiComp => postComp => destination
+    fxPadMasterOut.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
     postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
@@ -3418,7 +3607,7 @@ function applyAllFXRouting() {
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
-    masterGain.connect(overallOutputGain);
+    fxPadMasterOut.connect(overallOutputGain);
     overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
@@ -5070,6 +5259,12 @@ function onKeyDown(e) {
     e.preventDefault();
     e.stopPropagation();
     showInstrumentWindowToggle();
+    return;
+  }
+  if (k === extensionKeys.fxPad.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    showFxPadWindowToggle();
     return;
   }
 
@@ -6833,6 +7028,10 @@ function handleMIDIMessage(e) {
     showInstrumentWindowToggle();
     return;
   }
+  if (st === 144 && note === midiNotes.fxPadToggle) {
+    showFxPadWindowToggle();
+    return;
+  }
 
   if (instrumentPreset > 0) {
     if (command === 144 && e.data[2] > 0) {
@@ -7242,6 +7441,10 @@ function buildKeyMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-extkey="instrumentToggle" value="${escapeHtml(extensionKeys.instrumentToggle)}" maxlength="1">
     </div>
+    <div class="keymap-row">
+      <label>FX Pad:</label>
+      <input data-extkey="fxPad" value="${escapeHtml(extensionKeys.fxPad)}" maxlength="1">
+    </div>
     <h4></h4>
     <div id="user-samples-list"></div>
     <button class="looper-keymap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
@@ -7439,6 +7642,11 @@ function buildMIDIMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-midiname="instrumentToggle" value="${escapeHtml(String(midiNotes.instrumentToggle))}" type="number">
       <button data-detect="instrumentToggle" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>FX Pad:</label>
+      <input data-midiname="fxPadToggle" value="${escapeHtml(String(midiNotes.fxPadToggle))}" type="number">
+      <button data-detect="fxPadToggle" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
@@ -8171,6 +8379,112 @@ function buildInstrumentWindow() {
   updateInstrumentButtonColor();
   updateInstrumentPitchUI();
 }
+
+function buildFxPadWindow() {
+  fxPadContainer = document.createElement("div");
+  fxPadContainer.className = "looper-midimap-container";
+  fxPadContainer.style.width = "260px";
+  fxPadContainer.style.height = "260px";
+
+  fxPadDragHandle = document.createElement("div");
+  fxPadDragHandle.className = "looper-midimap-drag-handle";
+  fxPadDragHandle.innerText = "FX Pad";
+  fxPadContainer.appendChild(fxPadDragHandle);
+
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.width = "100%";
+  wrap.style.height = "calc(100% - 24px)";
+  fxPadContainer.appendChild(wrap);
+
+  fxPadCanvas = document.createElement("canvas");
+  fxPadCanvas.width = 260;
+  fxPadCanvas.height = 260;
+  fxPadCanvas.style.width = "100%";
+  fxPadCanvas.style.height = "100%";
+  fxPadCanvas.style.display = "block";
+  fxPadCanvas.addEventListener('pointerdown',e=>{fxPadDragging=true;handleFxPadPointer(e);if(e.detail===2) fxPadSticky=!fxPadSticky;});
+  wrap.appendChild(fxPadCanvas);
+
+  const types = ['vinylBreak','echoBreak','flanger','phaser','tremolo','autopan','stutter','reverb'];
+  for (let i=0;i<4;i++) {
+    const sel=document.createElement('select');
+    types.forEach(t=>sel.add(new Option(t,t)));
+    sel.style.position='absolute';
+    sel.style.zIndex='10';
+    if(i===0){sel.style.left='0';sel.style.top='0';}
+    if(i===1){sel.style.right='0';sel.style.top='0';}
+    if(i===2){sel.style.left='0';sel.style.bottom='0';}
+    if(i===3){sel.style.right='0';sel.style.bottom='0';}
+    sel.addEventListener('change',()=>{fxPadSetEffect&&fxPadSetEffect(i,sel.value);});
+    fxPadDropdowns[i]=sel; wrap.appendChild(sel);
+  }
+
+  fxPadToggleBtn = document.createElement('button');
+  fxPadToggleBtn.className='looper-btn';
+  fxPadToggleBtn.textContent='Disable';
+  fxPadToggleBtn.style.position='absolute';
+  fxPadToggleBtn.style.left='50%';
+  fxPadToggleBtn.style.bottom='4px';
+  fxPadToggleBtn.style.transform='translateX(-50%)';
+  fxPadToggleBtn.addEventListener('click',toggleFxPadActive);
+  wrap.appendChild(fxPadToggleBtn);
+
+  document.body.appendChild(fxPadContainer);
+  makePanelDraggable(fxPadContainer, fxPadDragHandle, 'ytbm_fxPadPos');
+  new ResizeObserver(resizeFxPadCanvas).observe(fxPadContainer);
+  fxPadContainer.style.display='none';
+}
+
+function resizeFxPadCanvas(){
+  if(!fxPadContainer||!fxPadCanvas) return;
+  const rect=fxPadContainer.getBoundingClientRect();
+  const size=Math.min(rect.width,rect.height);
+  fxPadCanvas.width=fxPadCanvas.height=size;
+  drawFxPadBall();
+}
+
+function drawFxPadBall(){
+  if(!fxPadCanvas) return;
+  const ctx=fxPadCanvas.getContext('2d');
+  const w=fxPadCanvas.width; const h=fxPadCanvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#222'; ctx.fillRect(0,0,w,h);
+  const x=fxPadBall.x*w; const y=fxPadBall.y*h;
+  ctx.fillStyle='orange'; ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+}
+
+function handleFxPadPointer(e){
+  const rect=fxPadCanvas.getBoundingClientRect();
+  let x=(e.clientX-rect.left)/rect.width;
+  let y=(e.clientY-rect.top)/rect.height;
+  x=Math.max(0,Math.min(1,x));
+  y=Math.max(0,Math.min(1,y));
+  if(e.metaKey&&e.altKey){x=fxPadBall.x+(x-fxPadBall.x)*0.2;y=fxPadBall.y+(y-fxPadBall.y)*0.2;}
+  else if(e.metaKey){x=fxPadBall.x+(x-fxPadBall.x)*0.5;y=fxPadBall.y+(y-fxPadBall.y)*0.5;}
+  fxPadBall.x=x; fxPadBall.y=y;
+  drawFxPadBall();
+  if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(0,x,y,fxPadSticky);
+}
+
+function toggleFxPadActive(){
+  fxPadActive = !fxPadActive;
+  fxPadToggleBtn.textContent = fxPadActive ? 'Disable' : 'Enable';
+  applyAllFXRouting();
+}
+
+async function showFxPadWindowToggle(){
+  if(!fxPadContainer) buildFxPadWindow();
+  if(fxPadContainer.style.display==='block'){ fxPadContainer.style.display='none'; fxPadActive=false; applyAllFXRouting(); return; }
+  fxPadContainer.style.display='block';
+  await ensureAudioContext();
+  if(!fxPadEngine) await setupFxPadNodes();
+  fxPadActive=true; applyAllFXRouting();
+  drawFxPadBall();
+}
+
+addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPointer(e);});
+addTrackedListener(document,'pointerup',()=>{fxPadDragging=false;});
 
 /* ------------------------------------------------------
    1.  Persistence
@@ -8941,6 +9255,7 @@ async function initialize() {
     buildMinimalUIBar();
     addTouchButtonToMinimalUI();
     addTouchSequencerButtonToAdvancedUI();
+    buildFxPadWindow();
     attachAudioPriming();
     loadCuePointsAtStartup();
     handleProgressBarDoubleClickForNewCue();
