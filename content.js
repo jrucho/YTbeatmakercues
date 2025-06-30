@@ -3552,14 +3552,19 @@ async function createPhaserSweepEffect(ctx){
 }
 
 async function createFxPadEngine(ctx){
-  const nodeIn=ctx.createGain(); const nodeOut=ctx.createGain(); const dry=ctx.createGain(); nodeIn.connect(dry).connect(nodeOut);
+  const nodeIn=ctx.createGain();
+  const nodeOut=ctx.createGain();
   const wetGains=[0,1,2,3].map(()=>{const g=ctx.createGain(); g.gain.value=0; g.connect(nodeOut); return g;});
   const effects=[null,null,null,null];
   let multiMode=false;
   function setMultiMode(m){
     multiMode=m;
-    for(let i=1;i<4;i++) wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04);
-    dry.gain.setTargetAtTime(1,ctx.currentTime,0.04);
+    if(!multiMode){
+      wetGains[0].gain.setValueAtTime(1,ctx.currentTime);
+      for(let i=1;i<4;i++) wetGains[i].gain.setValueAtTime(0,ctx.currentTime);
+    }else{
+      triggerCorner(0.5,0.5,false);
+    }
   }
   async function setEffect(i,type){
     if(effects[i]){ nodeIn.disconnect(effects[i].in); effects[i].out.disconnect(wetGains[i]); }
@@ -3589,22 +3594,15 @@ async function createFxPadEngine(ctx){
   }
   function triggerCorner(x,y,held){
     if(!multiMode){
-      const mix=Math.min(1,Math.hypot(x-0.5,y-0.5)*Math.SQRT2);
-      wetGains[0].gain.linearRampToValueAtTime(mix,ctx.currentTime+0.04);
-      dry.gain.linearRampToValueAtTime(1-mix,ctx.currentTime+0.04);
+      wetGains[0].gain.setValueAtTime(1,ctx.currentTime);
       if(effects[0]&&effects[0].update) effects[0].update(x,y,held);
       return;
     }
-    const corners=[[0,0],[1,0],[0,1],[1,1]]; let mixes=[];
+    const weights=[(1-x)*(1-y), x*(1-y), (1-x)*y, x*y];
     for(let k=0;k<4;k++){
-      const [cx,cy]=corners[k];
-      const d=Math.hypot(x-cx,y-cy);
-      const m=Math.max(0,1-d/Math.SQRT2);
-      mixes[k]=m;
-      wetGains[k].gain.linearRampToValueAtTime(m,ctx.currentTime+0.04);
+      wetGains[k].gain.linearRampToValueAtTime(weights[k],ctx.currentTime+0.04);
       if(effects[k]&&effects[k].update) effects[k].update(x,y,held);
     }
-    dry.gain.linearRampToValueAtTime(1-Math.max(...mixes),ctx.currentTime+0.04);
   }
   await setEffect(0,'vinylBreak');
   await setEffect(1,'echoBreak');
@@ -8556,6 +8554,8 @@ function buildFxPadWindow() {
     types.forEach(t=>sel.add(new Option(t,t)));
     sel.style.position='absolute';
     sel.style.zIndex='10';
+    sel.style.backgroundColor='#222';
+    sel.style.color='#fff';
     if(i===0){sel.style.left='0';sel.style.top='0';}
     if(i===1){sel.style.right='0';sel.style.top='0';}
     if(i===2){sel.style.left='0';sel.style.bottom='0';}
