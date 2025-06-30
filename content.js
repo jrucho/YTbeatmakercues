@@ -759,8 +759,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadCanvas = null,
       fxPadDragHandle = null,
       fxPadDropdowns = [],
-      fxPadPhysBtn = null,
-      fxPadPhysics = false,
+      fxPadStickyBtn = null,
       fxPadModeBtn = null,
       fxPadMultiMode = false,
       fxPadAnimId = 0,
@@ -3457,6 +3456,14 @@ async function createStutterEffect(ctx){
   const node=await createStutterNode(ctx); return {in:node,out:node,update(x,y,held){ node.port.postMessage({loop:held,length:Math.floor(2048*(0.2+y*0.8))}); }};
 }
 
+async function createBeatRepeatEffect(ctx){
+  const input = ctx.createGain();
+  const node = await createStutterNode(ctx);
+  const mix = ctx.createGain();
+  input.connect(node).connect(mix);
+  return {in:input, out:mix, update(x,y){node.port.postMessage({loop:true,length:Math.floor(2048*(0.05+0.45*y))}); mix.gain.value=x;}};
+}
+
 async function createPhaserEffect(ctx){
   const node=await createPhaserNode(ctx); return {in:node,out:node,update(x,y){ node.port.postMessage({}); }};
 }
@@ -3589,6 +3596,7 @@ async function createFxPadEngine(ctx){
     else if(type==='tremolo') e=createTremoloEffect(ctx);
     else if(type==='autopan') e=createAutopanEffect(ctx);
     else if(type==='stutter') e=await createStutterEffect(ctx);
+    else if(type==='beatRepeat') e=await createBeatRepeatEffect(ctx);
     else if(type==='reverb') e=createReverbEffect(ctx);
     if(e){ nodeIn.connect(e.in); e.out.connect(wetGains[i]); effects[i]=e; wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04); }
   }
@@ -8540,14 +8548,19 @@ function buildFxPadWindow() {
     fxPadPrev={x:fxPadBall.x,y:fxPadBall.y};
     fxPadLastTime=performance.now();
     handleFxPadPointer(e);
-    if(e.detail===2) fxPadSticky=!fxPadSticky;
+    if(e.detail===2){
+      fxPadSticky=!fxPadSticky;
+      if(fxPadStickyBtn) fxPadStickyBtn.textContent = fxPadSticky ? 'Stick On' : 'Stick Off';
+      drawFxPadBall();
+    }
   });
   wrap.appendChild(fxPadCanvas);
 
   const types = [
     'vinylBreak','duckComp','echoBreak','oneShotDelay','stutterGrain','freezeLooper',
     'jagFilter','bitDecimator','centerCancel','loopBreaker','resonator','reverbBreak',
-    'pitchUp','flangerJet','phaserSweep'
+    'pitchUp','flangerJet','phaserSweep','flanger','phaser','tremolo','autopan',
+    'stutter','reverb','beatRepeat'
   ];
   for (let i=0;i<4;i++) {
     const sel=document.createElement('select');
@@ -8565,14 +8578,14 @@ function buildFxPadWindow() {
     fxPadDropdowns[i]=sel; wrap.appendChild(sel);
   }
 
-  fxPadPhysBtn = document.createElement('button');
-  fxPadPhysBtn.className = 'looper-btn';
-  fxPadPhysBtn.textContent = 'Physics Off';
-  fxPadPhysBtn.style.position = 'absolute';
-  fxPadPhysBtn.style.left = '4px';
-  fxPadPhysBtn.style.bottom = '4px';
-  fxPadPhysBtn.addEventListener('click',toggleFxPadPhysics);
-  wrap.appendChild(fxPadPhysBtn);
+  fxPadStickyBtn = document.createElement('button');
+  fxPadStickyBtn.className = 'looper-btn';
+  fxPadStickyBtn.textContent = fxPadSticky ? 'Stick On' : 'Stick Off';
+  fxPadStickyBtn.style.position = 'absolute';
+  fxPadStickyBtn.style.left = '4px';
+  fxPadStickyBtn.style.bottom = '4px';
+  fxPadStickyBtn.addEventListener('click',toggleFxPadSticky);
+  wrap.appendChild(fxPadStickyBtn);
 
   fxPadModeBtn = document.createElement('button');
   fxPadModeBtn.className = 'looper-btn';
@@ -8604,7 +8617,8 @@ function drawFxPadBall(){
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle='#222'; ctx.fillRect(0,0,w,h);
   const x=fxPadBall.x*w; const y=fxPadBall.y*h;
-  ctx.fillStyle='orange'; ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=fxPadSticky?'#0f0':'orange';
+  ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
 }
 
 function handleFxPadPointer(e){
@@ -8629,17 +8643,9 @@ function startFxPadAnim(){
   cancelAnimationFrame(fxPadAnimId);
   const step=()=>{
     if(!fxPadDragging && !fxPadSticky){
-      if(fxPadPhysics){
-        fxPadBall.vx*=0.95; fxPadBall.vy*=0.95;
-        fxPadBall.vx+=(0.5-fxPadBall.x)*0.02;
-        fxPadBall.vy+=(0.5-fxPadBall.y)*0.02;
-        fxPadBall.x+=fxPadBall.vx*0.016;
-        fxPadBall.y+=fxPadBall.vy*0.016;
-      }else{
-        fxPadBall.x+= (0.5-fxPadBall.x)*0.2;
-        fxPadBall.y+= (0.5-fxPadBall.y)*0.2;
-        fxPadBall.vx=fxPadBall.vy=0;
-      }
+      fxPadBall.x += (0.5 - fxPadBall.x) * 0.2;
+      fxPadBall.y += (0.5 - fxPadBall.y) * 0.2;
+      fxPadBall.vx = fxPadBall.vy = 0;
       if(Math.abs(fxPadBall.x-0.5)<0.001) fxPadBall.x=0.5;
       if(Math.abs(fxPadBall.y-0.5)<0.001) fxPadBall.y=0.5;
     }
@@ -8650,9 +8656,10 @@ function startFxPadAnim(){
   step();
 }
 
-function toggleFxPadPhysics(){
-  fxPadPhysics = !fxPadPhysics;
-  fxPadPhysBtn.textContent = fxPadPhysics ? 'Physics On' : 'Physics Off';
+function toggleFxPadSticky(){
+  fxPadSticky = !fxPadSticky;
+  if (fxPadStickyBtn) fxPadStickyBtn.textContent = fxPadSticky ? 'Stick On' : 'Stick Off';
+  drawFxPadBall();
 }
 
 function toggleFxPadMode(){
@@ -8681,7 +8688,7 @@ async function showFxPadWindowToggle(){
 }
 
 addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPointer(e);});
-addTrackedListener(document,'pointerup',()=>{fxPadDragging=false; fxPadBall.vx*=0.5; fxPadBall.vy*=0.5;});
+addTrackedListener(document,'pointerup',()=>{fxPadDragging=false; fxPadBall.vx=0; fxPadBall.vy=0;});
 
 /* ------------------------------------------------------
    1.  Persistence
