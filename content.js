@@ -530,7 +530,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         randomCues: 28,
         instrumentToggle: 27,
         fxPadToggle: 26,
-        superKnob: 71          // MIDI CC to move selected cue
+        superKnob: 71,         // MIDI CC to move selected cue
+        fxPadX: 16,            // MIDI CC for FX pad X axis
+        fxPadY: 17             // MIDI CC for FX pad Y axis
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
       // Arrays of samples
@@ -7436,6 +7438,16 @@ function handleMIDIMessage(e) {
   }
 
   if (command === 0xb0) {
+    if (Number(note) === Number(midiNotes.fxPadX)) {
+      const x = e.data[2] / 127;
+      handleFxPadJoystick(x, fxPadBall.y);
+      return;
+    }
+    if (Number(note) === Number(midiNotes.fxPadY)) {
+      const y = 1 - (e.data[2] / 127);
+      handleFxPadJoystick(fxPadBall.x, y);
+      return;
+    }
     if (Number(note) === Number(midiNotes.superKnob)) {
       if (selectedCueKey) {
         if (isModPressed || isShiftKeyDown) {
@@ -8009,6 +8021,17 @@ function buildMIDIMapWindow() {
       <label>FX Pad:</label>
       <input data-midiname="fxPadToggle" value="${escapeHtml(String(midiNotes.fxPadToggle))}" type="number">
       <button data-detect="fxPadToggle" class="detect-midi-btn">Detect</button>
+    </div>
+    <h4>FX Pad Joystick</h4>
+    <div class="midimap-row">
+      <label>X CC:</label>
+      <input data-midicc="fxPadX" value="${escapeHtml(String(midiNotes.fxPadX))}" type="number">
+      <button data-ccdetect="fxPadX" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Y CC:</label>
+      <input data-midicc="fxPadY" value="${escapeHtml(String(midiNotes.fxPadY))}" type="number">
+      <button data-ccdetect="fxPadY" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
@@ -8877,6 +8900,20 @@ function startFxPadAnim(){
     fxPadAnimId=requestAnimationFrame(step);
   };
   step();
+}
+
+async function handleFxPadJoystick(x, y) {
+  await ensureAudioContext();
+  if (!fxPadEngine) await setupFxPadNodes();
+  fxPadBall.x = Math.max(0, Math.min(1, x));
+  fxPadBall.y = Math.max(0, Math.min(1, y));
+  if (!fxPadActive) {
+    fxPadActive = true;
+    applyAllFXRouting();
+    startFxPadAnim();
+  }
+  if (fxPadTriggerCorner) fxPadTriggerCorner(fxPadBall.x, fxPadBall.y, fxPadSticky);
+  if (fxPadContainer && fxPadContainer.style.display === 'block') drawFxPadBall();
 }
 
 function toggleFxPadSticky(){
