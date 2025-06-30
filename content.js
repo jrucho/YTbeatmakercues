@@ -9014,10 +9014,12 @@ function toggleFxPadDragOnly(){
     fxPadDragOnlyBtn.style.background = fxPadDragOnly ? '#555' : '#0a0';
   }
   if(fxPadDragOnly && !fxPadDragging && fxPadEngine){
-    fxPadBall.x = 0.5;
-    fxPadBall.y = 0.5;
+    if(!fxPadSticky){
+      fxPadBall.x = 0.5;
+      fxPadBall.y = 0.5;
+      drawFxPadBall();
+    }
     fxPadEngine.triggerCorner(0.5,0.5,false);
-    drawFxPadBall();
   }
 }
 
