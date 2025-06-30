@@ -3473,17 +3473,19 @@ function makeJagFilter(ctx){
 }
 
 function makeReverbBreak(ctx){
-  const inG=ctx.createGain(), conv=ctx.createConvolver(), outG=ctx.createGain();
-  if (!makeReverbBreak.ir){
-    fetch(chrome.runtime.getURL('assets/hugetail_plate.wav'))
-      .then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b))
-      .then(buf=>{ makeReverbBreak.ir=buf; conv.buffer=buf; });
-  } else conv.buffer=makeReverbBreak.ir;
+  const inG = ctx.createGain();
+  const conv = ctx.createConvolver();
+  const outG = ctx.createGain();
+  if (!makeReverbBreak.ir) {
+    // Use a generated impulse response if no external file is available
+    makeReverbBreak.ir = generateSimpleReverbIR(ctx);
+  }
+  conv.buffer = makeReverbBreak.ir;
   inG.connect(conv).connect(outG);
-  function update(x,y,held){
-    inG.gain.value = held?0:1;
+  function update(x, y, held) {
+    inG.gain.value = held ? 0 : 1;
     conv.normalize = false;
-    outG.gain.value = 0.2 + 3*y;
+    outG.gain.value = 0.2 + 3 * y;
   }
   return { in: inG, out: outG, update };
 }
