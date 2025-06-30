@@ -761,8 +761,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadContent = null,
       fxPadBall = null,
       fxPadPolling = null,
-      fxPadMasterIn = null,
-      fxPadMasterOut = null,
+      fxPadInput = null,
+      fxPadOutput = null,
       // UI windows
       eqWindowContainer = null,
       eqDragHandle = null,
@@ -3082,8 +3082,8 @@ async function setupAudioNodes() {
   bus4Gain = audioContext.createGain();
   masterGain = audioContext.createGain();
   masterGain.gain.value = 1;
-  fxPadMasterIn = audioContext.createGain();
-  fxPadMasterOut = audioContext.createGain();
+  fxPadInput = audioContext.createGain();
+  fxPadOutput = audioContext.createGain();
   overallOutputGain = audioContext.createGain();
   overallOutputGain.gain.value = 1;
 
@@ -3515,7 +3515,7 @@ function updateFXPad(x, y) {
  * Single function to apply all FX routing
  **************************************/
 function applyAllFXRouting() {
-  // First, disconnect everything that may have been connected:
+  // Disconnect previous routing
   videoGain.disconnect();
   if (antiClickGain) antiClickGain.disconnect();
   loopAudioGain.disconnect();
@@ -3524,12 +3524,12 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
-  fxPadMasterIn.disconnect();
-  fxPadMasterOut.disconnect();
+  fxPadInput.disconnect();
+  fxPadOutput.disconnect();
   fxPadEffects.forEach(fx => {
     if (fx && fx.input && fx.output) {
-      try { fx.input.disconnect(); } catch(e) {}
-      try { fx.output.disconnect(); } catch(e) {}
+      try { fx.input.disconnect(); } catch {}
+      try { fx.output.disconnect(); } catch {}
     }
   });
   loFiCompNode.disconnect();
@@ -3545,8 +3545,8 @@ function applyAllFXRouting() {
     videoPreviewElement._mediaSource.disconnect();
   }
 
-  // Decide how to chain the "video" path:
-  // videoGain -> antiClickGain? -> (optionally eq->reverb->cassette) -> bus1Gain
+  // Chain the video path:
+  // videoGain -> antiClickGain -> optional FX -> bus1Gain
   let currentVidNode;
   if (antiClickGain) {
     // Always feed the anti‑click gain from the video element
@@ -3570,8 +3570,7 @@ function applyAllFXRouting() {
   // Finally go to bus1Gain:
   currentVidNode.connect(bus1Gain);
 
-  // Do *the same chain* for loopAudioGain if you want it to share
-  // the same “video” effects. (Below applies if eqFilterApplyTarget==="video")
+  // Apply the same chain for loopAudioGain when targeting "video"
   let currentLoopNode = loopAudioGain;
   if (eqFilterActive && eqFilterApplyTarget === "video") {
     currentLoopNode.connect(eqFilterNode);
@@ -3588,7 +3587,7 @@ function applyAllFXRouting() {
   // Finally go to bus3Gain (loop’s existing bus):
   currentLoopNode.connect(bus3Gain);
 
-  // If you also want the recorded videoPreviewElement to have the same FX:
+  // Preview routing
   if (videoPreviewElement && videoPreviewElement._mediaSource) {
     let prev = videoPreviewElement._mediaSource;
     // Disconnect any existing connections
@@ -3597,22 +3596,24 @@ function applyAllFXRouting() {
     prev.connect(bus4Gain);
   }
 
-  // Now connect bus1..3 into masterGain, as normal:
+  // Mix buses into master
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
-  
-  masterGain.connect(fxPadMasterIn);
+
+  // FX pad chain
+  masterGain.connect(fxPadInput);
   if (fxPadActive && fxPadEffects.length) {
-    fxPadMasterIn.connect(fxPadEffects[0].input);
-    for (let i = 0; i < fxPadEffects.length - 1; i++) {
-      fxPadEffects[i].output.connect(fxPadEffects[i + 1].input);
-    }
-    fxPadEffects[fxPadEffects.length - 1].output.connect(fxPadMasterOut);
+    let node = fxPadInput;
+    fxPadEffects.forEach(fx => {
+      node.connect(fx.input);
+      node = fx.output;
+    });
+    node.connect(fxPadOutput);
   } else {
-    fxPadMasterIn.connect(fxPadMasterOut);
+    fxPadInput.connect(fxPadOutput);
   }
-  let masterOut = fxPadMasterOut;
+  let masterOut = fxPadOutput;
 
   // -------------------------------------------
   // COMPRESSOR ROUTING
@@ -6892,6 +6893,7 @@ function buildFXPadWindow() {
   dh.className = 'looper-midimap-drag-handle';
   dh.innerText = 'FX Pad';
   dh.style.width = '100%';
+  dh.style.boxSizing = 'border-box';
   fxPadContainer.appendChild(dh);
 
 
@@ -6902,21 +6904,20 @@ function buildFXPadWindow() {
   fxPadContent.style.touchAction = 'none';
   fxPadContent.style.zIndex = '1';
   fxPadContent.style.padding = '0';
-  fxPadContent.style.margin = '0 auto';
+  fxPadContent.style.margin = '0';
   fxPadContent.style.boxSizing = 'border-box';
   fxPadContainer.appendChild(fxPadContent);
 
   const applySize = () => {
     const dhh = dh.offsetHeight;
-    const w = fxPadContainer.clientWidth;
-    const h = fxPadContainer.clientHeight;
+    let w = fxPadContainer.clientWidth;
+    let h = fxPadContainer.clientHeight - dhh;
     let size = Math.max(w, h);
     if (size < 200) size = 200;
     fxPadContainer.style.width = size + 'px';
-    fxPadContainer.style.height = size + 'px';
-    const inner = size - dhh;
-    fxPadContent.style.width = inner + 'px';
-    fxPadContent.style.height = inner + 'px';
+    fxPadContainer.style.height = (size + dhh) + 'px';
+    fxPadContent.style.width = size + 'px';
+    fxPadContent.style.height = size + 'px';
   };
   const resizeObs = new ResizeObserver(applySize);
   resizeObs.observe(fxPadContainer);
