@@ -8887,7 +8887,7 @@ function buildFxPadWindow() {
 
   fxPadStickyBtn = document.createElement('button');
   fxPadStickyBtn.className = 'looper-btn';
-  fxPadStickyBtn.textContent = fxPadSticky ? 'Stick On' : 'Stick Off';
+  fxPadStickyBtn.textContent = fxPadSticky ? 'Active On' : 'Active Off';
   fxPadStickyBtn.style.position = 'absolute';
   fxPadStickyBtn.style.left = '4px';
   fxPadStickyBtn.style.bottom = '4px';
@@ -8896,7 +8896,7 @@ function buildFxPadWindow() {
 
   fxPadDragOnlyBtn = document.createElement('button');
   fxPadDragOnlyBtn.className = 'looper-btn';
-  fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag' : 'Always';
+  fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag On' : 'On Drag Off';
   fxPadDragOnlyBtn.style.position = 'absolute';
   fxPadDragOnlyBtn.style.left = '70px';
   fxPadDragOnlyBtn.style.bottom = '4px';
@@ -8972,7 +8972,7 @@ function startFxPadAnim(){
     }
     drawFxPadBall();
     if(fxPadActive && fxPadTriggerCorner){
-      if(fxPadDragOnly && !fxPadDragging && !fxPadSticky){
+      if(fxPadDragOnly && !fxPadDragging){
         fxPadTriggerCorner(0.5,0.5,false);
       }else{
         fxPadTriggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
@@ -8997,14 +8997,14 @@ async function handleFxPadJoystick(x, y) {
 
 function toggleFxPadSticky(){
   fxPadSticky = !fxPadSticky;
-  if (fxPadStickyBtn) fxPadStickyBtn.textContent = fxPadSticky ? 'Stick On' : 'Stick Off';
+  if (fxPadStickyBtn) fxPadStickyBtn.textContent = fxPadSticky ? 'Active On' : 'Active Off';
   drawFxPadBall();
 }
 
 function toggleFxPadDragOnly(){
   fxPadDragOnly = !fxPadDragOnly;
-  if (fxPadDragOnlyBtn) fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag' : 'Always';
-  if(fxPadDragOnly && !fxPadDragging && !fxPadSticky && fxPadEngine){
+  if (fxPadDragOnlyBtn) fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag On' : 'On Drag Off';
+  if(fxPadDragOnly && !fxPadDragging && fxPadEngine){
     fxPadBall.x = 0.5;
     fxPadBall.y = 0.5;
     fxPadEngine.triggerCorner(0.5,0.5,false);
@@ -9063,7 +9063,7 @@ addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPoint
 addTrackedListener(document,'pointerup',()=>{
   fxPadDragging=false;
   fxPadBall.vx=0; fxPadBall.vy=0;
-  if(fxPadActive && fxPadDragOnly && !fxPadSticky && fxPadTriggerCorner){
+  if(fxPadActive && fxPadDragOnly && fxPadTriggerCorner){
     fxPadTriggerCorner(0.5,0.5,false);
   }
 });
