@@ -3603,7 +3603,7 @@ function applyAllFXRouting() {
   bus3Gain.connect(masterGain);
   
   masterGain.connect(fxPadMasterIn);
-  if (fxPadEffects.length) {
+  if (fxPadActive && fxPadEffects.length) {
     fxPadMasterIn.connect(fxPadEffects[0].input);
     for (let i = 0; i < fxPadEffects.length - 1; i++) {
       fxPadEffects[i].output.connect(fxPadEffects[i + 1].input);
@@ -6880,8 +6880,8 @@ async function showFXPadWindowToggle() {
 function buildFXPadWindow() {
   fxPadContainer = document.createElement('div');
   fxPadContainer.className = 'looper-midimap-container';
-  fxPadContainer.style.width = '360px';
-  fxPadContainer.style.height = '360px';
+  fxPadContainer.style.width = '300px';
+  fxPadContainer.style.height = '300px';
   fxPadContainer.style.resize = 'both';
   fxPadContainer.style.overflow = 'visible';
   fxPadContainer.style.display = 'block';
@@ -6908,16 +6908,15 @@ function buildFXPadWindow() {
 
   const applySize = () => {
     const dhh = dh.offsetHeight;
-    let size = Math.min(
-      fxPadContainer.clientWidth,
-      fxPadContainer.clientHeight
-    ) - dhh;
-    if (size < 100) size = 100;
-    const total = size + dhh;
-    fxPadContainer.style.width = total + 'px';
-    fxPadContainer.style.height = total + 'px';
-    fxPadContent.style.width = size + 'px';
-    fxPadContent.style.height = size + 'px';
+    const w = fxPadContainer.clientWidth;
+    const h = fxPadContainer.clientHeight;
+    let size = Math.max(w, h);
+    if (size < 200) size = 200;
+    fxPadContainer.style.width = size + 'px';
+    fxPadContainer.style.height = size + 'px';
+    const inner = size - dhh;
+    fxPadContent.style.width = inner + 'px';
+    fxPadContent.style.height = inner + 'px';
   };
   const resizeObs = new ResizeObserver(applySize);
   resizeObs.observe(fxPadContainer);
