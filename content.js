@@ -745,12 +745,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       cassetteActive = false,
       // FX Pad
       fxPadEffects = [],
-      fxPadEffectTypes = {
-        tl: 'lowpass',
-        tr: 'flanger',
-        bl: 'phaser',
-        br: 'autopan'
-      },
+      fxPadEffectTypes = ['vinylBreak','echoBreak','jagFilter','reverbBreak'],
       fxPadActive = false,
       fxPadBallX = 0.5,
       fxPadBallY = 0.5,
@@ -785,9 +780,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       crossFadeTime = 0.20,   // 80 ms smoothed constant‑power fade
             compMode = "off";
 
+  document.addEventListener('pointerdown', async () => {
+    if (audioContext && audioContext.state === 'suspended') await audioContext.resume();
+  }, { once:true });
+
   const BUILTIN_DEFAULT_COUNT = 10;
   const BUILTIN_PRESET_COUNT = 12;
-  const FX_PAD_TYPES = ['lowpass','highpass','bandpass','flanger','phaser','tremolo','autopan','stutter'];
+  const FX_PAD_TYPES = ['vinylBreak','echoBreak','jagFilter','reverbBreak'];
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -3086,6 +3085,9 @@ async function setupAudioNodes() {
   fxPadOutput = audioContext.createGain();
   overallOutputGain = audioContext.createGain();
   overallOutputGain.gain.value = 1;
+  try { masterGain.disconnect(); } catch(e){}
+  masterGain.connect(fxPadInput);
+  fxPadOutput.connect(videoGain);
 
   loFiCompNode = audioContext.createDynamicsCompressor();
   loFiCompNode.threshold.value = -30;
@@ -3343,171 +3345,125 @@ async function createLoopRecorderNode(ctx) {
 }
 
 
-function createFxPadEffect(type) {
-  const input = audioContext.createGain();
-  let output = input;
-  const obj = { input, output, setIntensity: v => {} };
+function createFxPadEffect(type, ctx, transport) {
   switch (type) {
-    case 'lowpass': {
-      const f = audioContext.createBiquadFilter();
-      f.type = 'lowpass';
-      f.frequency.value = 22050;
-      input.connect(f);
-      output = f;
-      obj.output = f;
-      obj.setIntensity = v => { f.frequency.value = 22050 - v * 21000; };
-      break; }
-    case 'highpass': {
-      const f = audioContext.createBiquadFilter();
-      f.type = 'highpass';
-      f.frequency.value = 0;
-      input.connect(f);
-      output = f;
-      obj.output = f;
-      obj.setIntensity = v => { f.frequency.value = v * 8000; };
-      break; }
-    case 'bandpass': {
-      const f = audioContext.createBiquadFilter();
-      f.type = 'bandpass';
-      f.frequency.value = 1000;
-      f.Q.value = 0.0001;
-      input.connect(f);
-      output = f;
-      obj.output = f;
-      obj.setIntensity = v => { f.Q.value = 0.0001 + v * 20; };
-      break; }
-    case 'flanger': {
-      const d = audioContext.createDelay();
-      d.delayTime.value = 0;
-      const lfo = audioContext.createOscillator();
-      const lg = audioContext.createGain();
-      lfo.frequency.value = 0.3;
-      lg.gain.value = 0;
-      lfo.connect(lg).connect(d.delayTime);
-      lfo.start();
-      input.connect(d);
-      output = audioContext.createGain();
-      d.connect(output);
-      obj.output = output;
-      obj.setIntensity = v => { lg.gain.value = v * 0.008; };
-      obj.cleanup = () => { lfo.stop(); };
-      break; }
-    case 'phaser': {
-      const ap1 = audioContext.createBiquadFilter();
-      ap1.type = 'allpass';
-      ap1.frequency.value = 700;
-      const ap2 = audioContext.createBiquadFilter();
-      ap2.type = 'allpass';
-      ap2.frequency.value = 1500;
-      const lfo = audioContext.createOscillator();
-      const lg = audioContext.createGain();
-      lfo.frequency.value = 0.2;
-      lg.gain.value = 0;
-      lfo.connect(lg);
-      lg.connect(ap1.frequency);
-      lg.connect(ap2.frequency);
-      lfo.start();
-      input.connect(ap1);
-      ap1.connect(ap2);
-      output = ap2;
-      obj.output = ap2;
-      obj.setIntensity = v => { lg.gain.value = v * 800; };
-      obj.cleanup = () => { lfo.stop(); };
-      break; }
-    case 'tremolo': {
-      const g = audioContext.createGain();
-      const base = audioContext.createConstantSource();
-      const lfo = audioContext.createOscillator();
-      const lg = audioContext.createGain();
-      base.offset.value = 1;
-      base.connect(g.gain);
-      lfo.frequency.value = 5;
-      lg.gain.value = 0;
-      lfo.connect(lg).connect(g.gain);
-      base.start();
-      lfo.start();
-      input.connect(g);
-      output = g;
-      obj.output = g;
-      obj.setIntensity = v => {
-        base.offset.value = 1 - v / 2;
-        lg.gain.value = v / 2;
-      };
-      obj.cleanup = () => { lfo.stop(); base.stop(); };
-      break; }
-    case 'autopan': {
-      const p = audioContext.createStereoPanner();
-      const lfo = audioContext.createOscillator();
-      const lg = audioContext.createGain();
-      lfo.frequency.value = 3;
-      lg.gain.value = 0;
-      lfo.connect(lg).connect(p.pan);
-      lfo.start();
-      input.connect(p);
-      output = p;
-      obj.output = p;
-      obj.setIntensity = v => { lg.gain.value = v; };
-      obj.cleanup = () => { lfo.stop(); };
-      break; }
-    case 'stutter': {
-      const g = audioContext.createGain();
-      const lfo = audioContext.createOscillator();
-      lfo.type = 'square';
-      lfo.frequency.value = 6;
-      const dc = audioContext.createConstantSource();
-      dc.offset.value = 1;
-      const lg = audioContext.createGain();
-      lg.gain.value = 0;
-      dc.connect(g.gain);
-      lfo.connect(lg).connect(g.gain);
-      dc.start();
-      lfo.start();
-      input.connect(g);
-      output = g;
-      obj.output = g;
-      obj.setIntensity = v => { lg.gain.value = v; };
-      obj.cleanup = () => { lfo.stop(); dc.stop(); };
-      break; }
+    case 'vinylBreak':   return makeVinylBreak(ctx);
+    case 'echoBreak':    return makeEchoBreak(ctx, transport);
+    case 'jagFilter':    return makeJagFilter(ctx);
+    case 'reverbBreak':  return makeReverbBreak(ctx);
+    default:
+      console.warn('Unknown FX type:', type);
+      return { in: ctx.createGain(), out: ctx.createGain(), update(){} };
   }
-  obj.input = input;
-  obj.output = output;
-  return obj;
+}
+
+function makeVinylBreak(ctx){
+  const inG = ctx.createGain(), outG = ctx.createGain();
+  const rateParam = { value:1 };
+  const buf = new Float32Array(2048); let w=0;
+  const proc = ctx.createScriptProcessor(256,1,1);
+  proc.onaudioprocess = e => {
+    const I = e.inputBuffer.getChannelData(0);
+    const O = e.outputBuffer.getChannelData(0);
+    for(let i=0;i<O.length;++i){
+      buf[w] = I[i];
+      const r = rateParam.value;
+      w = (w + 1) & 2047;
+      const read = (w - Math.floor(r*2048) + 2048) & 2047;
+      O[i] = buf[read];
+    }
+  };
+  inG.connect(proc).connect(outG);
+
+  let brakeTimeout;
+  function update(x,y,held){
+    clearTimeout(brakeTimeout);
+    if (held){
+      const dur  = 0.2 + 4*x;
+      const step = rateParam.value / (dur*60);
+      brakeTimeout = setInterval(() => {
+        rateParam.value = Math.max(0.01, rateParam.value - step);
+      }, 16);
+    } else { rateParam.value = 1; }
+  }
+  return { in: inG, out: outG, update };
+}
+
+function makeEchoBreak(ctx, transport){
+  const inG=ctx.createGain(), mute=ctx.createGain(), del=ctx.createDelay(2),
+        fb =ctx.createGain(), mix=ctx.createGain(), outG=ctx.createGain();
+  mute.gain.value=1;
+  inG.connect(mute).connect(del).connect(fb).connect(del);
+  del.connect(mix).connect(outG);
+  function update(x,y,held){
+    const beat = 60/transport.bpm;
+    const div  = [0.25,0.5,1,2][Math.floor(x*4)];
+    del.delayTime.value = beat*div;
+    fb.gain.value = 0.4 + 0.55*y;
+    mute.gain.value = held ? 0 : 1;
+  }
+  return { in: inG, out: outG, update };
+}
+
+function makeJagFilter(ctx){
+  const inG=ctx.createGain(), vcf=ctx.createBiquadFilter(), outG=ctx.createGain();
+  vcf.type='lowpass'; vcf.frequency.value=5000;
+  const lfo=ctx.createOscillator(); lfo.type='square';
+  const depth=ctx.createGain(); depth.gain.value=5000;
+  lfo.connect(depth).connect(vcf.frequency); lfo.start();
+  inG.connect(vcf).connect(outG);
+  function update(x,y){
+    lfo.frequency.value = 2 + 10*x;
+    vcf.frequency.value = 200 + 8000*y;
+  }
+  return { in: inG, out: outG, update };
+}
+
+function makeReverbBreak(ctx){
+  const inG=ctx.createGain(), conv=ctx.createConvolver(), outG=ctx.createGain();
+  if (!makeReverbBreak.ir){
+    fetch(chrome.runtime.getURL('assets/hugetail_plate.wav'))
+      .then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b))
+      .then(buf=>{ makeReverbBreak.ir=buf; conv.buffer=buf; });
+  } else conv.buffer=makeReverbBreak.ir;
+  inG.connect(conv).connect(outG);
+  function update(x,y,held){
+    inG.gain.value = held?0:1;
+    conv.normalize = false;
+    outG.gain.value = 0.2 + 3*y;
+  }
+  return { in: inG, out: outG, update };
 }
 
 function setupFxPadNodes() {
   fxPadEffects.forEach(fx => {
-    try { fx.input.disconnect(); } catch(e) {}
-    if (fx.cleanup) try { fx.cleanup(); } catch(e) {}
+    try { fx.in.disconnect(); } catch {}
+    try { fx.out.disconnect(); } catch {}
   });
   fxPadEffects = [];
-  ['tl','tr','bl','br'].forEach(key => {
-    const fx = createFxPadEffect(fxPadEffectTypes[key]);
+  const transport = { get bpm() { return sequencerBPM; } };
+  fxPadEffectTypes.forEach(type => {
+    const fx = createFxPadEffect(type, audioContext, transport);
     fxPadEffects.push(fx);
   });
 }
 
 
+
 function resetFXPad() {
-  fxPadEffects.forEach(e => e.setIntensity(0));
   if (fxPadBall) {
     fxPadBallX = 0.5;
     fxPadBallY = 0.5;
     fxPadBall.style.left = '50%';
     fxPadBall.style.top = '50%';
   }
+  fxPadEffects.forEach(e => e.update?.(0.5, 0.5, false));
 }
 
 function updateFXPad(x, y) {
   if (!fxPadActive) return;
-  const r = Math.max(Math.abs(x - 0.5), Math.abs(y - 0.5)) * 2;
-  const tl = (1 - x) * (1 - y) * r * 2;
-  const tr = x * (1 - y) * r * 2;
-  const bl = (1 - x) * y * r * 2;
-  const br = x * y * r * 2;
-  const amounts = [tl, tr, bl, br];
-  amounts.forEach((v,i) => {
-    if (fxPadEffects[i]) fxPadEffects[i].setIntensity(Math.min(1, Math.max(0, v)));
-  });
+  const held = fxPadDragging || fxPadSticky;
+  fxPadEffects.forEach(fx => fx.update?.(x, y, held));
 }
 
 
@@ -3527,9 +3483,9 @@ function applyAllFXRouting() {
   fxPadInput.disconnect();
   fxPadOutput.disconnect();
   fxPadEffects.forEach(fx => {
-    if (fx && fx.input && fx.output) {
-      try { fx.input.disconnect(); } catch {}
-      try { fx.output.disconnect(); } catch {}
+    if (fx && fx.in && fx.out) {
+      try { fx.in.disconnect(); } catch {}
+      try { fx.out.disconnect(); } catch {}
     }
   });
   loFiCompNode.disconnect();
@@ -3606,8 +3562,8 @@ function applyAllFXRouting() {
   if (fxPadActive && fxPadEffects.length) {
     let node = fxPadInput;
     fxPadEffects.forEach(fx => {
-      node.connect(fx.input);
-      node = fx.output;
+      node.connect(fx.in);
+      node = fx.out;
     });
     node.connect(fxPadOutput);
   } else {
@@ -6925,7 +6881,7 @@ function buildFXPadWindow() {
   window.addEventListener('resize', applySize);
 
   const positions = ['tl','tr','bl','br'];
-  positions.forEach(pos => {
+  positions.forEach((pos, idx) => {
     const sel = document.createElement('select');
     sel.className = 'fxpad-select';
     sel.style.position = 'absolute';
@@ -6935,9 +6891,9 @@ function buildFXPadWindow() {
       const opt = document.createElement('option');
       opt.value = t; opt.innerText = t; sel.appendChild(opt);
     });
-    sel.value = fxPadEffectTypes[pos];
+    sel.value = fxPadEffectTypes[idx];
     sel.addEventListener('change', () => {
-      fxPadEffectTypes[pos] = sel.value;
+      fxPadEffectTypes[idx] = sel.value;
       setupFxPadNodes();
       applyAllFXRouting();
     });
