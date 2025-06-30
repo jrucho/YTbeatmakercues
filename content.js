@@ -2909,7 +2909,7 @@ async function ensureAudioContext() {
       latencyHint: "interactive", // lowest possible latency
       sampleRate: 48000
     });
-    setupAudioNodes();
+    await setupAudioNodes();
     initInstrumentAssets();
     await loadDefaultSamples();
     await loadUserSamplesFromStorage();
@@ -3453,10 +3453,11 @@ function makeEchoBreak(ctx, transport){
   inG.connect(mute).connect(del).connect(fb).connect(del);
   del.connect(mix).connect(outG);
   function update(x,y,held){
-    const beat = 60/transport.bpm;
+    const bpm = parseFloat(transport.bpm) || 120;
+    const beat = 60 / Math.max(1, bpm);
     const div  = [0.25,0.5,1,2][Math.floor(x*4)];
-    del.delayTime.value = beat*div;
-    fb.gain.value = 0.4 + 0.55*y;
+    del.delayTime.value = beat * div;
+    fb.gain.value = 0.4 + 0.55 * y;
     mute.gain.value = held ? 0 : 1;
   }
   return { in: inG, out: outG, update };
@@ -9367,16 +9368,16 @@ async function initialize() {
     if (!shouldRunOnThisPage()) return;
     let isAudioPrimed = false;
 
-    document.addEventListener('click', function primeAudio() {
+    document.addEventListener('click', async function primeAudio() {
       if (isAudioPrimed) return;
       isAudioPrimed = true;
 
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        setupAudioNodes();
+        await setupAudioNodes();
       }
       if (audioContext.state === 'suspended') {
-        audioContext.resume();
+        await audioContext.resume();
       }
       console.log("Audio primed on first click.");
     }, { once: true });
