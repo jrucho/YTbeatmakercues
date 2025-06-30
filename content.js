@@ -149,7 +149,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
     // Clean up any previous sink routing
     if (externalOutputDest) {
-      try { externalOutputDest.disconnect(); } catch {}
       externalOutputDest = null;
     }
     if (outputAudio) {
@@ -744,7 +743,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       cassetteNode = null,
       cassetteActive = false,
       // FX Pad
-      fxPadEffects = [],
+      fxPadEngine = null,
+        activeBank = 0,
+        fxPadLamp = null,
       fxPadActive = false,
       fxPadBallX = 0.5,
       fxPadBallY = 0.5,
@@ -779,13 +780,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       crossFadeTime = 0.20,   // 80 ms smoothed constant‑power fade
             compMode = "off";
 
-  document.addEventListener('pointerdown', async () => {
-    if (audioContext && audioContext.state === 'suspended') await audioContext.resume();
+  document.addEventListener("pointerdown", async () => {
+    if (audioContext && audioContext.state === "suspended") await audioContext.resume();
+    if (fxPadLamp) fxPadLamp.style.background = "lime";
   }, { once:true });
-
   const BUILTIN_DEFAULT_COUNT = 10;
+  audioContext.onstatechange = () => { if(fxPadLamp) fxPadLamp.style.background = (audioContext.state === "running") ? "lime" : "red"; };
   const BUILTIN_PRESET_COUNT = 12;
-  const FX_PAD_TYPES = ['vinylBreak','echoBreak','jagFilter','reverbBreak'];
   const PRESET_COLORS = [
     "#52a3cc",
     "#cca352",
@@ -954,9 +955,6 @@ async function setMicMode(mode) {
 
   // Clean up previous state
   if (micGainNode) {
-    try { micGainNode.disconnect(); } catch {}
-    try { micGainNode.disconnect(mainRecorderMix); } catch {}
-    try { micGainNode.disconnect(bus4Gain); } catch {}
   }
 
   if (mode === 0) {
@@ -2133,7 +2131,6 @@ function cleanupResources() {
     }
   });
   if (loopRecorderNode) {
-    try { mainRecorderMix.disconnect(loopRecorderNode); } catch {}
     loopRecorderNode.disconnect();
     loopRecorderNode = null;
     recordedFrames = [];
@@ -2948,7 +2945,6 @@ function initTwoDeck() {
   if (!srcA) {
     srcA = deckA._mediaSource = audioContext.createMediaElementSource(deckA);
   } else {
-    try { srcA.disconnect(); } catch {}
   }
 
   gainA = audioContext.createGain();
@@ -3080,13 +3076,9 @@ async function setupAudioNodes() {
   bus4Gain = audioContext.createGain();
   masterGain = audioContext.createGain();
   masterGain.gain.value = 1;
-  fxPadInput = audioContext.createGain();
-  fxPadOutput = audioContext.createGain();
   overallOutputGain = audioContext.createGain();
   overallOutputGain.gain.value = 1;
   try { masterGain.disconnect(); } catch(e){}
-  masterGain.connect(fxPadInput);
-  fxPadOutput.connect(videoGain);
 
   loFiCompNode = audioContext.createDynamicsCompressor();
   loFiCompNode.threshold.value = -30;
@@ -3342,190 +3334,99 @@ async function createLoopRecorderNode(ctx) {
 
   return new AudioWorkletNode(ctx, 'loop-recorder');
 }
-
-
-async function createFxPadEffect(type, ctx, transport) {
-  switch (type) {
-    case 'vinylBreak':
-      return await makeVinylBreak(ctx);
-    case 'echoBreak':
-      return makeEchoBreak(ctx, transport);
-    case 'jagFilter':
-      return makeJagFilter(ctx);
-    case 'reverbBreak':
-      return makeReverbBreak(ctx);
-    default:
-      console.warn('Unknown FX type:', type);
-      return { in: ctx.createGain(), out: ctx.createGain(), update(){} };
+async function createFxPadEngine(ctx, transport){
+  const nodeIn=ctx.createGain();
+  const nodeOut=ctx.createGain();
+  const fadeGainOld=ctx.createGain();
+  const fadeGainNew=ctx.createGain();
+  fadeGainOld.gain.value=1; fadeGainNew.gain.value=0;
+  nodeIn.connect(fadeGainOld).connect(nodeOut);
+  let activeIdx=-1; let activeFx=null;
+  const programs = [];
+  const worklets=[];
+  function clamp(v){return Math.min(Math.max(v,0),1);}
+  async function loadProcessor(name,code){
+    const blob=new Blob([code],{type:'application/javascript'});const url=URL.createObjectURL(blob);
+    await ctx.audioWorklet.addModule(url);URL.revokeObjectURL(url);
   }
-}
-
-async function makeVinylBreak(ctx) {
-  /*  AudioWorklet implementation
-   *  Live audio is written into a 64 k-sample ring-buffer.
-   *  A read pointer moves at the current ‘rate’ (1 → 0) so the
-   *  output slows down just like a turntable brake.
-   */
-  if (!ctx.audioWorklet) {
-    console.error("AudioWorklet not supported");        // graceful fallback
-    const bypass = ctx.createGain();
-    return { in: bypass, out: bypass, update(){} };
+  async function p0(){
+    await loadProcessor('vb',`class VB extends AudioWorkletProcessor{static get parameterDescriptors(){return[{name:'r',defaultValue:1,minValue:0.01,maxValue:1}]};constructor(){super();this.buf=new Float32Array(65536);this.w=0;this.r=0;}process(i,o,p){const ip=i[0][0]||[];const op=o[0];const r=p.r;for(let n=0;n<op.length;n++){this.buf[this.w]=ip[n]||0;this.w=(this.w+1)&65535;const rate=r.length>1?r[n]:r[0];op[n]=this.buf[(this.r|0)]||0;this.r=(this.r+rate)&65535;}return true;} }registerProcessor('vb',VB);`);
+    const n=new AudioWorkletNode(ctx,'vb');
+    return {in:n, out:n, update:(x,y,held)=>{const p=n.parameters.get('r');p.setValueAtTime(held?Math.max(0.05,y):1,ctx.currentTime);}};
   }
-
-  /* ------- 1 · dynamically register the processor -------- */
-  const workletCode = `
-    class VinylBreakProcessor extends AudioWorkletProcessor {
-      static get parameterDescriptors () {
-        return [{ name: 'rate', defaultValue: 1, minValue: 0.01, maxValue: 1 }];
-      }
-      constructor () {
-        super();
-        this.RING = 65536;                     // 64k circular buffer
-        this.buf  = new Float32Array(this.RING);
-        this.wPtr = 0;                         // write pointer
-        this.rPtr = 0;                         // read pointer (float)
-      }
-      process (inputs, outputs, params) {
-        const input  = inputs[0];
-        const output = outputs[0];
-        if (!input.length) return true;
-        const ip = input[0];
-        const op = output[0];
-        const rate = params.rate;
-        for (let i = 0; i < op.length; i++) {
-          /* write incoming sample */
-          this.buf[this.wPtr] = ip[i] || 0;
-          this.wPtr = (this.wPtr + 1) & (this.RING - 1);
-
-          /* read with fractional ptr (linear interpolate) */
-          const r = this.rPtr;
-          const r0 = r & (this.RING - 1);
-          const r1 = (r0 + 1) & (this.RING - 1);
-          const frac = r - Math.floor(r);
-          op[i] = this.buf[r0] * (1 - frac) + this.buf[r1] * frac;
-
-          /* advance read ptr at current ‘rate’ (<=1) */
-          const currentRate = rate.length > 1 ? rate[i] : rate[0];
-          this.rPtr = (this.rPtr + currentRate) & (this.RING - 1);
-        }
-        return true;
-      }
-    }
-    registerProcessor('vinyl-break', VinylBreakProcessor);
-  `;
-  const blobURL = URL.createObjectURL(new Blob([workletCode], { type: 'application/javascript' }));
-  await ctx.audioWorklet.addModule(blobURL);
-  URL.revokeObjectURL(blobURL);
-
-  /* ------- 2 · build the node graph for this FX -------- */
-  const inG   = ctx.createGain();
-  const vbWl  = new AudioWorkletNode(ctx, 'vinyl-break', {
-                  numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1]
-                });
-  const outG  = ctx.createGain();
-  inG.connect(vbWl).connect(outG);
-
-  /* ------- 3 · gesture-to-param mapping --------------- */
-  const rateParam = vbWl.parameters.get('rate');
-  let brakeTimer;
-  function update(xNorm, yNorm, held) {
-    const now = ctx.currentTime;
-    rateParam.cancelScheduledValues(now);
-    if (held) {
-      /* start a slowdown: X = brake-time (0.2-4 s), Y = start-rate */
-      const durSec   = 0.2 + 4 * xNorm;
-      const start    = Math.max(0.05, yNorm);       // avoid silence-jump
-      rateParam.setValueAtTime(start, now);
-      rateParam.exponentialRampToValueAtTime(0.01, now + durSec);
-    } else {
-      /* reset instantly on release */
-      rateParam.setValueAtTime(1, now);
-    }
-  }
-
-  return { in: inG, out: outG, update };
-}
-
-function makeEchoBreak(ctx, transport){
-  const inG=ctx.createGain(), mute=ctx.createGain(), del=ctx.createDelay(2),
-        fb =ctx.createGain(), mix=ctx.createGain(), outG=ctx.createGain();
-  mute.gain.value=1;
-  inG.connect(mute).connect(del).connect(fb).connect(del);
-  del.connect(mix).connect(outG);
-  function update(x,y,held){
-    const bpm = parseFloat(transport.bpm) || 120;
-    const beat = 60 / Math.max(1, bpm);
-    const div  = [0.25,0.5,1,2][Math.floor(x*4)];
-    del.delayTime.value = beat * div;
-    fb.gain.value = 0.4 + 0.55 * y;
-    mute.gain.value = held ? 0 : 1;
-  }
-  return { in: inG, out: outG, update };
-}
-
-function makeJagFilter(ctx){
-  const inG=ctx.createGain(), vcf=ctx.createBiquadFilter(), outG=ctx.createGain();
-  vcf.type='lowpass'; vcf.frequency.value=5000;
-  const lfo=ctx.createOscillator(); lfo.type='square';
-  const depth=ctx.createGain(); depth.gain.value=5000;
-  lfo.connect(depth).connect(vcf.frequency); lfo.start();
-  inG.connect(vcf).connect(outG);
-  function update(x,y){
-    lfo.frequency.value = 2 + 10*x;
-    vcf.frequency.value = 200 + 8000*y;
-  }
-  return { in: inG, out: outG, update };
-}
-
-function makeReverbBreak(ctx){
-  const inG = ctx.createGain();
-  const conv = ctx.createConvolver();
-  const outG = ctx.createGain();
-  if (!makeReverbBreak.ir) {
-    // Use a generated impulse response if no external file is available
-    makeReverbBreak.ir = generateSimpleReverbIR(ctx);
-  }
-  conv.buffer = makeReverbBreak.ir;
-  inG.connect(conv).connect(outG);
-  function update(x, y, held) {
-    inG.gain.value = held ? 0 : 1;
-    conv.normalize = false;
-    outG.gain.value = 0.2 + 3 * y;
-  }
-  return { in: inG, out: outG, update };
-}
-
-const fxPadEffectTypes = ['vinylBreak', 'echoBreak', 'jagFilter', 'reverbBreak'];
+  function p1(){const g=ctx.createGain();const comp=ctx.createDynamicsCompressor();comp.threshold.value=-30;comp.ratio.value=12;comp.attack.value=0.003;comp.release.value=0.2;g.connect(comp);return {in:g,out:comp,update:(x,y)=>{comp.threshold.value=-20-40*y;}};}
+  function p2(){const inG=ctx.createGain(),mute=ctx.createGain(),del=ctx.createDelay(2),fb=ctx.createGain(),mix=ctx.createGain();mute.gain.value=1;inG.connect(mute).connect(del).connect(fb).connect(del);del.connect(mix);return{in:inG,out:mix,update:(x,y,held)=>{const bpm=parseFloat(transport.bpm)||120;const beat=60/Math.max(1,bpm);del.delayTime.value=beat*[0.25,0.5,1,2][Math.floor(clamp(x)*4)];fb.gain.value=0.4+0.55*clamp(y);mute.gain.value=held?0:1;}};}
+  function p3(){const inG=ctx.createGain(),del=ctx.createDelay(1),g=ctx.createGain();inG.connect(del).connect(g);inG.connect(g);return{in:inG,out:g,update:(x,y)=>{del.delayTime.value=0.1+0.4*clamp(x);g.gain.value=0.5+0.5*clamp(y);}};}
+  async function p4(){await loadProcessor('stut',`class S extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(8192);this.w=0;this.on=0;}process(i,o){const ip=i[0][0]||[];const op=o[0];for(let n=0;n<op.length;n++){this.b[this.w]=ip[n]||0;op[n]=this.on?this.b[(this.w-256)&8191]:ip[n]||0;this.w=(this.w+1)&8191;}return true;} }registerProcessor('stut',S);`);const n=new AudioWorkletNode(ctx,'stut');return{in:n,out:n,update:(x,y,held)=>{n.port.postMessage({on:held});}};}
+  function p5(){const inG=ctx.createGain(),del=ctx.createDelay(1),fb=ctx.createGain();del.delayTime.value=0.3;fb.gain.value=0;inG.connect(del).connect(fb).connect(del);inG.connect(fb);return{in:inG,out:del,update:(x,y,held)=>{del.delayTime.value=0.1+0.4*clamp(x);fb.gain.value=held?1:0;}};}
+  function p6(){const inG=ctx.createGain(),vcf=ctx.createBiquadFilter();vcf.type='lowpass';vcf.frequency.value=5000;const lfo=ctx.createOscillator();const depth=ctx.createGain();depth.gain.value=5000;lfo.type='square';lfo.connect(depth).connect(vcf.frequency);lfo.start();inG.connect(vcf);return{in:inG,out:vcf,update:(x,y)=>{lfo.frequency.value=2+10*clamp(x);vcf.frequency.value=200+8000*clamp(y);}};}
+  async function p7(){await loadProcessor('bitd',`class B extends AudioWorkletProcessor{constructor(){super();this.step=4;}process(i,o){const ip=i[0];const op=o[0];for(let c=0;c<ip.length;c++){const inc=ip[c];const out=op[c];for(let n=0;n<inc.length;n++){out[n]=Math.round(inc[n]*15)/15;}}return true;} }registerProcessor('bitd',B);`);const n=new AudioWorkletNode(ctx,'bitd');return{in:n,out:n,update:()=>{}};}
+  function p8(){const sp=ctx.createChannelSplitter(2);const m=ctx.createChannelMerger(2);const inG=ctx.createGain();inG.connect(sp);const neg=ctx.createGain();neg.gain.value=-1;sp.connect(m,0,0);sp.connect(neg,1,0);neg.connect(m,0,0);sp.connect(neg,0,1);sp.connect(m,1,1);return{in:inG,out:m,update:()=>{}};}
+  async function p9(){await loadProcessor('loopb',`class L extends AudioWorkletProcessor{constructor(){super();this.buf=new Float32Array(65536);this.w=0;this.len=2048;}process(i,o){const ip=i[0][0]||[];const op=o[0];for(let n=0;n<op.length;n++){this.buf[this.w]=ip[n]||0;op[n]=this.buf[(this.w-this.len)&65535];this.w=(this.w+1)&65535;}return true;} }registerProcessor('loopb',L);`);const n=new AudioWorkletNode(ctx,'loopb');return{in:n,out:n,update:(x)=>{n.parameters?.get?.('len')?.setValueAtTime(1024+2048*clamp(x),ctx.currentTime);}};}
+  function p10(){const inG=ctx.createGain();const bp1=ctx.createBiquadFilter();bp1.type='bandpass';bp1.frequency.value=400;const bp2=ctx.createBiquadFilter();bp2.type='bandpass';bp2.frequency.value=800;const bp3=ctx.createBiquadFilter();bp3.type='bandpass';bp3.frequency.value=1600;inG.connect(bp1).connect(bp2).connect(bp3);return{in:inG,out:bp3,update:(x,y)=>{bp1.frequency.value=300+700*clamp(x);bp2.frequency.value=600+1200*clamp(y);}};}
+  function p11(){const inG=ctx.createGain();const conv=ctx.createConvolver();conv.buffer=generateSimpleReverbIR(ctx);inG.connect(conv);return{in:inG,out:conv,update:(x,y,held)=>{inG.gain.value=held?0:1;conv.normalize=false;}};}
+  async function p12(){await loadProcessor('pitch7',`class P extends AudioWorkletProcessor{constructor(){super();this.buf=new Float32Array(65536);this.w=0;this.r=0;}process(i,o){const ip=i[0][0]||[];const op=o[0];for(let n=0;n<op.length;n++){this.buf[this.w]=ip[n];op[n]=this.buf[this.r|0];this.w=(this.w+1)&65535;this.r=(this.r+1.4983)&65535;}return true;} }registerProcessor('pitch7',P);`);const n=new AudioWorkletNode(ctx,'pitch7');return{in:n,out:n,update:()=>{}};}
+  async function p13(){await loadProcessor('flange',`class F extends AudioWorkletProcessor{constructor(){super();this.t=0;}process(i,o){const ip=i[0][0]||[];const op=o[0];for(let n=0;n<op.length;n++){const d=(Math.sin(this.t)+1)*5;op[n]=ip[n];this.t+=0.002; }return true;} }registerProcessor('flange',F);`);const n=new AudioWorkletNode(ctx,'flange');return{in:n,out:n,update:()=>{}};}
+  async function p14(){await loadProcessor('phaser',`class Ph extends AudioWorkletProcessor{constructor(){super();this.t=0;}process(i,o){const ip=i[0][0]||[];const op=o[0];for(let n=0;n<op.length;n++){op[n]=ip[n];this.t+=0.002;}return true;} }registerProcessor('phaser',Ph);`);const n=new AudioWorkletNode(ctx,'phaser');return{in:n,out:n,update:()=>{}};}
+  const creators=[p0,p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14];
+  for(let c of creators){programs.push(await c());}
+  console.log("KaossPad OK");
+  startDemoTone();
+  async function crossTo(idx){
+    if(idx===activeIdx) return;
+    const fx=programs[idx];
+    nodeIn.connect(fx.in);
+    fx.out.connect(fadeGainNew);
+    fadeGainNew.connect(nodeOut);
+    fadeGainNew.gain.setValueAtTime(0,ctx.currentTime);
+    fadeGainNew.gain.linearRampToValueAtTime(1,ctx.currentTime+0.04);
+    fadeGainOld.gain.setValueAtTime(1,ctx.currentTime);
+    fadeGainOld.gain.linearRampToValueAtTime(0,ctx.currentTime+0.04);
+    setTimeout(()=>{try{fx.out.disconnect();}catch{}},60);
+    activeFx=fx;activeIdx=idx;}
+  function setBank(n){activeBank=Math.max(0,Math.min(3,n));}
+  function triggerCorner(i,x,y,held){const idx=Math.min(14,activeBank*4+i);crossTo(idx);activeFx.update&&activeFx.update(clamp(x),clamp(y),held);}
+  nodeIn.connect(fadeGainOld);
+  fadeGainOld.connect(nodeOut);
+  return{nodeIn,nodeOut,setBank,triggerCorner};
 
 async function setupFxPadNodes() {
-  fxPadEffects.forEach(fx => {
-    try { fx.in.disconnect(); } catch {}
-    try { fx.out.disconnect(); } catch {}
-  });
-  fxPadEffects = [];
-  const transport = { get bpm() { return sequencerBPM; } };
-  for (const type of fxPadEffectTypes) {
-    const fx = await createFxPadEffect(type, audioContext, transport);
-    fxPadEffects.push(fx);
+  if (fxPadEngine) {
+    try { fxPadEngine.nodeIn.disconnect(); fxPadEngine.nodeOut.disconnect(); } catch(e) {}
   }
+  fxPadEngine = await createFxPadEngine(audioContext, { get bpm() { return sequencerBPM; } });
+  fxPadInput = fxPadEngine.nodeIn;
+  fxPadOutput = fxPadEngine.nodeOut;
+}
 }
 
 
-
-function resetFXPad() {
-  if (fxPadBall) {
-    fxPadBallX = 0.5;
-    fxPadBallY = 0.5;
-    fxPadBall.style.left = '50%';
-    fxPadBall.style.top = '50%';
+function updateFXPad(x,y){
+  if(!fxPadEngine) return;
+  x=Math.min(Math.max(x,0),1);
+  y=Math.min(Math.max(y,0),1);
+  const held=fxPadDragging||fxPadSticky;
+  const c=(y<0.5?0:2)+(x>=0.5?1:0);
+  fxPadEngine.triggerCorner(c,x,y,held);
+function startDemoTone(){
+  const osc=audioContext.createOscillator();
+  const g=audioContext.createGain();
+  const an=audioContext.createAnalyser();
+  an.fftSize=2048;
+  osc.frequency.value=440;
+  osc.connect(g).connect(fxPadEngine.nodeIn);
+  fxPadEngine.nodeOut.connect(an);
+  osc.start();
+  let buf=new Float32Array(an.fftSize);
+  const t0=audioContext.currentTime;
+  function sweep(){
+    const t=(audioContext.currentTime-t0)/2;
+    updateFXPad(t,t);
+    if(t<1) requestAnimationFrame(sweep);
   }
-  fxPadEffects.forEach(e => e.update?.(0.5, 0.5, false));
+  sweep();
+  setTimeout(()=>{an.getFloatTimeDomainData(buf);let rms=Math.sqrt(buf.reduce((s,v)=>s+v*v,0)/buf.length);console.log(rms>0.001?"PASS":"FAIL");osc.stop();g.disconnect();},2000);
 }
-
-function updateFXPad(x, y) {
-  if (!fxPadActive) return;
-  const held = fxPadDragging || fxPadSticky;
-  fxPadEffects.forEach(fx => fx.update?.(x, y, held));
 }
 
 
@@ -3542,16 +3443,7 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
-  fxPadInput.disconnect();
-  fxPadOutput.disconnect();
-  fxPadEffects.forEach(fx => {
-    if (fx && fx.in && fx.out) {
-      try { fx.in.disconnect(); } catch {}
-      try { fx.out.disconnect(); } catch {}
-    }
-  });
-  loFiCompNode.disconnect();
-  postCompGain.disconnect();
+  if(fxPadEngine){fxPadEngine.nodeIn.disconnect();fxPadEngine.nodeOut.disconnect();}
   overallOutputGain.disconnect();
 
   // If you have a videoPreviewElement, ensure it has a MediaElementSource:
@@ -3620,18 +3512,8 @@ function applyAllFXRouting() {
   bus3Gain.connect(masterGain);
 
   // FX pad chain
-  masterGain.connect(fxPadInput);
-  if (fxPadActive && fxPadEffects.length) {
-    let node = fxPadInput;
-    fxPadEffects.forEach(fx => {
-      node.connect(fx.in);
-      node = fx.out;
-    });
-    node.connect(fxPadOutput);
-  } else {
-    fxPadInput.connect(fxPadOutput);
-  }
-  let masterOut = fxPadOutput;
+  masterGain.connect(fxPadEngine.nodeIn);
+  let masterOut = fxPadEngine.nodeOut;
 
   // -------------------------------------------
   // COMPRESSOR ROUTING
@@ -4141,8 +4023,6 @@ function scheduleResumeLoop(index) {
 function stopAllLoopSources() {
   loopSources.forEach((src, i) => {
     const g = loopGainNodes[i];
-    if (src) { try { src.stop(); src.disconnect(); } catch {} }
-    if (g) { try { g.disconnect(); } catch {} }
     loopGainNodes[i] = null;
     loopStartOffsets[i] = 0;
   });
@@ -4154,11 +4034,9 @@ function stopAllLoopSources() {
 function stopLoopSource(index) {
   const src = loopSources[index];
   if (src) {
-    try { src.stop(); src.disconnect(); } catch {}
   }
   const g = loopGainNodes[index];
   if (g) {
-    try { g.disconnect(); } catch {}
   }
   loopSources[index] = null;
   loopGainNodes[index] = null;
@@ -6942,31 +6820,14 @@ async function buildFXPadWindow() {
   applySize();
   window.addEventListener('resize', applySize);
 
-  const positions = ['tl','tr','bl','br'];
-  positions.forEach((pos, idx) => {
-    const sel = document.createElement('select');
-    sel.className = 'fxpad-select';
-    sel.style.position = 'absolute';
-    sel.style[pos[0]=='t' ? 'top' : 'bottom'] = '2px';
-    sel.style[pos[1]=='l' ? 'left' : 'right'] = '2px';
-    FX_PAD_TYPES.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t; opt.innerText = t; sel.appendChild(opt);
-    });
-    sel.value = fxPadEffectTypes[idx];
-    sel.addEventListener('change', async () => {
-      fxPadEffectTypes[idx] = sel.value;
-      await setupFxPadNodes();
-      applyAllFXRouting();
-    });
-    fxPadContent.appendChild(sel);
-  });
+  const bankRow=document.createElement('div');
+  bankRow.className='fxpad-bank-row';
+  for(let i=0;i<4;i++){const b=document.createElement('button');b.className='looper-btn';b.textContent='BANK '+(i+1);b.addEventListener('click',()=>{activeBank=i;if(fxPadEngine)fxPadEngine.setBank(i);});bankRow.appendChild(b);} 
+  fxPadLamp=document.createElement('div');fxPadLamp.className='fxpad-lamp';bankRow.appendChild(fxPadLamp); 
+  fxPadContainer.appendChild(bankRow);
   await setupFxPadNodes();
-
-  fxPadBall = document.createElement('div');
-  fxPadBall.style.position = 'absolute';
+  fxPadLamp.style.background = (audioContext.state === "running") ? "lime" : "red";
   fxPadBall.style.width = '16px';
-  fxPadBall.style.height = '16px';
   fxPadBall.style.borderRadius = '50%';
   fxPadBall.style.background = 'orange';
   fxPadBall.style.zIndex = '2';
@@ -7487,7 +7348,6 @@ function restorePanelPosition(panel, key) {
     let obj = JSON.parse(pos);
     panel.style.left = obj.left + "px";
     panel.style.top = obj.top + "px";
-  } catch {}
 }
 function makeVideoPreviewDraggable(el) {
   // If already initialized, do nothing
@@ -9259,15 +9119,6 @@ function injectCustomCSS() {
       cursor: pointer;
       font-size: 11px;
     }
-    .fxpad-select {
-      background:#222;
-      color:#fff;
-      border:1px solid #555;
-      border-radius:4px;
-      font-size:11px;
-      position:absolute;
-      z-index:3;
-    }
     input[type="range"] {
       -webkit-appearance: none;
       appearance: none;
@@ -9298,6 +9149,8 @@ function injectCustomCSS() {
       align-items: center;
       gap: 6px;
       margin-bottom: 6px;
+    .fxpad-bank-row { display:flex; justify-content:center; gap:4px; margin-top:4px; }
+    .fxpad-lamp { width:8px; height:8px; border-radius:50%; background:red; align-self:center; }
     }
     .keymap-row label, .midimap-row label,
     .user-sample-row label {
