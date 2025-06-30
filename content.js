@@ -3121,13 +3121,6 @@ async function setupAudioNodes() {
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
 
-  masterGain.connect(fxPadMasterIn);
-  if (fxPadActive && fxPadEngine) {
-    fxPadMasterIn.connect(fxPadEngine.nodeIn);
-    fxPadEngine.nodeOut.connect(fxPadMasterOut);
-  } else {
-    fxPadMasterIn.connect(fxPadMasterOut);
-  }
   bus4Gain.connect(masterGain);
 
   eqFilterNode = audioContext.createBiquadFilter();
@@ -3507,6 +3500,9 @@ async function setupFxPadNodes() {
  * Single function to apply all FX routing
  **************************************/
 function applyAllFXRouting() {
+  if (!audioContext) return;
+  if (!fxPadMasterIn) fxPadMasterIn = audioContext.createGain();
+  if (!fxPadMasterOut) fxPadMasterOut = audioContext.createGain();
   // First, disconnect everything that may have been connected:
   videoGain.disconnect();
   if (antiClickGain) antiClickGain.disconnect();
@@ -3587,6 +3583,14 @@ function applyAllFXRouting() {
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
+
+  masterGain.connect(fxPadMasterIn);
+  if (fxPadActive && fxPadEngine) {
+    fxPadMasterIn.connect(fxPadEngine.nodeIn);
+    fxPadEngine.nodeOut.connect(fxPadMasterOut);
+  } else {
+    fxPadMasterIn.connect(fxPadMasterOut);
+  }
 
   // -------------------------------------------
   // COMPRESSOR BYPASS LOGIC FOR BUS4:
