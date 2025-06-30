@@ -763,7 +763,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadDragHandle = null,
       fxPadDropdowns = [],
       fxPadModeBtn = null,
-      fxPadDragOnlyBtn = null,
       fxPadMultiMode = false,
       fxPadAnimId = 0,
       fxPadPrev = {x:0,y:0},
@@ -777,7 +776,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       fxPadActive = false,
       fxPadBall = {x:0.5,y:0.5,vx:0,vy:0},
       fxPadSticky = false,
-      fxPadDragOnly = false,
       fxPadDragging = false;
       deckA = null,
       deckB = null,
@@ -8908,16 +8906,6 @@ function buildFxPadWindow() {
     fxPadDropdowns[i]=sel; wrap.appendChild(sel);
   }
 
-  fxPadDragOnlyBtn = document.createElement('button');
-  fxPadDragOnlyBtn.className = 'looper-btn';
-  fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag' : 'Active';
-  fxPadDragOnlyBtn.style.position = 'absolute';
-  fxPadDragOnlyBtn.style.left = '4px';
-  fxPadDragOnlyBtn.style.bottom = '4px';
-  fxPadDragOnlyBtn.style.background = fxPadDragOnly ? '#555' : '#0a0';
-  fxPadDragOnlyBtn.style.color = '#fff';
-  fxPadDragOnlyBtn.addEventListener('click',toggleFxPadDragOnly);
-  wrap.appendChild(fxPadDragOnlyBtn);
 
   fxPadModeBtn = document.createElement('button');
   fxPadModeBtn.className = 'looper-btn';
@@ -8975,24 +8963,15 @@ function startFxPadAnim(){
   cancelAnimationFrame(fxPadAnimId);
   const step=()=>{
     if(!fxPadDragging && !fxPadSticky){
-      if(fxPadDragOnly){
-        fxPadBall.x = 0.5;
-        fxPadBall.y = 0.5;
-      }else{
-        fxPadBall.x += (0.5 - fxPadBall.x) * 0.2;
-        fxPadBall.y += (0.5 - fxPadBall.y) * 0.2;
-        if(Math.abs(fxPadBall.x-0.5)<0.001) fxPadBall.x=0.5;
-        if(Math.abs(fxPadBall.y-0.5)<0.001) fxPadBall.y=0.5;
-      }
+      fxPadBall.x += (0.5 - fxPadBall.x) * 0.2;
+      fxPadBall.y += (0.5 - fxPadBall.y) * 0.2;
+      if(Math.abs(fxPadBall.x-0.5)<0.001) fxPadBall.x=0.5;
+      if(Math.abs(fxPadBall.y-0.5)<0.001) fxPadBall.y=0.5;
       fxPadBall.vx = fxPadBall.vy = 0;
     }
     drawFxPadBall();
     if(fxPadActive && fxPadTriggerCorner){
-      if(fxPadDragOnly && !fxPadDragging){
-        fxPadTriggerCorner(0.5,0.5,false);
-      }else{
-        fxPadTriggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
-      }
+      fxPadTriggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
     }
     fxPadAnimId=requestAnimationFrame(step);
   };
@@ -9016,21 +8995,6 @@ function toggleFxPadSticky(){
   drawFxPadBall();
 }
 
-function toggleFxPadDragOnly(){
-  fxPadDragOnly = !fxPadDragOnly;
-  if (fxPadDragOnlyBtn){
-    fxPadDragOnlyBtn.textContent = fxPadDragOnly ? 'On Drag' : 'Active';
-    fxPadDragOnlyBtn.style.background = fxPadDragOnly ? '#555' : '#0a0';
-  }
-  if(fxPadDragOnly && !fxPadDragging && fxPadEngine){
-    if(!fxPadSticky){
-      fxPadBall.x = 0.5;
-      fxPadBall.y = 0.5;
-      drawFxPadBall();
-    }
-    fxPadEngine.triggerCorner(0.5,0.5,false);
-  }
-}
 
 function toggleFxPadMode(){
   fxPadMultiMode = !fxPadMultiMode;
@@ -9083,9 +9047,6 @@ addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPoint
 addTrackedListener(document,'pointerup',()=>{
   fxPadDragging=false;
   fxPadBall.vx=0; fxPadBall.vy=0;
-  if(fxPadActive && fxPadDragOnly && fxPadTriggerCorner){
-    fxPadTriggerCorner(0.5,0.5,false);
-  }
 });
 
 /* ------------------------------------------------------
