@@ -3456,7 +3456,16 @@ async function createVinylBreakEffect(ctx){
 }
 
 async function createStutterEffect(ctx){
-  const node=await createStutterNode(ctx); return {in:node,out:node,update(x,y,held){ node.port.postMessage({loop:held,length:Math.floor(2048*(0.2+y*0.8))}); }};
+  const node=await createStutterNode(ctx);
+  const rate = ctx.sampleRate;
+  return {
+    in: node,
+    out: node,
+    update(x,y,held){
+      const len = Math.floor(rate * (0.1 + 0.4 * y));
+      node.port.postMessage({loop: held, length: len});
+    }
+  };
 }
 
 async function createBeatRepeatEffect(ctx){
@@ -3464,7 +3473,16 @@ async function createBeatRepeatEffect(ctx){
   const node = await createStutterNode(ctx);
   const mix = ctx.createGain();
   input.connect(node).connect(mix);
-  return {in:input, out:mix, update(x,y){node.port.postMessage({loop:true,length:Math.floor(2048*(0.05+0.45*y))}); mix.gain.value=x;}};
+  const rate = ctx.sampleRate;
+  return {
+    in: input,
+    out: mix,
+    update(x,y){
+      const len = Math.floor(rate * (0.05 + 0.45 * y));
+      node.port.postMessage({loop: true, length: len});
+      mix.gain.value = x;
+    }
+  };
 }
 
 async function createPhaserEffect(ctx){
