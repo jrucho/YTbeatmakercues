@@ -8906,6 +8906,12 @@ function buildFxPadWindow() {
     fxPadDropdowns[i]=sel; wrap.appendChild(sel);
   }
 
+  // Ensure dropdowns reflect the engine defaults on first build
+  const defaults=['stutterGrain','delay','flanger','reverb'];
+  defaults.forEach((t,idx)=>{
+    if(fxPadDropdowns[idx]) fxPadDropdowns[idx].value=t;
+  });
+
 
   fxPadModeBtn = document.createElement('button');
   fxPadModeBtn.className = 'looper-btn';
