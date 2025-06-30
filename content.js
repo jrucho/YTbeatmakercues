@@ -745,7 +745,6 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       cassetteActive = false,
       // FX Pad
       fxPadEffects = [],
-      fxPadEffectTypes = ['vinylBreak','echoBreak','jagFilter','reverbBreak'],
       fxPadActive = false,
       fxPadBallX = 0.5,
       fxPadBallY = 0.5,
@@ -3357,35 +3356,89 @@ function createFxPadEffect(type, ctx, transport) {
   }
 }
 
-function makeVinylBreak(ctx){
-  const inG = ctx.createGain(), outG = ctx.createGain();
-  const rateParam = { value:1 };
-  const buf = new Float32Array(2048); let w=0;
-  const proc = ctx.createScriptProcessor(256,1,1);
-  proc.onaudioprocess = e => {
-    const I = e.inputBuffer.getChannelData(0);
-    const O = e.outputBuffer.getChannelData(0);
-    for(let i=0;i<O.length;++i){
-      buf[w] = I[i];
-      const r = rateParam.value;
-      w = (w + 1) & 2047;
-      const read = (w - Math.floor(r*2048) + 2048) & 2047;
-      O[i] = buf[read];
-    }
-  };
-  inG.connect(proc).connect(outG);
-
-  let brakeTimeout;
-  function update(x,y,held){
-    clearTimeout(brakeTimeout);
-    if (held){
-      const dur  = 0.2 + 4*x;
-      const step = rateParam.value / (dur*60);
-      brakeTimeout = setInterval(() => {
-        rateParam.value = Math.max(0.01, rateParam.value - step);
-      }, 16);
-    } else { rateParam.value = 1; }
+async function makeVinylBreak(ctx) {
+  /*  AudioWorklet implementation
+   *  Live audio is written into a 64 k-sample ring-buffer.
+   *  A read pointer moves at the current ‘rate’ (1 → 0) so the
+   *  output slows down just like a turntable brake.
+   */
+  if (!ctx.audioWorklet) {
+    console.error("AudioWorklet not supported");        // graceful fallback
+    const bypass = ctx.createGain();
+    return { in: bypass, out: bypass, update(){} };
   }
+
+  /* ------- 1 · dynamically register the processor -------- */
+  const workletCode = `
+    class VinylBreakProcessor extends AudioWorkletProcessor {
+      static get parameterDescriptors () {
+        return [{ name: 'rate', defaultValue: 1, minValue: 0.01, maxValue: 1 }];
+      }
+      constructor () {
+        super();
+        this.RING = 65536;                     // 64k circular buffer
+        this.buf  = new Float32Array(this.RING);
+        this.wPtr = 0;                         // write pointer
+        this.rPtr = 0;                         // read pointer (float)
+      }
+      process (inputs, outputs, params) {
+        const input  = inputs[0];
+        const output = outputs[0];
+        if (!input.length) return true;
+        const ip = input[0];
+        const op = output[0];
+        const rate = params.rate;
+        for (let i = 0; i < op.length; i++) {
+          /* write incoming sample */
+          this.buf[this.wPtr] = ip[i] || 0;
+          this.wPtr = (this.wPtr + 1) & (this.RING - 1);
+
+          /* read with fractional ptr (linear interpolate) */
+          const r = this.rPtr;
+          const r0 = r & (this.RING - 1);
+          const r1 = (r0 + 1) & (this.RING - 1);
+          const frac = r - Math.floor(r);
+          op[i] = this.buf[r0] * (1 - frac) + this.buf[r1] * frac;
+
+          /* advance read ptr at current ‘rate’ (<=1) */
+          const currentRate = rate.length > 1 ? rate[i] : rate[0];
+          this.rPtr = (this.rPtr + currentRate) & (this.RING - 1);
+        }
+        return true;
+      }
+    }
+    registerProcessor('vinyl-break', VinylBreakProcessor);
+  `;
+  const blobURL = URL.createObjectURL(new Blob([workletCode], { type: 'application/javascript' }));
+  await ctx.audioWorklet.addModule(blobURL);
+  URL.revokeObjectURL(blobURL);
+
+  /* ------- 2 · build the node graph for this FX -------- */
+  const inG   = ctx.createGain();
+  const vbWl  = new AudioWorkletNode(ctx, 'vinyl-break', {
+                  numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1]
+                });
+  const outG  = ctx.createGain();
+  inG.connect(vbWl).connect(outG);
+
+  /* ------- 3 · gesture-to-param mapping --------------- */
+  const rateParam = vbWl.parameters.get('rate');
+  let brakeTimer;
+  function update(xNorm, yNorm, held) {
+    const now = ctx.currentTime;
+    rateParam.cancelScheduledValues(now);
+    if (held) {
+      /* start a slowdown: X = brake-time (0.2-4 s), Y = start-rate */
+      const durSec   = 0.2 + 4 * xNorm;
+      const start    = Math.max(0.05, yNorm);       // avoid silence-jump
+      rateParam.setValueAtTime(start, now);
+      rateParam.exponentialRampToValueAtTime(0.01, now + durSec);
+    } else {
+      /* reset instantly on release */
+      rateParam.setValueAtTime(1, now);
+    }
+  }
+
   return { in: inG, out: outG, update };
 }
 
@@ -3434,6 +3487,8 @@ function makeReverbBreak(ctx){
   }
   return { in: inG, out: outG, update };
 }
+
+const fxPadEffectTypes = ['vinylBreak', 'echoBreak', 'jagFilter', 'reverbBreak'];
 
 function setupFxPadNodes() {
   fxPadEffects.forEach(fx => {
@@ -9410,3 +9465,10 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   `;
   document.head.appendChild(style);
 })();
+
+document.addEventListener('pointerdown', async () => {
+  if (audioContext && audioContext.state === 'suspended') {
+    try { await audioContext.resume(); }
+    catch (err) { console.error('AudioContext resume failed:', err); }
+  }
+}, { once: true });
