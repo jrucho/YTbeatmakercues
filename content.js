@@ -496,7 +496,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         reverb: "q",
         cassette: "w",
         randomCues: "-",
-        instrumentToggle: "n"
+        instrumentToggle: "n",
+        fxPad: "x"
       },
       midiPresets = [],
       presetSelect = null,
@@ -528,7 +529,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         cassetteToggle: 30,
         randomCues: 28,
         instrumentToggle: 27,
-        superKnob: 71          // MIDI CC to move selected cue
+        fxPadToggle: 26,
+        superKnob: 71,         // MIDI CC to move selected cue
+        fxPadX: 16,            // MIDI CC for FX pad X axis
+        fxPadY: 17             // MIDI CC for FX pad Y axis
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
       // Arrays of samples
@@ -591,6 +595,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiMapButton = null,
       eqButton = null,
       loFiCompButton = null,
+      fxPadButton = null,
       // Sample faders
       kickFader = null, kickDBLabel = null,
       hihatFader = null, hihatDBLabel = null,
@@ -752,7 +757,26 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       reverbButtonMin = null,
       cassetteButtonMin = null,
       pitchTargetButton = null,
-      pitchTargetButtonMin = null;
+      pitchTargetButtonMin = null,
+      fxPadContainer = null,
+      fxPadCanvas = null,
+      fxPadDragHandle = null,
+      fxPadDropdowns = [],
+      fxPadModeBtn = null,
+      fxPadMultiMode = false,
+      fxPadAnimId = 0,
+      fxPadPrev = {x:0,y:0},
+      fxPadLastTime = 0,
+      fxPadEngine = null,
+      fxPadMasterIn = null,
+      fxPadMasterOut = null,
+      fxPadLeveler = null,
+      fxPadSetEffect = null,
+      fxPadTriggerCorner = null,
+      fxPadActive = false,
+      fxPadBall = {x:0.5,y:0.5,vx:0,vy:0},
+      fxPadSticky = false,
+      fxPadDragging = false;
       deckA = null,
       deckB = null,
       gainA = null,
@@ -3104,6 +3128,7 @@ async function setupAudioNodes() {
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
+
   bus4Gain.connect(masterGain);
 
   eqFilterNode = audioContext.createBiquadFilter();
@@ -3118,6 +3143,8 @@ async function setupAudioNodes() {
 
   // Cassette node using the AudioWorklet version.
   cassetteNode = await createCassetteNode(audioContext);
+
+  await setupFxPadNodes();
 
   applyAllFXRouting();
 }
@@ -3315,11 +3342,598 @@ async function createLoopRecorderNode(ctx) {
   return new AudioWorkletNode(ctx, 'loop-recorder');
 }
 
+async function createVinylBreakNode(ctx) {
+  const code = `
+    class VinylBreakProc extends AudioWorkletProcessor {
+      constructor(){
+        super();
+        this.speed = 1;
+        this.len = sampleRate * 2;
+        this.buf = [new Float32Array(this.len), new Float32Array(this.len)];
+        this.w = 0; this.r = 0;
+        this.port.onmessage = e=>{ if(e.data.speed!==undefined) this.speed=e.data.speed; };
+      }
+      process(inputs,outputs){
+        const i=inputs[0],o=outputs[0];
+        if(!i.length) return true;
+        for(let n=0;n<i[0].length;n++){
+          for(let c=0;c<i.length;c++){
+            this.buf[c][this.w]=i[c][n];
+            const ri = this.r|0;
+            o[c][n]=this.buf[c][ri];
+          }
+          this.w=(this.w+1)%this.len;
+          this.r+=this.speed;
+          if(this.r>=this.len) this.r-=this.len;
+        }
+        return true;
+      }
+    }
+    registerProcessor('vinyl-break', VinylBreakProc);
+  `;
+  const url = URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  return new AudioWorkletNode(ctx,'vinyl-break');
+}
+
+async function createStutterNode(ctx) {
+  const code = `
+    class StutterProc extends AudioWorkletProcessor {
+      constructor(){
+        super();
+        this.loop=false; this.length=2048; this.bufLen=sampleRate; this.buf=[new Float32Array(this.bufLen),new Float32Array(this.bufLen)]; this.pos=0;
+        this.port.onmessage=e=>{ if(e.data.loop!==undefined) this.loop=e.data.loop; if(e.data.length) this.length=Math.min(this.bufLen,e.data.length); };
+      }
+      process(inputs,outputs){
+        const i=inputs[0],o=outputs[0];
+        if(!i.length) return true;
+        for(let n=0;n<i[0].length;n++){
+          for(let c=0;c<i.length;c++){
+            if(!this.loop) this.buf[c][this.pos]=i[c][n];
+            o[c][n]=this.buf[c][(this.pos)%this.length];
+          }
+          this.pos=(this.pos+1)%this.bufLen;
+          if(this.loop) this.pos%=this.length;
+        }
+        return true;
+      }
+    }
+    registerProcessor('stutter-proc', StutterProc);
+  `;
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  return new AudioWorkletNode(ctx,'stutter-proc');
+}
+
+async function createPhaserNode(ctx) {
+  const code = `
+    class PhaserProc extends AudioWorkletProcessor {
+      constructor(){ super(); this.phase=0; this.rate=0.5; this.state=[]; }
+      process(inputs,outputs){
+        const i=inputs[0],o=outputs[0]; if(!i.length) return true;
+        for(let c=0;c<i.length;c++) if(!this.state[c]) this.state[c]=new Array(8).fill(0);
+        const len=i[0].length;
+        for(let n=0;n<len;n++){
+          const f=1000+800*Math.sin(this.phase); this.phase+=this.rate/sampleRate*2*Math.PI; const w=2*Math.PI*f/sampleRate; const a=(Math.sin(w)-1)/(Math.sin(w)+1);
+          for(let c=0;c<i.length;c++){
+            let x=i[c][n];
+            for(let s=0;s<4;s++){ const y=-a*x+this.state[c][s*2]; this.state[c][s*2]=x; this.state[c][s*2+1]=y; x=y; }
+            o[c][n]=x;
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor('phaser-proc', PhaserProc);
+  `;
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  return new AudioWorkletNode(ctx,'phaser-proc');
+}
+
+function createEchoBreakEffect(ctx){
+  const input=ctx.createGain(); const delay=ctx.createDelay(); delay.delayTime.value=0.2; const fb=ctx.createGain(); fb.gain.value=0.3; input.connect(delay); delay.connect(fb).connect(delay); const out=ctx.createGain(); delay.connect(out); return {in:input,out,out,update(x,y){delay.delayTime.value=0.05+0.45*y; fb.gain.value=x;}};
+}
+
+function createFlangerEffect(ctx){
+  const input=ctx.createGain(); const delay=ctx.createDelay(); const fb=ctx.createGain(); const lfo=ctx.createOscillator(); const lfoGain=ctx.createGain(); lfo.type='sine'; lfo.frequency.value=0.25; lfoGain.gain.value=0.005; lfo.connect(lfoGain).connect(delay.delayTime); lfo.start(); input.connect(delay); delay.connect(fb).connect(delay); const out=ctx.createGain(); delay.connect(out); return {in:input,out,out,update(x,y){lfoGain.gain.value=0.001+0.009*x; lfo.frequency.value=0.1+5*y; fb.gain.value=0.1+0.8*x;}};
+}
+
+function createTremoloEffect(ctx){
+  const input=ctx.createGain(); const out=ctx.createGain(); const lfo=ctx.createOscillator(); const depth=ctx.createGain(); lfo.type='sine'; lfo.frequency.value=5; depth.gain.value=0; lfo.connect(depth).connect(out.gain); input.connect(out); lfo.start(); return {in:input,out,out,update(x,y){depth.gain.value=x; lfo.frequency.value=0.5+10*y;}};
+}
+
+function createAutopanEffect(ctx){
+  const input=ctx.createGain(); const panner=ctx.createStereoPanner(); const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=0; lfo.type='sine'; lfo.frequency.value=2; lfo.connect(depth).connect(panner.pan); lfo.start(); input.connect(panner); const out=ctx.createGain(); panner.connect(out); return {in:input,out,out,update(x,y){depth.gain.value=x; lfo.frequency.value=0.5+8*y;}};
+}
+
+function createReverbEffect(ctx){
+  const input=ctx.createGain(); const conv=ctx.createConvolver(); conv.buffer=generateSimpleReverbIR(ctx); const mix=ctx.createGain(); input.connect(conv).connect(mix); return {in:input,out:mix,update(x,y){mix.gain.value=Math.max(0,Math.min(1,x));}};
+}
+
+async function createVinylBreakEffect(ctx){
+  const node=await createVinylBreakNode(ctx); return {in:node, out:node, update(x,y){ node.port.postMessage({speed:0.2+0.8*(1-y)}); }};
+}
+
+async function createStutterEffect(ctx){
+  const node=await createStutterNode(ctx);
+  const rate = ctx.sampleRate;
+  return {
+    in: node,
+    out: node,
+    update(x,y,held){
+      const len = Math.floor(rate * (0.1 + 0.4 * y));
+      node.port.postMessage({loop: held, length: len});
+    }
+  };
+}
+
+async function createBeatRepeatEffect(ctx){
+  const input = ctx.createGain();
+  const node = await createStutterNode(ctx);
+  const mix = ctx.createGain();
+  input.connect(node).connect(mix);
+  const rate = ctx.sampleRate;
+  return {
+    in: input,
+    out: mix,
+    update(x,y){
+      const len = Math.floor(rate * (0.05 + 0.45 * y));
+      node.port.postMessage({loop: true, length: len});
+      mix.gain.value = x;
+    }
+  };
+}
+
+async function createPhaserEffect(ctx){
+  const node=await createPhaserNode(ctx); return {in:node,out:node,update(x,y){ node.port.postMessage({}); }};
+}
+
+function createDuckCompEffect(ctx){
+  const input=ctx.createGain();
+  const comp=ctx.createDynamicsCompressor();
+  comp.threshold.value=-30;
+  comp.ratio.value=12;
+  const out=ctx.createGain();
+  input.connect(comp).connect(out);
+  return {in:input,out,out,update(x,y){comp.threshold.value=-60+30*x; comp.release.value=0.05+0.45*y;}};
+}
+
+function createOneShotDelayEffect(ctx){
+  const input=ctx.createGain();
+  const delay=ctx.createDelay();
+  delay.delayTime.value=0.25;
+  const out=ctx.createGain();
+  input.connect(delay).connect(out);
+  return {in:input,out,out,update(x,y){delay.delayTime.value=0.05+0.45*y; out.gain.value=x;}};
+}
+
+async function createStutterGrainEffect(ctx){
+  return createStutterEffect(ctx);
+}
+
+function createFreezeLooperEffect(ctx){
+  const del=ctx.createDelay(1);
+  const fb=ctx.createGain(); fb.gain.value=0;
+  del.connect(fb).connect(del);
+  const input=ctx.createGain(); input.connect(del);
+  const out=ctx.createGain(); del.connect(out);
+  return {in:input,out,out,update(x,y,held){fb.gain.value=held?1:0; del.delayTime.value=0.1+0.9*y;}};
+}
+
+function createJagFilterEffect(ctx){
+  const input=ctx.createGain();
+  const lpf=ctx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=1000;
+  const gate=ctx.createGain(); const lfo=ctx.createOscillator(); lfo.type='square'; lfo.frequency.value=4; lfo.connect(gate.gain); lfo.start();
+  input.connect(lpf).connect(gate);
+  const out=ctx.createGain(); gate.connect(out);
+  return {in:input,out,out,update(x,y){lpf.frequency.value=300+3000*y; lfo.frequency.value=1+9*x;}};
+}
+
+async function createBitDecimatorEffect(ctx){
+  const code=`class BitDec extends AudioWorkletProcessor{constructor(){super();this.bits=4;this.port.onmessage=e=>{if(e.data.bits) this.bits=e.data.bits;};}process(i,o){const input=i[0],out=o[0];if(!input) return true;for(let c=0;c<input.length;c++){for(let n=0;n<input[c].length;n++){let v=input[c][n];const step=1/((1<<this.bits)-1);out[c][n]=Math.round(v/step)*step;}}return true;} }registerProcessor('bit-dec',BitDec);`;
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  const node=new AudioWorkletNode(ctx,'bit-dec');
+  return {in:node,out:node,update(x,y){node.port.postMessage({bits:4+Math.round(8*(1-x))});}};
+}
+async function createTwelveBitEffect(ctx){
+  const code=`class Bit12Proc extends AudioWorkletProcessor{process(i,o){const input=i[0],out=o[0];if(!input) return true;const step=1/((1<<12)-1);for(let c=0;c<input.length;c++){for(let n=0;n<input[c].length;n++){out[c][n]=Math.round(input[c][n]/step)*step;}}return true;}}registerProcessor("bit12-proc",Bit12Proc);`;
+  const url=URL.createObjectURL(new Blob([code],{type:"application/javascript"}));
+  await ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  const node=new AudioWorkletNode(ctx,"bit12-proc");
+  return {in:node,out:node,update(){}};
+}
+
+
+function createCenterCancelEffect(ctx){
+  const input=ctx.createGain();
+  const splitter=ctx.createChannelSplitter(2);
+  const invert=ctx.createGain(); invert.gain.value=-1;
+  const merger=ctx.createChannelMerger(2);
+  input.connect(splitter);
+  splitter.connect(merger,0,0);
+  splitter.connect(invert,1,0);
+  invert.connect(merger,0,1);
+  const out=ctx.createGain(); merger.connect(out);
+  return {in:input,out,out,update(x,y){out.gain.value=x;}};
+}
+
+async function createLoopBreakerEffect(ctx){
+  const vinyl=await createVinylBreakEffect(ctx);
+  const stut=await createStutterEffect(ctx);
+  vinyl.out.connect(stut.in);
+  return {in:vinyl.in,out:stut.out,update(x,y,held){vinyl.update(x,y); stut.update(x,y,held);}};
+}
+
+function createResonatorEffect(ctx){
+  const input=ctx.createGain(); const out=ctx.createGain();
+  const freqs=[400,800,1200]; const filters=freqs.map(f=>{const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=10; input.connect(bp); bp.connect(out); return bp;});
+  return {in:input,out,out,update(x,y){filters.forEach((bp,i)=>{bp.frequency.value=freqs[i]*(0.5+y);}); out.gain.value=x;}};
+}
+
+function createReverbBreakEffect(ctx){
+  const input=ctx.createGain(); const conv=ctx.createConvolver(); conv.buffer=generateSimpleReverbIR(ctx); const dry=ctx.createGain(); const wet=ctx.createGain(); input.connect(dry); input.connect(conv).connect(wet); const out=ctx.createGain(); dry.connect(out); wet.connect(out); return {in:input,out,out,update(x,y){dry.gain.value=1-x; wet.gain.value=x;}};
+}
+
+async function createPitchUpEffect(ctx){
+  const node=await createVinylBreakNode(ctx); node.port.postMessage({speed:Math.pow(2,7/12)}); return {in:node,out:node,update(){}};
+}
+
+function createFlangerJetEffect(ctx){
+  const input=ctx.createGain(); const delay=ctx.createDelay(); const fb=ctx.createGain(); const lfo=ctx.createOscillator(); const lfoGain=ctx.createGain(); lfo.type='triangle'; lfo.frequency.value=0.2; lfoGain.gain.value=0.005; lfo.connect(lfoGain).connect(delay.delayTime); lfo.start(); input.connect(delay); delay.connect(fb).connect(delay); const out=ctx.createGain(); delay.connect(out); return {in:input,out,out,update(x,y){lfoGain.gain.value=0.002+0.008*x; fb.gain.value=-0.5+1*y; lfo.frequency.value=0.1+4*y;}};
+}
+
+async function createPhaserSweepEffect(ctx){
+  return createPhaserEffect(ctx);
+}
+
+function createLevelComp(ctx){
+  const c=ctx.createDynamicsCompressor();
+  c.threshold.value=-12;
+  c.knee.value=10;
+  c.ratio.value=4;
+  c.attack.value=0.01;
+  c.release.value=0.1;
+  return c;
+}
+
+function createBypassEffect(ctx){
+  const g = ctx.createGain();
+  return { in: g, out: g, update(){} };
+}
+
+function makeDriveCurve(a){
+  const n=1024;
+  const curve=new Float32Array(n);
+  for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=(1+a)*x/(1+a*Math.abs(x));}
+  return curve;
+}
+
+function createFilterDriveEffect(ctx){
+  const input=ctx.createGain();
+  const filt=ctx.createBiquadFilter();
+  filt.type='lowpass';
+  const shaper=ctx.createWaveShaper();
+  shaper.curve=makeDriveCurve(1);
+  const out=createLevelComp(ctx);
+  input.connect(filt).connect(shaper).connect(out);
+  return {in:input,out,out,update(x,y){filt.frequency.value=300+15000*y;shaper.curve=makeDriveCurve(1+5*x);}};
+}
+
+function createPitchEffect(ctx){
+  const input=ctx.createGain();
+  const delay=ctx.createDelay();
+  const lfo=ctx.createOscillator();
+  const depth=ctx.createGain();
+  depth.gain.value=0;
+  lfo.type='sine';
+  lfo.frequency.value=1;
+  lfo.connect(depth).connect(delay.delayTime); lfo.start();
+  input.connect(delay);
+  const out=createLevelComp(ctx); delay.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=0.002*x; lfo.frequency.value=0.5+5*y;}};
+}
+
+function createDelayEffect(ctx){
+  const input=ctx.createGain();
+  const del=ctx.createDelay();
+  const fb=ctx.createGain(); fb.gain.value=0.3;
+  del.connect(fb).connect(del);
+  input.connect(del);
+  const out=createLevelComp(ctx); del.connect(out);
+  return {in:input,out,out,update(x,y){del.delayTime.value=0.05+0.45*y; fb.gain.value=x;}};
+}
+
+function createIsolatorEffect(ctx){
+  const input=ctx.createGain();
+  const hpf=ctx.createBiquadFilter(); hpf.type='highpass';
+  const lpf=ctx.createBiquadFilter(); lpf.type='lowpass';
+  input.connect(hpf).connect(lpf);
+  const out=createLevelComp(ctx); lpf.connect(out);
+  return {in:input,out,out,update(x,y){hpf.frequency.value=20+200*x; lpf.frequency.value=5000+15000*y;}};
+}
+
+function createVinylSimEffect(ctx){
+  const input=ctx.createGain();
+  const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=8000;
+  const noise=ctx.createBufferSource();
+  const buf=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);
+  const data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*0.02;
+  noise.buffer=buf; noise.loop=true; noise.start();
+  const mix=ctx.createGain(); mix.gain.value=0.2;
+  noise.connect(mix);
+  const out=createLevelComp(ctx);
+  input.connect(lp).connect(out);
+  mix.connect(out);
+  return {in:input,out,out,update(x,y){lp.frequency.value=4000+8000*y; mix.gain.value=0.05+0.4*x;}};
+}
+
+function createTapeEchoEffect(ctx){
+  const e=createDelayEffect(ctx);
+  return e;
+}
+
+function createChorusEffect(ctx){
+  const input=ctx.createGain();
+  const delay=ctx.createDelay(); delay.delayTime.value=0.03;
+  const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=0.01;
+  lfo.frequency.value=1.5; lfo.connect(depth).connect(delay.delayTime); lfo.start();
+  input.connect(delay);
+  const out=createLevelComp(ctx); delay.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=0.002+0.02*x; lfo.frequency.value=0.2+5*y;}};
+}
+
+function createTremoloPanEffect(ctx){
+  const input=ctx.createGain();
+  const pan=ctx.createStereoPanner();
+  const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=0;
+  lfo.type='sine'; lfo.frequency.value=2; lfo.connect(depth).connect(pan.pan); lfo.start();
+  input.connect(pan);
+  const out=createLevelComp(ctx); pan.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=x; lfo.frequency.value=0.5+10*y;}};
+}
+
+function createDistortionEffect(ctx,amt){
+  const input=ctx.createGain();
+  const sh=ctx.createWaveShaper(); sh.curve=makeDriveCurve(amt||2);
+  const out=createLevelComp(ctx); input.connect(sh).connect(out);
+  return {in:input,out,out,update(x){sh.curve=makeDriveCurve(1+amt*x*5);}};
+}
+
+function createWahEffect(ctx){
+  const input=ctx.createGain();
+  const bp=ctx.createBiquadFilter(); bp.type='bandpass';
+  const lfo=ctx.createOscillator(); const depth=ctx.createGain(); depth.gain.value=300;
+  lfo.frequency.value=2; lfo.connect(depth).connect(bp.frequency); lfo.start();
+  input.connect(bp);
+  const out=createLevelComp(ctx); bp.connect(out);
+  return {in:input,out,out,update(x,y){depth.gain.value=200+2000*x; lfo.frequency.value=0.5+5*y;}};
+}
+
+function createOctaveEffect(ctx){
+  return createPitchEffect(ctx);
+}
+
+function createCompressorEffect(ctx){
+  const input=ctx.createGain();
+  const comp=createLevelComp(ctx);
+  input.connect(comp);
+  return {in:input,out:comp,update(){}};
+}
+
+function createEqualizerEffect(ctx){
+  const input=ctx.createGain();
+  const low=ctx.createBiquadFilter(); low.type='lowshelf';
+  const mid=ctx.createBiquadFilter(); mid.type='peaking'; mid.frequency.value=1000;
+  const high=ctx.createBiquadFilter(); high.type='highshelf'; high.frequency.value=6000;
+  input.connect(low).connect(mid).connect(high);
+  const out=createLevelComp(ctx); high.connect(out);
+  return {in:input,out,out,update(x,y){low.gain.value=10*(x-0.5); high.gain.value=10*(y-0.5);}};
+}
+
+async function createBitCrashEffect(ctx){
+  return createBitDecimatorEffect(ctx);
+}
+
+function createNoiseGenEffect(ctx){
+  const input=ctx.createGain();
+  const noise=ctx.createBufferSource();
+  const buf=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);
+  const data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
+  noise.buffer=buf; noise.loop=true; noise.start();
+  const mix=ctx.createGain(); mix.gain.value=0.3;
+  noise.connect(mix);
+  const out=createLevelComp(ctx); input.connect(out); mix.connect(out);
+  return {in:input,out,out,update(x){mix.gain.value=x;}};
+}
+
+
+function createRadioTuningEffect(ctx){
+  const input=ctx.createGain();
+  const bp=ctx.createBiquadFilter(); bp.type='bandpass';
+  const noise=createNoiseGenEffect(ctx);
+  input.connect(bp);
+  const out=createLevelComp(ctx); bp.connect(out); noise.out.connect(out);
+  return {in:input,out,out,update(x,y){bp.frequency.value=500+5000*y; noise.update(x);}};
+}
+
+function createSlicerFlangerEffect(ctx){
+  const flg=createFlangerEffect(ctx);
+  const gate=ctx.createGain(); gate.gain.value=1;
+  const lfo=ctx.createOscillator(); lfo.type='square'; lfo.frequency.value=4; lfo.connect(gate.gain); lfo.start();
+  const input=ctx.createGain();
+  input.connect(gate).connect(flg.in);
+  return {in:input,out:flg.out,update(x,y){gate.gain.value=x; flg.update(x,y);}};
+}
+
+function createRingModEffect(ctx){
+  const input=ctx.createGain();
+  const mult=ctx.createGain();
+  const osc=ctx.createOscillator(); osc.frequency.value=440; osc.connect(mult.gain); osc.start();
+  input.connect(mult);
+  const out=createLevelComp(ctx); mult.connect(out);
+  return {in:input,out,out,update(x,y){osc.frequency.value=50+1000*y; mult.gain.value=x;}};
+}
+
+function createChromPitchShiftEffect(ctx){
+  return createPitchEffect(ctx);
+}
+
+function createPitchFineEffect(ctx){
+  return createPitchEffect(ctx);
+}
+
+function createSubsonicEffect(ctx){
+  const input=ctx.createGain();
+  const bp=ctx.createBiquadFilter(); bp.type='lowpass'; bp.frequency.value=80;
+  const out=createLevelComp(ctx); input.connect(bp).connect(out);
+  return {in:input,out,out,update(x){bp.frequency.value=40+120*x;}};
+}
+
+async function createBpmLooperEffect(ctx){
+  const input = ctx.createGain();
+  const node = await createStutterNode(ctx);
+  const mix = ctx.createGain();
+  input.connect(node).connect(mix);
+  const rate = ctx.sampleRate;
+  let currentLen = 0;
+  return {
+    in: input,
+    out: mix,
+    update(x,y){
+      const beat = 60 / (typeof sequencerBPM === 'number' ? sequencerBPM : 120);
+      const step = Math.min(4, Math.round(y * 4));
+      const beatLen = [0.25,0.5,1,2,4][step];
+      const len = Math.floor(rate * beat * beatLen);
+      if(len !== currentLen){
+        currentLen = len;
+        node.port.postMessage({loop: true, length: len});
+      }
+      mix.gain.value = 1;
+    }
+  };
+}
+
+async function createFxPadEngine(ctx){
+  const nodeIn=ctx.createGain();
+  const nodeOut=ctx.createGain();
+  const wetGains=[0,1,2,3].map(()=>{const g=ctx.createGain(); g.gain.value=0; g.connect(nodeOut); return g;});
+  const effects=[null,null,null,null];
+  let multiMode=false;
+  function setMultiMode(m){
+    multiMode=m;
+    if(!multiMode){
+      wetGains[0].gain.setValueAtTime(1,ctx.currentTime);
+      for(let i=1;i<4;i++) wetGains[i].gain.setValueAtTime(0,ctx.currentTime);
+    }else{
+      triggerCorner(0.5,0.5,false);
+    }
+  }
+  async function setEffect(i,type){
+    if(effects[i]){
+      try{ nodeIn.disconnect(effects[i].in); }catch(e){}
+      try{ effects[i].out.disconnect(wetGains[i]); }catch(e){}
+    }
+    let e=null;
+    if(type==='none') e=createBypassEffect(ctx);
+    else if(type==='filterDrive') e=createFilterDriveEffect(ctx);
+    else if(type==='pitch') e=createPitchEffect(ctx);
+    else if(type==='delay') e=createDelayEffect(ctx);
+    else if(type==='isolator') e=createIsolatorEffect(ctx);
+    else if(type==='vinylSim') e=createVinylSimEffect(ctx);
+    else if(type==='reverb') e=createReverbEffect(ctx);
+    else if(type==='tapeEcho') e=createTapeEchoEffect(ctx);
+    else if(type==='chorus') e=createChorusEffect(ctx);
+    else if(type==='flanger') e=createFlangerEffect(ctx);
+    else if(type==='phaser') e=await createPhaserEffect(ctx);
+    else if(type==='tremoloPan') e=createTremoloPanEffect(ctx);
+    else if(type==='autopan') e=createAutopanEffect(ctx);
+    else if(type==='beatRepeat') e=await createBeatRepeatEffect(ctx);
+    else if(type==='distortion') e=createDistortionEffect(ctx,2);
+    else if(type==='overdrive') e=createDistortionEffect(ctx,4);
+    else if(type==='fuzz') e=createDistortionEffect(ctx,8);
+    else if(type==='wah') e=createWahEffect(ctx);
+    else if(type==='octave') e=createOctaveEffect(ctx);
+    else if(type==='compressor') e=createCompressorEffect(ctx);
+    else if(type==='equalizer') e=createEqualizerEffect(ctx);
+    else if(type==='bitCrash') e=await createBitCrashEffect(ctx);
+    else if(type==='noiseGen') e=createNoiseGenEffect(ctx);
+    else if(type==='radioTuning') e=createRadioTuningEffect(ctx);
+    else if(type==='slicerFlanger') e=createSlicerFlangerEffect(ctx);
+    else if(type==='ringMod') e=createRingModEffect(ctx);
+    else if(type==='chromPitchShift') e=createChromPitchShiftEffect(ctx);
+    else if(type==='pitchFine') e=createPitchFineEffect(ctx);
+    else if(type==='centerCancel') e=createCenterCancelEffect(ctx);
+    else if(type==='subsonic') e=createSubsonicEffect(ctx);
+    else if(type==='bpmLooper') e=await createBpmLooperEffect(ctx);
+    else if(type==='vinylBreak') e=await createVinylBreakEffect(ctx);
+    else if(type==='duckComp') e=createDuckCompEffect(ctx);
+    else if(type==='echoBreak') e=createEchoBreakEffect(ctx);
+    else if(type==='oneShotDelay') e=createOneShotDelayEffect(ctx);
+    else if(type==='stutterGrain') e=await createStutterGrainEffect(ctx);
+    else if(type==='freezeLooper') e=createFreezeLooperEffect(ctx);
+    else if(type==='jagFilter') e=createJagFilterEffect(ctx);
+    else if(type==='bitDecimator') e=await createBitDecimatorEffect(ctx);
+    else if(type==='twelveBit') e=await createTwelveBitEffect(ctx);
+    else if(type==='loopBreaker') e=await createLoopBreakerEffect(ctx);
+    else if(type==='resonator') e=createResonatorEffect(ctx);
+    else if(type==='reverbBreak') e=createReverbBreakEffect(ctx);
+    else if(type==='pitchUp') e=await createPitchUpEffect(ctx);
+    else if(type==='flangerJet') e=createFlangerJetEffect(ctx);
+    else if(type==='phaserSweep') e=await createPhaserSweepEffect(ctx);
+    if(e){
+      nodeIn.connect(e.in);
+      e.out.connect(wetGains[i]);
+      effects[i]=e;
+      wetGains[i].gain.setTargetAtTime(0,ctx.currentTime,0.04);
+    } else {
+      effects[i] = null;
+      wetGains[i].gain.setValueAtTime(0, ctx.currentTime);
+    }
+  }
+  function triggerCorner(x,y,held){
+    if(!multiMode){
+      wetGains[0].gain.setValueAtTime(1,ctx.currentTime);
+      if(effects[0]&&effects[0].update) effects[0].update(x,y,held);
+      return;
+    }
+    const weights=[(1-x)*(1-y), x*(1-y), (1-x)*y, x*y];
+    for(let k=0;k<4;k++){
+      wetGains[k].gain.linearRampToValueAtTime(weights[k],ctx.currentTime+0.04);
+      if(effects[k]&&effects[k].update) effects[k].update(x,y,held);
+    }
+  }
+  await setEffect(0,'stutterGrain');
+  await setEffect(1,'delay');
+  await setEffect(2,'flanger');
+  await setEffect(3,'reverb');
+  console.log('KaossPad OK');
+  return {nodeIn,nodeOut,setEffect,triggerCorner,setMultiMode};
+}
+
+async function setupFxPadNodes() {
+  fxPadEngine = await createFxPadEngine(audioContext);
+  fxPadMasterIn = audioContext.createGain();
+  fxPadMasterOut = audioContext.createGain();
+  fxPadLeveler = createLevelComp(audioContext);
+  fxPadSetEffect = fxPadEngine.setEffect;
+  fxPadTriggerCorner = fxPadEngine.triggerCorner;
+  fxPadEngine.setMultiMode(fxPadMultiMode);
+  fxPadMasterIn.connect(fxPadEngine.nodeIn);
+  fxPadEngine.nodeOut.connect(fxPadLeveler);
+  fxPadLeveler.connect(fxPadMasterOut);
+}
+
 
 /**************************************
  * Single function to apply all FX routing
  **************************************/
 function applyAllFXRouting() {
+  if (!audioContext) return;
+  if (!fxPadMasterIn) fxPadMasterIn = audioContext.createGain();
+  if (!fxPadMasterOut) fxPadMasterOut = audioContext.createGain();
+  if (!fxPadLeveler) fxPadLeveler = createLevelComp(audioContext);
   // First, disconnect everything that may have been connected:
   videoGain.disconnect();
   if (antiClickGain) antiClickGain.disconnect();
@@ -3329,6 +3943,9 @@ function applyAllFXRouting() {
   bus3Gain.disconnect();
   bus4Gain.disconnect();
   masterGain.disconnect();
+  if (fxPadMasterIn) fxPadMasterIn.disconnect();
+  if (fxPadMasterOut) fxPadMasterOut.disconnect();
+  if (fxPadLeveler) fxPadLeveler.disconnect();
   loFiCompNode.disconnect();
   postCompGain.disconnect();
   overallOutputGain.disconnect();
@@ -3399,6 +4016,16 @@ function applyAllFXRouting() {
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
 
+  masterGain.connect(fxPadMasterIn);
+  if (fxPadActive && fxPadEngine) {
+    fxPadMasterIn.connect(fxPadEngine.nodeIn);
+    fxPadEngine.nodeOut.connect(fxPadLeveler);
+    fxPadLeveler.connect(fxPadMasterOut);
+  } else {
+    fxPadMasterIn.connect(fxPadLeveler);
+    fxPadLeveler.connect(fxPadMasterOut);
+  }
+
   // -------------------------------------------
   // COMPRESSOR BYPASS LOGIC FOR BUS4:
   // -------------------------------------------
@@ -3406,8 +4033,8 @@ function applyAllFXRouting() {
   // but bus4 goes directly to the output (uncompressed).
   // If the compressor is OFF, bus4 merges with everyone else in masterGain.
   if (loFiCompActive) {
-    // bus1..3 => masterGain => loFiComp => postComp => destination
-    masterGain.connect(loFiCompNode);
+    // bus1..3 => masterGain => fxPad => loFiComp => postComp => destination
+    fxPadMasterOut.connect(loFiCompNode);
     loFiCompNode.connect(postCompGain);
     postCompGain.connect(currentOutputNode || audioContext.destination);
     postCompGain.connect(videoDestination);
@@ -3418,7 +4045,7 @@ function applyAllFXRouting() {
   } else {
     // No compressor: just send everyone (including bus4) through masterGain => overallOutput => out
     bus4Gain.connect(masterGain);
-    masterGain.connect(overallOutputGain);
+    fxPadMasterOut.connect(overallOutputGain);
     overallOutputGain.connect(currentOutputNode || audioContext.destination);
     overallOutputGain.connect(videoDestination);
   }
@@ -5072,6 +5699,12 @@ function onKeyDown(e) {
     showInstrumentWindowToggle();
     return;
   }
+  if (k === extensionKeys.fxPad.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    showFxPadWindowToggle();
+    return;
+  }
 
   if (instrumentPreset > 0) {
     const idx = KEYBOARD_INST_KEYS.indexOf(k);
@@ -6443,6 +7076,13 @@ function addControls() {
   });
   actionWrap.appendChild(eqButton);
 
+  fxPadButton = document.createElement("button");
+  fxPadButton.className = "looper-btn";
+  fxPadButton.innerText = "FX Pad";
+  fxPadButton.style.flex = '1 1 calc(50% - 4px)';
+  fxPadButton.addEventListener("click", showFxPadWindowToggle);
+  actionWrap.appendChild(fxPadButton);
+
   loFiCompButton = document.createElement("button");
   loFiCompButton.className = "looper-btn";
   loFiCompButton.innerText = "LoFiComp:Off";
@@ -6833,6 +7473,10 @@ function handleMIDIMessage(e) {
     showInstrumentWindowToggle();
     return;
   }
+  if (st === 144 && note === midiNotes.fxPadToggle) {
+    showFxPadWindowToggle();
+    return;
+  }
 
   if (instrumentPreset > 0) {
     if (command === 144 && e.data[2] > 0) {
@@ -6875,6 +7519,16 @@ function handleMIDIMessage(e) {
   }
 
   if (command === 0xb0) {
+    if (Number(note) === Number(midiNotes.fxPadX)) {
+      const x = e.data[2] / 127;
+      handleFxPadJoystick(x, fxPadBall.y);
+      return;
+    }
+    if (Number(note) === Number(midiNotes.fxPadY)) {
+      const y = 1 - (e.data[2] / 127);
+      handleFxPadJoystick(fxPadBall.x, y);
+      return;
+    }
     if (Number(note) === Number(midiNotes.superKnob)) {
       if (selectedCueKey) {
         if (isModPressed || isShiftKeyDown) {
@@ -7242,6 +7896,10 @@ function buildKeyMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-extkey="instrumentToggle" value="${escapeHtml(extensionKeys.instrumentToggle)}" maxlength="1">
     </div>
+    <div class="keymap-row">
+      <label>FX Pad:</label>
+      <input data-extkey="fxPad" value="${escapeHtml(extensionKeys.fxPad)}" maxlength="1">
+    </div>
     <h4></h4>
     <div id="user-samples-list"></div>
     <button class="looper-keymap-save-btn looper-btn" style="margin-top:8px;">Save & Close</button>
@@ -7439,6 +8097,22 @@ function buildMIDIMapWindow() {
       <label>Instrument Toggle:</label>
       <input data-midiname="instrumentToggle" value="${escapeHtml(String(midiNotes.instrumentToggle))}" type="number">
       <button data-detect="instrumentToggle" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>FX Pad:</label>
+      <input data-midiname="fxPadToggle" value="${escapeHtml(String(midiNotes.fxPadToggle))}" type="number">
+      <button data-detect="fxPadToggle" class="detect-midi-btn">Detect</button>
+    </div>
+    <h4>FX Pad Joystick</h4>
+    <div class="midimap-row">
+      <label>X CC:</label>
+      <input data-midicc="fxPadX" value="${escapeHtml(String(midiNotes.fxPadX))}" type="number">
+      <button data-ccdetect="fxPadX" class="detect-midi-btn">Detect</button>
+    </div>
+    <div class="midimap-row">
+      <label>Y CC:</label>
+      <input data-midicc="fxPadY" value="${escapeHtml(String(midiNotes.fxPadY))}" type="number">
+      <button data-ccdetect="fxPadY" class="detect-midi-btn">Detect</button>
     </div>
     <h4>Super Knob</h4>
     <div class="midimap-row">
@@ -8171,6 +8845,215 @@ function buildInstrumentWindow() {
   updateInstrumentButtonColor();
   updateInstrumentPitchUI();
 }
+
+function buildFxPadWindow() {
+  fxPadContainer = document.createElement("div");
+  fxPadContainer.className = "looper-midimap-container";
+  fxPadContainer.style.width = "260px";
+  fxPadContainer.style.height = "260px";
+
+  fxPadDragHandle = document.createElement("div");
+  fxPadDragHandle.className = "looper-midimap-drag-handle";
+  fxPadDragHandle.innerText = "FX Pad";
+  fxPadContainer.appendChild(fxPadDragHandle);
+
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.width = "100%";
+  wrap.style.height = "calc(100% - 24px)";
+  fxPadContainer.appendChild(wrap);
+
+  fxPadCanvas = document.createElement("canvas");
+  fxPadCanvas.width = 260;
+  fxPadCanvas.height = 260;
+  fxPadCanvas.style.width = "100%";
+  fxPadCanvas.style.height = "100%";
+  fxPadCanvas.style.display = "block";
+  fxPadCanvas.addEventListener('pointerdown',e=>{
+    fxPadDragging=true;
+    fxPadPrev={x:fxPadBall.x,y:fxPadBall.y};
+    fxPadLastTime=performance.now();
+    handleFxPadPointer(e);
+  });
+  fxPadCanvas.addEventListener('dblclick',()=>{
+    toggleFxPadSticky();
+  });
+  wrap.appendChild(fxPadCanvas);
+
+  const types = [
+    'none',
+    'filterDrive','pitch','delay','isolator','vinylSim','reverb','tapeEcho','chorus',
+    'flanger','phaser','tremoloPan','autopan','beatRepeat','distortion','overdrive','fuzz','wah','octave',
+    'compressor','equalizer','bitCrash','noiseGen','radioTuning',
+    'slicerFlanger','ringMod','chromPitchShift','pitchFine','centerCancel',
+    'subsonic','bpmLooper','vinylBreak','duckComp','echoBreak','oneShotDelay',
+    'stutterGrain','freezeLooper','jagFilter','bitDecimator','twelveBit','loopBreaker',
+    'resonator','reverbBreak','pitchUp','flangerJet','phaserSweep'
+  ];
+  for (let i=0;i<4;i++) {
+    const sel=document.createElement('select');
+    types.forEach(t=>sel.add(new Option(t,t)));
+    sel.style.position='absolute';
+    sel.style.zIndex='10';
+    sel.style.backgroundColor='#222';
+    sel.style.color='#fff';
+    if(i===0){sel.style.left='0';sel.style.top='0';}
+    if(i===1){sel.style.right='0';sel.style.top='0';}
+    if(i===2){sel.style.left='0';sel.style.bottom='0';}
+    if(i===3){sel.style.right='0';sel.style.bottom='0';}
+    sel.addEventListener('change',()=>{fxPadSetEffect&&fxPadSetEffect(i,sel.value);});
+    if(i>0 && !fxPadMultiMode) sel.style.display='none';
+    fxPadDropdowns[i]=sel; wrap.appendChild(sel);
+  }
+
+  // Ensure dropdowns reflect the engine defaults on first build
+  const defaults=['stutterGrain','delay','flanger','reverb'];
+  defaults.forEach((t,idx)=>{
+    if(fxPadDropdowns[idx]) fxPadDropdowns[idx].value=t;
+  });
+
+
+  fxPadModeBtn = document.createElement('button');
+  fxPadModeBtn.className = 'looper-btn';
+  fxPadModeBtn.textContent = fxPadMultiMode ? '4-Corner' : 'Single FX';
+  fxPadModeBtn.style.position = 'absolute';
+  fxPadModeBtn.style.right = '4px';
+  fxPadModeBtn.style.bottom = '4px';
+  fxPadModeBtn.addEventListener('click',toggleFxPadMode);
+  wrap.appendChild(fxPadModeBtn);
+
+  document.body.appendChild(fxPadContainer);
+  makePanelDraggable(fxPadContainer, fxPadDragHandle, 'ytbm_fxPadPos');
+  new ResizeObserver(resizeFxPadCanvas).observe(fxPadContainer);
+  fxPadContainer.style.display='none';
+}
+
+function resizeFxPadCanvas(){
+  if(!fxPadContainer||!fxPadCanvas) return;
+  const rect=fxPadContainer.getBoundingClientRect();
+  const size=Math.min(rect.width,rect.height);
+  fxPadCanvas.width=fxPadCanvas.height=size;
+  drawFxPadBall();
+}
+
+function drawFxPadBall(){
+  if(!fxPadCanvas) return;
+  const ctx=fxPadCanvas.getContext('2d');
+  const w=fxPadCanvas.width; const h=fxPadCanvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#222'; ctx.fillRect(0,0,w,h);
+  const x=fxPadBall.x*w; const y=fxPadBall.y*h;
+  ctx.fillStyle=fxPadSticky?'#0f0':'orange';
+  ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+}
+
+function handleFxPadPointer(e){
+  const rect=fxPadCanvas.getBoundingClientRect();
+  let x=(e.clientX-rect.left)/rect.width;
+  let y=(e.clientY-rect.top)/rect.height;
+  x=Math.max(0,Math.min(1,x));
+  y=Math.max(0,Math.min(1,y));
+  if(e.metaKey&&e.altKey){x=fxPadBall.x+(x-fxPadBall.x)*0.2;y=fxPadBall.y+(y-fxPadBall.y)*0.2;}
+  else if(e.metaKey){x=fxPadBall.x+(x-fxPadBall.x)*0.5;y=fxPadBall.y+(y-fxPadBall.y)*0.5;}
+  const now=performance.now();
+  const dt=Math.max(1,now-fxPadLastTime);
+  fxPadBall.vx=(x-fxPadBall.x)/(dt/16);
+  fxPadBall.vy=(y-fxPadBall.y)/(dt/16);
+  fxPadLastTime=now;
+  fxPadBall.x=x; fxPadBall.y=y;
+  drawFxPadBall();
+  if(fxPadActive && fxPadTriggerCorner) fxPadTriggerCorner(x,y,fxPadSticky);
+}
+
+function startFxPadAnim(){
+  cancelAnimationFrame(fxPadAnimId);
+  const step=()=>{
+    if(!fxPadDragging && !fxPadSticky){
+      fxPadBall.x += (0.5 - fxPadBall.x) * 0.2;
+      fxPadBall.y += (0.5 - fxPadBall.y) * 0.2;
+      if(Math.abs(fxPadBall.x-0.5)<0.001) fxPadBall.x=0.5;
+      if(Math.abs(fxPadBall.y-0.5)<0.001) fxPadBall.y=0.5;
+      fxPadBall.vx = fxPadBall.vy = 0;
+    }
+    drawFxPadBall();
+    if(fxPadActive && fxPadTriggerCorner){
+      fxPadTriggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
+    }
+    fxPadAnimId=requestAnimationFrame(step);
+  };
+  step();
+}
+
+async function handleFxPadJoystick(x, y) {
+  await ensureAudioContext();
+  if (!fxPadEngine) await setupFxPadNodes();
+  fxPadBall.x = Math.max(0, Math.min(1, x));
+  fxPadBall.y = Math.max(0, Math.min(1, y));
+  if (!fxPadActive) {
+    await activateFxPad();
+  }
+  if (fxPadTriggerCorner) fxPadTriggerCorner(fxPadBall.x, fxPadBall.y, fxPadSticky);
+  if (fxPadContainer && fxPadContainer.style.display === 'block') drawFxPadBall();
+}
+
+function toggleFxPadSticky(){
+  fxPadSticky = !fxPadSticky;
+  drawFxPadBall();
+}
+
+
+function toggleFxPadMode(){
+  fxPadMultiMode = !fxPadMultiMode;
+  if (fxPadModeBtn) fxPadModeBtn.textContent = fxPadMultiMode ? '4-Corner' : 'Single FX';
+  if (fxPadEngine && fxPadEngine.setMultiMode){
+    fxPadEngine.setMultiMode(fxPadMultiMode);
+    fxPadBall.x = 0.5;
+    fxPadBall.y = 0.5;
+    fxPadEngine.triggerCorner(0.5,0.5,false);
+    drawFxPadBall();
+  }
+  for(let i=1;i<fxPadDropdowns.length;i++){
+    fxPadDropdowns[i].style.display = fxPadMultiMode ? 'block' : 'none';
+  }
+}
+
+function deactivateFxPad(){
+  fxPadActive = false;
+  if (fxPadEngine) fxPadEngine.triggerCorner(0.5,0.5,false);
+  cancelAnimationFrame(fxPadAnimId);
+  if(!fxPadSticky){
+    fxPadBall.x = 0.5;
+    fxPadBall.y = 0.5;
+  }
+  drawFxPadBall();
+  applyAllFXRouting();
+}
+
+async function activateFxPad(){
+  await ensureAudioContext();
+  if(!fxPadEngine) await setupFxPadNodes();
+  fxPadActive = true;
+  applyAllFXRouting();
+  fxPadEngine.triggerCorner(fxPadBall.x,fxPadBall.y,fxPadSticky);
+  startFxPadAnim();
+}
+
+async function showFxPadWindowToggle(){
+  if(!fxPadContainer) buildFxPadWindow();
+  if(fxPadContainer.style.display==='block'){
+    fxPadContainer.style.display='none';
+    deactivateFxPad();
+    return;
+  }
+  fxPadContainer.style.display='block';
+  await activateFxPad();
+}
+
+addTrackedListener(document,'pointermove',e=>{if(fxPadDragging) handleFxPadPointer(e);});
+addTrackedListener(document,'pointerup',()=>{
+  fxPadDragging=false;
+  fxPadBall.vx=0; fxPadBall.vy=0;
+});
 
 /* ------------------------------------------------------
    1.  Persistence
@@ -8941,6 +9824,7 @@ async function initialize() {
     buildMinimalUIBar();
     addTouchButtonToMinimalUI();
     addTouchSequencerButtonToAdvancedUI();
+    buildFxPadWindow();
     attachAudioPriming();
     loadCuePointsAtStartup();
     handleProgressBarDoubleClickForNewCue();
