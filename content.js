@@ -5610,35 +5610,6 @@ function triggerPadCue(padIndex) {
     console.log(`Pad ${padIndex} cue triggered via sequencer`);
   }
 
-function sequencerTriggerCue(cueKey) {
-  const video = getVideoElement();
-  if (!video) return;
-  selectedCueKey = cueKey;
-  lastSuperKnobValue = null;
-  lastSuperKnobDirection = 0;
-  
-  if (cuePoints.hasOwnProperty(cueKey)) {
-    const fadeTime = 0.002; // fade duration in seconds (50ms)
-    const now = audioContext.currentTime;
-    
-    // Fade out: cancel any previous gain changes, then ramp down
-    videoGain.gain.cancelScheduledValues(now);
-    videoGain.gain.setValueAtTime(videoGain.gain.value, now);
-    videoGain.gain.linearRampToValueAtTime(0, now + fadeTime);
-    
-    // After fadeTime seconds, jump to cue and fade back in
-    setTimeout(() => {
-      video.currentTime = cuePoints[cueKey];
-      const t = audioContext.currentTime;
-      videoGain.gain.setValueAtTime(0, t);
-      videoGain.gain.linearRampToValueAtTime(1, t + fadeTime);
-      console.log(`Sequencer triggered cue ${cueKey} at time ${cuePoints[cueKey]}`);
-    }, fadeTime * 1000);
-    recordMidiEvent('cue', cueKey);
-  } else {
-    console.warn(`No cue defined for key "${cueKey}"`);
-  }
-}
 
 
 /**************************************
@@ -6520,6 +6491,7 @@ function resumeMidiLoop(idx) {
 
 function playMidiEvent(ev) {
   midiPlaybackFlag = true;
+  setTimeout(() => { midiPlaybackFlag = false; }, 0);
   if (ev.type === 'cue') {
     sequencerTriggerCue(ev.payload);
   } else if (ev.type === 'sample') {
@@ -6530,7 +6502,6 @@ function playMidiEvent(ev) {
   } else if (ev.type === 'instrument') {
     playInstrumentNote(ev.payload);
   }
-  midiPlaybackFlag = false;
 }
 
 function eraseMidiLoop(idx) {
