@@ -647,6 +647,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       currentlyDetectingMidi = null,
       isModPressed = false,
       isShiftKeyDown = false,
+      isAltKeyDown = false,
+      isMetaKeyDown = false,
       pitchDownInterval = null,
       pitchUpInterval = null,
       // Track last processed MIDI message to filter duplicates
@@ -672,6 +674,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiIsDoublePress = false,
       midiLastClickTime = 0,
       midiDoublePressHoldStartTime = null,
+      skipLooperMouseUp = new Array(MAX_MIDI_LOOPS).fill(false),
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -2376,6 +2379,7 @@ function updateLooperButtonColor() {
     else if (state === 'playing') c = 'green';
     unifiedLooperButton.style.backgroundColor = (state === 'idle') ? 'grey' : c;
     unifiedLooperButton.innerText = 'MidiLoops(R/S/D/F)';
+    updateLoopProgressState();
   } else {
     let c = 'grey';
     if (looperState === 'recording') c = 'red';
@@ -2413,7 +2417,14 @@ function updateLooperButtonLabel() {
 }
 
 function updateLoopProgressState() {
-  if (useMidiLoopers) return;
+  if (useMidiLoopers) {
+    if (videoLooperState === "idle" && midiLoopStates.every(s => s === 'idle')) {
+      stopLoopProgress();
+    } else {
+      startLoopProgress();
+    }
+    return;
+  }
   if (looperState === "idle" && videoLooperState === "idle" && !loopPlaying.some(p => p)) {
     stopLoopProgress();
   } else {
@@ -2437,6 +2448,42 @@ function stopLoopProgress() {
 
 function loopProgressStep() {
   loopProgressRAF = requestAnimationFrame(loopProgressStep);
+  if (useMidiLoopers) {
+    const durRef = midiLoopDurations[activeMidiLoopIndex] || midiLoopDurations.find(d => d) || 0;
+    if (!durRef) return;
+    const now = performance.now();
+    const start = midiLoopStartTimes[activeMidiLoopIndex];
+    const elapsed = now - start;
+    const beatDur = durRef / 4;
+    const beatProg = elapsed % beatDur;
+    const pulse = 1 - (beatProg / beatDur);
+    for (let i = 0; i < MAX_MIDI_LOOPS; i++) {
+      const active = midiLoopStates[i] !== 'idle';
+      const adv = loopProgressFills[i];
+      const min = loopProgressFillsMin[i];
+      const dur = midiLoopDurations[i] || durRef;
+      const st = midiLoopStartTimes[i];
+      const prog = dur ? ((now - st) % dur) : 0;
+      const pct = dur ? (prog / dur) * 100 : 0;
+      const bar = dur ? Math.floor((prog / dur) * 4) : 0;
+      if (adv) {
+        adv.style.width = pct + '%';
+        adv.style.opacity = active ? 1 : 0;
+        Array.from(adv.parentElement.querySelectorAll('.bar-ind'))
+          .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+      }
+      if (min) {
+        min.style.width = pct + '%';
+        min.style.opacity = active ? 1 : 0;
+        Array.from(min.parentElement.querySelectorAll('.bar-ind'))
+          .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+      }
+    }
+    const showPulse = midiLoopStates.some(s => s === 'recording' || s === 'overdubbing');
+    if (looperPulseEl) looperPulseEl.style.opacity = showPulse ? pulse : 0;
+    if (looperPulseElMin) looperPulseElMin.style.opacity = showPulse ? pulse : 0;
+    return;
+  }
   if (!audioContext || !baseLoopDuration) return;
   const now = audioContext.currentTime;
   let elapsed = now - loopStartAbsoluteTime;
@@ -5707,6 +5754,8 @@ function onKeyDown(e) {
     isShiftKeyDown = true;
     return;
   }
+  if (e.key === "Alt") { isAltKeyDown = true; return; }
+  if (e.key === "Meta") { isMetaKeyDown = true; return; }
   if (isTypingInTextField(e)) {
   return;
 }
@@ -5748,12 +5797,47 @@ function onKeyDown(e) {
     }
   }
 
-  // Option+Cmd+R erases all audio loops
+  // Option+Cmd+R quantizes MIDI loop A or erases all audio loops
   if (e.metaKey && e.altKey && k === extensionKeys.looperA.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    eraseAllAudioLoops();
+    if (useMidiLoopers) {
+      quantizeMidiLoop(0);
+      skipLooperMouseUp[0] = true;
+    } else {
+      eraseAllAudioLoops();
+    }
+    return;
+  }
+  if (e.metaKey && e.altKey && k === extensionKeys.looperB.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (useMidiLoopers) {
+      quantizeMidiLoop(1);
+      skipLooperMouseUp[1] = true;
+    }
+    return;
+  }
+  if (e.metaKey && e.altKey && k === extensionKeys.looperC.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (useMidiLoopers) {
+      quantizeMidiLoop(2);
+      skipLooperMouseUp[2] = true;
+    }
+    return;
+  }
+  if (e.metaKey && e.altKey && k === extensionKeys.looperD.toLowerCase()) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (useMidiLoopers) {
+      quantizeMidiLoop(3);
+      skipLooperMouseUp[3] = true;
+    }
     return;
   }
   // Cmd+V erases the video loop
@@ -5769,28 +5853,28 @@ function onKeyDown(e) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    eraseAudioLoopAt(0);
+    if (useMidiLoopers) eraseMidiLoop(0); else eraseAudioLoopAt(0);
     return;
   }
   if (e.metaKey && k === extensionKeys.looperB.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    eraseAudioLoopAt(1);
+    if (useMidiLoopers) eraseMidiLoop(1); else eraseAudioLoopAt(1);
     return;
   }
   if (e.metaKey && k === extensionKeys.looperC.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    eraseAudioLoopAt(2);
+    if (useMidiLoopers) eraseMidiLoop(2); else eraseAudioLoopAt(2);
     return;
   }
   if (e.metaKey && k === extensionKeys.looperD.toLowerCase()) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    eraseAudioLoopAt(3);
+    if (useMidiLoopers) eraseMidiLoop(3); else eraseAudioLoopAt(3);
     return;
   }
   
@@ -5937,6 +6021,8 @@ function onKeyUp(e) {
     isShiftKeyDown = false;
     return;
   }
+  if (e.key === "Alt") { isAltKeyDown = false; return; }
+  if (e.key === "Meta") { isMetaKeyDown = false; return; }
   const k = e.key.toLowerCase();
   if (isTypingInTextField(e)) {
   return;
@@ -5957,6 +6043,7 @@ function onKeyUp(e) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      if (skipLooperMouseUp[i]) { skipLooperMouseUp[i] = false; return; }
       activeLoopIndex = i;
       activeMidiLoopIndex = i;
       onLooperButtonMouseUp();
@@ -6362,6 +6449,26 @@ function eraseMidiLoop(idx) {
   midiLoopEvents[idx] = [];
   midiLoopDurations[idx] = 0;
   midiLoopStates[idx] = 'idle';
+}
+
+function eraseAllMidiLoops() {
+  for (let i = 0; i < MAX_MIDI_LOOPS; i++) eraseMidiLoop(i);
+}
+
+function quantizeMidiLoop(idx) {
+  const events = midiLoopEvents[idx];
+  const dur = midiLoopDurations[idx];
+  if (!events.length || !dur) return;
+  let bpm = loopsBPM;
+  if (!bpm) bpm = Math.round((60 * 4) / dur);
+  if (!bpm || !isFinite(bpm)) return;
+  const step = (60 / bpm) / 4; // 16th note
+  events.forEach(ev => {
+    let t = Math.round(ev.time / step) * step;
+    while (t >= dur) t -= dur;
+    ev.time = Math.max(0, t);
+  });
+  events.sort((a, b) => a.time - b.time);
 }
 
 function recordMidiEvent(type, payload) {
@@ -7748,7 +7855,10 @@ function handleMIDIMessage(e) {
       activeLoopIndex = 0;
       activeMidiLoopIndex = 0;
       if (isModPressed) {
-        eraseAudioLoopAt(0);
+        if (useMidiLoopers) eraseMidiLoop(0); else eraseAudioLoopAt(0);
+      } else if (isMetaKeyDown && isAltKeyDown && useMidiLoopers) {
+        quantizeMidiLoop(0);
+        skipLooperMouseUp[0] = true;
       } else {
         if (looperState !== "idle" && !audioLoopBuffers[0]) recordingNewLoop = true;
         onLooperButtonMouseDown();
@@ -7758,7 +7868,10 @@ function handleMIDIMessage(e) {
       activeLoopIndex = 1;
       activeMidiLoopIndex = 1;
       if (isModPressed) {
-        eraseAudioLoopAt(1);
+        if (useMidiLoopers) eraseMidiLoop(1); else eraseAudioLoopAt(1);
+      } else if (isMetaKeyDown && isAltKeyDown && useMidiLoopers) {
+        quantizeMidiLoop(1);
+        skipLooperMouseUp[1] = true;
       } else {
         if (looperState !== "idle" && !audioLoopBuffers[1]) recordingNewLoop = true;
         onLooperButtonMouseDown();
@@ -7768,7 +7881,10 @@ function handleMIDIMessage(e) {
       activeLoopIndex = 2;
       activeMidiLoopIndex = 2;
       if (isModPressed) {
-        eraseAudioLoopAt(2);
+        if (useMidiLoopers) eraseMidiLoop(2); else eraseAudioLoopAt(2);
+      } else if (isMetaKeyDown && isAltKeyDown && useMidiLoopers) {
+        quantizeMidiLoop(2);
+        skipLooperMouseUp[2] = true;
       } else {
         if (looperState !== "idle" && !audioLoopBuffers[2]) recordingNewLoop = true;
         onLooperButtonMouseDown();
@@ -7778,7 +7894,10 @@ function handleMIDIMessage(e) {
       activeLoopIndex = 3;
       activeMidiLoopIndex = 3;
       if (isModPressed) {
-        eraseAudioLoopAt(3);
+        if (useMidiLoopers) eraseMidiLoop(3); else eraseAudioLoopAt(3);
+      } else if (isMetaKeyDown && isAltKeyDown && useMidiLoopers) {
+        quantizeMidiLoop(3);
+        skipLooperMouseUp[3] = true;
       } else {
         if (looperState !== "idle" && !audioLoopBuffers[3]) recordingNewLoop = true;
         onLooperButtonMouseDown();
