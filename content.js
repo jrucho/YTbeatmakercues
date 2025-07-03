@@ -684,6 +684,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiOverdubStartTimeouts = new Array(MAX_MIDI_LOOPS).fill(null),
       skipLooperMouseUp = new Array(MAX_MIDI_LOOPS).fill(false),
       midiStopTimeouts = new Array(MAX_MIDI_LOOPS).fill(null),
+      midiStopTargets = new Array(MAX_MIDI_LOOPS).fill(0),
       midiRecordLines = new Array(MAX_MIDI_LOOPS).fill(null),
       midiRecordLinesMin = new Array(MAX_MIDI_LOOPS).fill(null),
       // 4-Bus Audio nodes
@@ -2250,6 +2251,7 @@ function captureAppState() {
     midiLoopDurations: midiLoopDurations.slice(),
     midiLoopPlaying: midiLoopPlaying.slice(),
     midiLoopStartTimes: midiLoopStartTimes.slice(),
+    midiStopTargets: midiStopTargets.slice(),
     midiLoopStartAbsoluteTime,
     midiMasterLoopIndex,
     midiMasterDuration,
@@ -2302,6 +2304,7 @@ function restoreAppState(st) {
   midiLoopDurations = st.midiLoopDurations ? st.midiLoopDurations.slice() : new Array(MAX_MIDI_LOOPS).fill(0);
   midiLoopPlaying = st.midiLoopPlaying ? st.midiLoopPlaying.slice() : new Array(MAX_MIDI_LOOPS).fill(false);
   midiLoopStartTimes = st.midiLoopStartTimes ? st.midiLoopStartTimes.slice() : new Array(MAX_MIDI_LOOPS).fill(0);
+  midiStopTargets = st.midiStopTargets ? st.midiStopTargets.slice() : new Array(MAX_MIDI_LOOPS).fill(0);
   midiLoopIntervals.forEach((t,i)=>{ if(t) clearTimeout(t); midiLoopIntervals[i]=null; });
   midiOverdubStartTimeouts.forEach((t,i)=>{ if(t) clearTimeout(t); midiOverdubStartTimeouts[i]=null; });
   midiStopTimeouts.forEach((t,i)=>{ if(t) clearTimeout(t); midiStopTimeouts[i]=null; });
@@ -6537,6 +6540,7 @@ function stopMidiLoopRecording(idx) {
   midiStopPressTime = nowMs();
   const otherActive = midiLoopStates.some((s,i)=>i!==idx && (s==='playing'||s==='overdubbing'));
   if (!loopsBPM && !otherActive) {
+    midiStopTargets[idx] = nowMs();
     finalizeMidiLoopRecording(idx);
   } else {
     const bpm = getClock().bpm || 120;
@@ -6545,6 +6549,7 @@ function stopMidiLoopRecording(idx) {
     const now = nowMs();
     const remain = barMs - ((now - ref) % barMs);
     if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
+    midiStopTargets[idx] = now + remain;
     midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
   }
   updateLooperButtonColor();
@@ -6554,17 +6559,23 @@ function finalizeMidiLoopRecording(idx, autoPlay = true) {
   pushUndoState();
   midiStopTimeouts[idx] = null;
   if (midiLoopStates[idx] === 'recording') {
-    midiLoopDurations[idx] = nowMs() - midiRecordingStart;
-    if (!loopsBPM) {
-      const durMs = midiStopPressTime ? (midiStopPressTime - midiRecordingStart) : midiLoopDurations[idx];
-      if (durMs > 0) loopsBPM = Math.round(240000 / durMs);
+    const stopTime = midiStopTargets[idx] || nowMs();
+    const rawDur = stopTime - midiRecordingStart;
+    const pressDur = midiStopPressTime ? (midiStopPressTime - midiRecordingStart) : rawDur;
+    if (!loopsBPM && pressDur > 0) {
+      loopsBPM = Math.round(240000 / pressDur);
     }
+    const bpm = loopsBPM || 120;
+    const barMs = 240000 / bpm;
+    const bars = Math.max(1, Math.round(rawDur / barMs));
+    midiLoopDurations[idx] = bars * barMs;
     midiLoopStates[idx] = 'playing';
     updateMidiMasterLoopIndex();
     if (autoPlay) playMidiLoop(idx);
   } else if (midiLoopStates[idx] === 'overdubbing') {
     midiLoopStates[idx] = 'playing';
   }
+  midiStopTargets[idx] = 0;
   midiStopPressTime = 0;
   updateLooperButtonColor();
 }
@@ -6659,6 +6670,7 @@ function eraseMidiLoop(idx) {
   midiLoopEvents[idx] = [];
   midiLoopDurations[idx] = 0;
   midiLoopStates[idx] = 'idle';
+  midiStopTargets[idx] = 0;
   if (midiRecordLines[idx]) midiRecordLines[idx].style.opacity = 0;
   if (midiRecordLinesMin[idx]) midiRecordLinesMin[idx].style.opacity = 0;
   updateMidiMasterLoopIndex();
@@ -6671,6 +6683,7 @@ function eraseMidiLoop(idx) {
 function eraseAllMidiLoops() {
   if (midiLoopEvents.some(arr => arr.length)) pushUndoState();
   for (let i = 0; i < MAX_MIDI_LOOPS; i++) eraseMidiLoop(i);
+  midiStopTargets.fill(0);
   midiLoopStartAbsoluteTime = null;
   midiMasterLoopIndex = null;
   midiMasterDuration = 0;
