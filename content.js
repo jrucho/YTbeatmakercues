@@ -665,6 +665,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiLoopEvents = Array.from({length: MAX_MIDI_LOOPS}, () => []),
       midiLoopDurations = new Array(MAX_MIDI_LOOPS).fill(0),
       midiLoopIntervals = new Array(MAX_MIDI_LOOPS).fill(null),
+      midiLoopStartTimes = new Array(MAX_MIDI_LOOPS).fill(0),
       activeMidiLoopIndex = 0,
       midiRecordingStart = 0,
       midiPressTimes = [],
@@ -2371,6 +2372,7 @@ function updateLooperButtonColor() {
     const state = midiLoopStates[activeMidiLoopIndex];
     let c = 'grey';
     if (state === 'recording') c = 'red';
+    else if (state === 'overdubbing') c = 'orange';
     else if (state === 'playing') c = 'green';
     unifiedLooperButton.style.backgroundColor = (state === 'idle') ? 'grey' : c;
     unifiedLooperButton.innerText = 'MidiLoops(R/S/D/F)';
@@ -2727,6 +2729,7 @@ function instrumentSettings() {
 
 function playInstrumentNote(midi) {
   if (!audioContext || instrumentLayers.length === 0) return;
+  recordMidiEvent('instrument', midi);
   const baseMidi = midi + instrumentTranspose;
   const freqRatio = instrumentPitchRatio;
   const noteForPreset = (cfg) => baseMidi + (cfg.tune || 0);
@@ -5577,7 +5580,7 @@ function sequencerTriggerCue(cueKey) {
       videoGain.gain.linearRampToValueAtTime(1, t + fadeTime);
       console.log(`Sequencer triggered cue ${cueKey} at time ${cuePoints[cueKey]}`);
     }, fadeTime * 1000);
-    recordMidiEvent(cueKey);
+    recordMidiEvent('cue', cueKey);
   } else {
     console.warn(`No cue defined for key "${cueKey}"`);
   }
@@ -5672,7 +5675,7 @@ function sequencerTriggerCue(cueKey) {
     videoGain.gain.linearRampToValueAtTime(1, t + fadeTime);
   }, fadeTime * 1000);
 
-  recordMidiEvent(cueKey);
+  recordMidiEvent('cue', cueKey);
   
   console.log(`Sequencer triggered cue ${cueKey} at time ${cuePoints[cueKey]}`);
 }
@@ -5969,6 +5972,7 @@ addTrackedListener(document, "keyup", onKeyUp, true);
 
 function playSample(n) {
   ensureAudioContext().then(() => {
+    recordMidiEvent('sample', n);
     let samples = audioBuffers[n];
     if (!samples.length) return;
     const buffer = samples[currentSampleIndex[n]];
@@ -5992,6 +5996,8 @@ function playSample(n) {
 function playUserSample(us) {
   ensureAudioContext().then(() => {
     if (!us.buffer) return;
+    const idx = userSamples.indexOf(us);
+    if (idx !== -1) recordMidiEvent('userSample', idx);
     let s = audioContext.createBufferSource();
     s.buffer = us.buffer;
     s.playbackRate.value = 1;
@@ -6148,11 +6154,10 @@ function singlePressMidiLooperAction() {
     } else {
       startMidiLoopRecording(idx);
     }
-  } else if (state === 'recording') {
+  } else if (state === 'recording' || state === 'overdubbing') {
     stopMidiLoopRecording(idx);
-  } else {
-    stopMidiLoop(idx);
-    midiLoopStates[idx] = 'idle';
+  } else if (state === 'playing') {
+    startMidiLoopOverdub(idx);
   }
   updateLooperButtonColor();
 }
@@ -6300,10 +6305,19 @@ function startMidiLoopRecording(idx) {
   stopMidiLoop(idx);
 }
 
+function startMidiLoopOverdub(idx) {
+  midiLoopStates[idx] = 'overdubbing';
+  midiRecordingStart = performance.now();
+}
+
 function stopMidiLoopRecording(idx) {
-  midiLoopDurations[idx] = performance.now() - midiRecordingStart;
-  midiLoopStates[idx] = 'playing';
-  playMidiLoop(idx);
+  if (midiLoopStates[idx] === 'recording') {
+    midiLoopDurations[idx] = performance.now() - midiRecordingStart;
+    midiLoopStates[idx] = 'playing';
+    playMidiLoop(idx);
+  } else if (midiLoopStates[idx] === 'overdubbing') {
+    midiLoopStates[idx] = 'playing';
+  }
 }
 
 function playMidiLoop(idx) {
@@ -6311,13 +6325,16 @@ function playMidiLoop(idx) {
   const dur = midiLoopDurations[idx];
   function schedule() {
     const start = performance.now();
+    midiLoopStartTimes[idx] = start;
     midiLoopEvents[idx].forEach(ev => {
       setTimeout(() => {
-        if (midiLoopStates[idx] === 'playing') sequencerTriggerCue(ev.cue);
+        if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
+          playMidiEvent(ev);
       }, ev.time);
     });
     midiLoopIntervals[idx] = setTimeout(() => {
-      if (midiLoopStates[idx] === 'playing') schedule();
+      if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
+        schedule();
     }, dur);
   }
   schedule();
@@ -6325,7 +6342,19 @@ function playMidiLoop(idx) {
 
 function stopMidiLoop(idx) {
   if (midiLoopIntervals[idx]) { clearTimeout(midiLoopIntervals[idx]); midiLoopIntervals[idx] = null; }
-  midiLoopPlaying[idx] = false;
+}
+
+function playMidiEvent(ev) {
+  if (ev.type === 'cue') {
+    sequencerTriggerCue(ev.payload);
+  } else if (ev.type === 'sample') {
+    playSample(ev.payload);
+  } else if (ev.type === 'userSample') {
+    const us = userSamples[ev.payload];
+    if (us) playUserSample(us);
+  } else if (ev.type === 'instrument') {
+    playInstrumentNote(ev.payload);
+  }
 }
 
 function eraseMidiLoop(idx) {
@@ -6335,10 +6364,14 @@ function eraseMidiLoop(idx) {
   midiLoopStates[idx] = 'idle';
 }
 
-function recordMidiEvent(cueKey) {
+function recordMidiEvent(type, payload) {
   const idx = activeMidiLoopIndex;
-  if (useMidiLoopers && midiLoopStates[idx] === 'recording') {
-    midiLoopEvents[idx].push({ time: performance.now() - midiRecordingStart, cue: cueKey });
+  if (!useMidiLoopers) return;
+  if (midiLoopStates[idx] === 'recording') {
+    midiLoopEvents[idx].push({ time: performance.now() - midiRecordingStart, type, payload });
+  } else if (midiLoopStates[idx] === 'overdubbing') {
+    const pos = ((performance.now() - midiLoopStartTimes[idx]) % midiLoopDurations[idx]);
+    midiLoopEvents[idx].push({ time: pos, type, payload });
   }
 }
 
@@ -6929,6 +6962,11 @@ function addControls() {
   videoLooperButton.addEventListener("mouseup", onVideoLooperButtonMouseUp);
   looperButtonRow.appendChild(videoLooperButton);
 
+  cw.appendChild(looperButtonRow);
+
+  const midiToggleRow = document.createElement('div');
+  midiToggleRow.style.display = 'flex';
+  midiToggleRow.style.marginBottom = '8px';
   const midiToggle = document.createElement("button");
   midiToggle.className = "looper-btn";
   midiToggle.innerText = "Use MIDI Loopers";
@@ -6937,9 +6975,8 @@ function addControls() {
     midiToggle.innerText = useMidiLoopers ? "Use Audio Loopers" : "Use MIDI Loopers";
     updateLooperButtonColor();
   });
-  looperButtonRow.appendChild(midiToggle);
-
-  cw.appendChild(looperButtonRow);
+  midiToggleRow.appendChild(midiToggle);
+  cw.appendChild(midiToggleRow);
 
   const createSampleRow = (type, label) => {
     const container = document.createElement("div");
