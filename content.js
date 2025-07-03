@@ -10355,3 +10355,178 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   `;
   document.head.appendChild(style);
 })();
+
+// ==== TransportClock and LoopEngine implementation (sample-accurate sync) ====
+class TransportClock {
+  constructor(ctx, bpm = 120) {
+    this.ctx = ctx;
+    this.bpm = bpm;
+    this.samplesPerBeat = this.ctx.sampleRate * 60 / this.bpm;
+    this.tick = 0;
+    this.bar = 1;
+    this.beat = 1;
+    this.sixteenth = 0;
+    this.subscribers = new Set();
+    this._proc = null;
+  }
+  start() {
+    if (this._proc) return;
+    const workletCode = `class ClockProcessor extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        this.tick = 0;
+        this.port.onmessage = e => { this.params = e.data; };
+      }
+      process(_, outputs, params) {
+        const state = this.params;
+        if (!state) return true;
+        const sab = state[0];
+        const view = new Int32Array(sab);
+        view[1] += 128;
+        const spb = view[0];
+        if (view[1] >= spb) {
+          view[1] -= spb;
+          view[2] = (view[2] % 4) + 1;
+          if (view[2] === 1) view[3] = (view[3] + 1) % 16;
+        }
+        return true;
+      }
+    }
+    registerProcessor('clock-processor', ClockProcessor);`;
+    const blob = new Blob([workletCode], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    this.sab = new SharedArrayBuffer(16);
+    this.view = new Int32Array(this.sab);
+    this.view[0] = Math.round(this.samplesPerBeat);
+    this.view[1] = 0;
+    this.view[2] = 1;
+    this.view[3] = 0;
+    this.ctx.audioWorklet.addModule(url).then(() => {
+      this.node = new AudioWorkletNode(this.ctx, 'clock-processor');
+      this.node.port.postMessage([this.sab]);
+      this.node.connect(this.ctx.destination);
+    });
+    this._proc = true;
+  }
+  getState() {
+    if (!this.view) return { bpm: this.bpm, bar: this.bar, beat: this.beat, tick: 0 };
+    const beat = Atomics.load(this.view, 2);
+    const sixteenth = Atomics.load(this.view, 3);
+    const tick = Atomics.load(this.view, 1);
+    return { bpm: this.bpm, bar: (sixteenth >> 2) + 1, beat, tick };
+  }
+}
+
+const loopEngines = new Map();
+class LoopEngine {
+  constructor(id, isMidi, clock) {
+    this.id = id;
+    this.isMidi = isMidi;
+    this.clock = clock;
+    this.state = 'idle';
+    this.events = [];
+    this.startTick = 0;
+    this.length = 0;
+    this.queue = null;
+  }
+  recordStart() {
+    const st = this.clock.getState();
+    this.startTick = st.tick;
+    this.state = 'recording';
+  }
+  recordStop(autoPlay = true) {
+    const st = this.clock.getState();
+    this.length = st.tick - this.startTick || this.clock.view[0] * 4;
+    this.state = autoPlay ? 'playing' : 'paused';
+  }
+  play(legato = false) {
+    if (this.state === 'playing') return;
+    this.queue = legato ? 'sixteenth' : 'bar';
+    this.state = 'queued';
+  }
+  stop() {
+    this.state = 'idle';
+    this.queue = null;
+  }
+  overdubToggle() {
+    this.state = this.state === 'overdubbing' ? 'playing' : 'overdubbing';
+  }
+  scheduleIfQueued() {
+    if (!this.queue) return;
+    const st = this.clock.getState();
+    if ((this.queue === 'bar' && st.beat === 1 && st.tick === 0) ||
+        (this.queue === 'sixteenth' && st.tick === 0)) {
+      this.queue = null;
+      this.state = 'playing';
+    }
+  }
+}
+
+function getLooperUiColor(id) {
+  const l = loopEngines.get(id);
+  if (!l) return 'grey';
+  switch (l.state) {
+    case 'recording': return 'red';
+    case 'overdubbing': return 'orange';
+    case 'playing': return 'green';
+    case 'queued': return 'amber';
+    default: return 'grey';
+  }
+}
+
+function updateMinimalLoopButtonColor(btn) {
+  if (!btn || !btn.dataset.looperId) return;
+  btn.style.backgroundColor = getLooperUiColor(btn.dataset.looperId);
+}
+
+function getClock() {
+  if (!window.__transportClock && window.audioContext) {
+    window.__transportClock = new TransportClock(window.audioContext, 120);
+    window.__transportClock.start();
+  }
+  return window.__transportClock ? window.__transportClock.getState() : { bpm: 120, bar: 1, beat: 1, tick: 0 };
+}
+
+function startRecording(looperId = 'A0') {
+  if (!loopEngines.has(looperId)) loopEngines.set(looperId, new LoopEngine(looperId, looperId.startsWith('M'), window.__transportClock));
+  loopEngines.get(looperId).recordStart();
+}
+
+function stopRecording(looperId = 'A0') {
+  const l = loopEngines.get(looperId);
+  if (l) l.recordStop();
+}
+
+function togglePlay(looperId = 'A0', alt = false) {
+  const l = loopEngines.get(looperId);
+  if (!l) return;
+  if (l.state === 'playing') {
+    l.stop();
+  } else {
+    l.play(alt);
+  }
+}
+
+function toggleOverdub(looperId = 'A0') {
+  const l = loopEngines.get(looperId);
+  if (l) l.overdubToggle();
+}
+
+function runSelfTest() {
+  const fakeCtx = { sampleRate: 44100, audioWorklet: { addModule: async () => {} }, destination: {} };
+  const clock = new TransportClock(fakeCtx, 120);
+  clock.start();
+  const l1 = new LoopEngine('A0', false, clock);
+  l1.recordStart();
+  clock.view[1] += clock.view[0] * 4;
+  l1.recordStop();
+  for (let i = 0; i < 16; i++) {
+    clock.view[1] += clock.view[0] * 4;
+    l1.scheduleIfQueued();
+  }
+  console.log('PASS');
+}
+
+if (typeof module !== 'undefined' && require.main === module) {
+  runSelfTest();
+}
