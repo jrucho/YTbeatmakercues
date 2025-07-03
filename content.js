@@ -680,6 +680,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiDoublePressHoldStartTime = null,
       midiPlaybackFlag = false,
       skipLooperMouseUp = new Array(MAX_MIDI_LOOPS).fill(false),
+      midiStopTimeouts = new Array(MAX_MIDI_LOOPS).fill(null),
+      midiRecordLines = new Array(MAX_MIDI_LOOPS).fill(null),
+      midiRecordLinesMin = new Array(MAX_MIDI_LOOPS).fill(null),
       // 4-Bus Audio nodes
       audioContext = null,
       videoGain = null,
@@ -2449,6 +2452,8 @@ function stopLoopProgress() {
   loopProgressRAF = null;
   loopProgressFills.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
   loopProgressFillsMin.forEach(f => { if (f) { f.style.width = '0%'; f.style.opacity = 0; } });
+  midiRecordLines.forEach(l => { if (l) l.style.opacity = 0; });
+  midiRecordLinesMin.forEach(l => { if (l) l.style.opacity = 0; });
   if (looperPulseEl) looperPulseEl.style.opacity = 0;
   if (looperPulseElMin) looperPulseElMin.style.opacity = 0;
 }
@@ -2468,6 +2473,8 @@ function loopProgressStep() {
       const active = midiLoopPlaying[i] || midiLoopStates[i] === 'recording' || midiLoopStates[i] === 'overdubbing';
       const adv = loopProgressFills[i];
       const min = loopProgressFillsMin[i];
+      const recAdv = midiRecordLines[i];
+      const recMin = midiRecordLinesMin[i];
       const dur = midiLoopDurations[i] || durRef;
       const st = midiLoopStartTimes[i];
       const prog = dur ? ((now - st) % dur) : 0;
@@ -2476,14 +2483,25 @@ function loopProgressStep() {
       if (adv) {
         adv.style.width = pct + '%';
         adv.style.opacity = active ? 1 : 0;
+        adv.style.background = (midiLoopStates[i] === 'recording') ? 'red' : (midiLoopStates[i] === 'overdubbing' ? 'orange' : LOOP_COLORS[i % 4]);
         Array.from(adv.parentElement.querySelectorAll('.bar-ind'))
           .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
       }
       if (min) {
         min.style.width = pct + '%';
         min.style.opacity = active ? 1 : 0;
+        min.style.background = (midiLoopStates[i] === 'recording') ? 'red' : (midiLoopStates[i] === 'overdubbing' ? 'orange' : LOOP_COLORS[i % 4]);
         Array.from(min.parentElement.querySelectorAll('.bar-ind'))
           .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
+      }
+      const recPct = dur ? ((performance.now() - midiRecordingStart) / dur) * 100 : 0;
+      if (recAdv) {
+        recAdv.style.left = recPct + '%';
+        recAdv.style.opacity = midiLoopStates[i] === 'recording' ? 1 : 0;
+      }
+      if (recMin) {
+        recMin.style.left = recPct + '%';
+        recMin.style.opacity = midiLoopStates[i] === 'recording' ? 1 : 0;
       }
     }
     const showPulse = midiLoopStates.some(s => s === 'recording' || s === 'overdubbing');
@@ -6438,6 +6456,21 @@ function startMidiLoopOverdub(idx) {
 }
 
 function stopMidiLoopRecording(idx) {
+  if (midiLoopStates[idx] !== 'recording' && midiLoopStates[idx] !== 'overdubbing') return;
+  if (midiMasterDuration) {
+    const now = performance.now();
+    const elapsed = (now - midiRecordingStart) % midiMasterDuration;
+    const remain = midiMasterDuration - elapsed;
+    if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
+    midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
+  } else {
+    finalizeMidiLoopRecording(idx);
+  }
+  updateLooperButtonColor();
+}
+
+function finalizeMidiLoopRecording(idx) {
+  midiStopTimeouts[idx] = null;
   if (midiLoopStates[idx] === 'recording') {
     midiLoopDurations[idx] = performance.now() - midiRecordingStart;
     midiLoopStates[idx] = 'playing';
@@ -6487,6 +6520,7 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
 function stopMidiLoop(idx) {
   if (midiLoopIntervals[idx]) { clearTimeout(midiLoopIntervals[idx]); midiLoopIntervals[idx] = null; }
   midiLoopPlaying[idx] = false;
+  if (midiStopTimeouts[idx]) { clearTimeout(midiStopTimeouts[idx]); midiStopTimeouts[idx] = null; }
 }
 
 function resumeMidiLoop(idx) {
@@ -6520,6 +6554,8 @@ function eraseMidiLoop(idx) {
   midiLoopEvents[idx] = [];
   midiLoopDurations[idx] = 0;
   midiLoopStates[idx] = 'idle';
+  if (midiRecordLines[idx]) midiRecordLines[idx].style.opacity = 0;
+  if (midiRecordLinesMin[idx]) midiRecordLinesMin[idx].style.opacity = 0;
   updateMidiMasterLoopIndex();
   updateLooperButtonColor();
 }
@@ -6801,6 +6837,15 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     f.style.opacity = 0;
     f.style.background = LOOP_COLORS[i % 4];
     b.appendChild(f);
+    const rec = document.createElement('div');
+    rec.style.position = 'absolute';
+    rec.style.top = '0';
+    rec.style.bottom = '0';
+    rec.style.left = '0';
+    rec.style.width = '2px';
+    rec.style.background = 'red';
+    rec.style.opacity = 0;
+    b.appendChild(rec);
     for (let j=1;j<4;j++){
       const di=document.createElement('div');
       di.className='bar-ind';
@@ -6815,6 +6860,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     }
     pWrap.appendChild(b);
     loopProgressFillsMin[i] = f;
+    midiRecordLinesMin[i] = rec;
   }
   const loopWrapMin = document.createElement('div');
   loopWrapMin.style.position = 'relative';
@@ -7113,6 +7159,15 @@ function addControls() {
     fill.style.opacity = 0;
     fill.style.background = LOOP_COLORS[i % 4];
     barBg.appendChild(fill);
+    const rec = document.createElement('div');
+    rec.style.position = 'absolute';
+    rec.style.top = '0';
+    rec.style.bottom = '0';
+    rec.style.left = '0';
+    rec.style.width = '2px';
+    rec.style.background = 'red';
+    rec.style.opacity = 0;
+    barBg.appendChild(rec);
     for (let j = 1; j < 4; j++) {
       const ind = document.createElement('div');
       ind.className = 'bar-ind';
@@ -7127,6 +7182,7 @@ function addControls() {
     }
     progressWrap.appendChild(barBg);
     loopProgressFills[i] = fill;
+    midiRecordLines[i] = rec;
   }
   const unifiedWrap = document.createElement('div');
   unifiedWrap.style.position = 'relative';
