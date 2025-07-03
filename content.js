@@ -2498,7 +2498,7 @@ function loopProgressStep() {
   if (useMidiLoopers) {
     const durRef = midiLoopDurations[activeMidiLoopIndex] || midiLoopDurations.find(d => d) || 0;
     if (!durRef) return;
-    const now = performance.now();
+    const now = nowMs();
     const start = midiLoopStartTimes[activeMidiLoopIndex];
     const elapsed = now - start;
     const beatDur = durRef / 4;
@@ -2529,7 +2529,7 @@ function loopProgressStep() {
         Array.from(min.parentElement.querySelectorAll('.bar-ind'))
           .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
       }
-      const recPctRaw = dur ? ((performance.now() - midiRecordingStart) / dur) * 100 : 0;
+      const recPctRaw = dur ? ((nowMs() - midiRecordingStart) / dur) * 100 : 0;
       const recPct = Math.min(recPctRaw, 100);
       if (recAdv) {
         recAdv.style.left = recPct + '%';
@@ -6442,6 +6442,10 @@ function writeString(view, offset, str) {
   }
 }
 
+function nowMs() {
+  return audioContext ? audioContext.currentTime * 1000 : performance.now();
+}
+
 // ─── MIDI LOOPERS ───────────────────────────────────────────────
 function getNextMidiBarTime(after) {
   if (midiLoopStartAbsoluteTime === null || !midiMasterDuration) return after;
@@ -6459,7 +6463,7 @@ function updateMidiMasterLoopIndex() {
   midiMasterDuration = longest;
 }
 
-function beginMidiLoopRecording(idx, startTime = performance.now()) {
+function beginMidiLoopRecording(idx, startTime = nowMs()) {
   stopMidiLoop(idx);
   midiLoopStates[idx] = 'recording';
   midiLoopEvents[idx] = [];
@@ -6474,16 +6478,16 @@ function beginMidiLoopRecording(idx, startTime = performance.now()) {
 function startMidiLoopRecording(idx) {
   const otherActive = midiLoopStates.some((s,i)=>i!==idx && (s==='playing'||s==='overdubbing'));
   if (otherActive && midiMasterDuration) {
-    const now = performance.now();
+    const now = nowMs();
     const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
     const start = now + remain;
     setTimeout(() => beginMidiLoopRecording(idx, start), remain);
   } else {
-    beginMidiLoopRecording(idx, performance.now());
+    beginMidiLoopRecording(idx, nowMs());
   }
 }
 
-function beginMidiLoopOverdub(idx, startTime = performance.now()) {
+function beginMidiLoopOverdub(idx, startTime = nowMs()) {
   midiLoopStates[idx] = 'overdubbing';
   midiRecordingStart = startTime;
   updateLooperButtonColor();
@@ -6492,7 +6496,7 @@ function beginMidiLoopOverdub(idx, startTime = performance.now()) {
 function startMidiLoopOverdub(idx) {
   const other = midiMasterDuration && midiMasterLoopIndex !== null;
   if (other) {
-    const now = performance.now();
+    const now = nowMs();
     const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
     const start = now + remain;
     if (midiOverdubStartTimeouts[idx]) clearTimeout(midiOverdubStartTimeouts[idx]);
@@ -6501,7 +6505,7 @@ function startMidiLoopOverdub(idx) {
       beginMidiLoopOverdub(idx, start);
     }, remain);
   } else {
-    const t = performance.now();
+    const t = nowMs();
     midiLoopStartAbsoluteTime = t;
     midiMasterLoopIndex = idx;
     midiMasterDuration = midiLoopDurations[idx];
@@ -6514,7 +6518,7 @@ function stopMidiLoopRecording(idx) {
   const bpm = getClock().bpm || 120;
   const barMs = (240000 / bpm);
   const ref = midiLoopStartAbsoluteTime !== null ? midiLoopStartAbsoluteTime : midiRecordingStart;
-  const now = performance.now();
+  const now = nowMs();
   const remain = barMs - ((now - ref) % barMs);
   if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
   midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
@@ -6525,7 +6529,7 @@ function finalizeMidiLoopRecording(idx, autoPlay = true) {
   pushUndoState();
   midiStopTimeouts[idx] = null;
   if (midiLoopStates[idx] === 'recording') {
-    midiLoopDurations[idx] = performance.now() - midiRecordingStart;
+    midiLoopDurations[idx] = nowMs() - midiRecordingStart;
     midiLoopStates[idx] = 'playing';
     updateMidiMasterLoopIndex();
     if (autoPlay) playMidiLoop(idx);
@@ -6542,12 +6546,12 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
   if (midiMasterLoopIndex === null) {
     midiMasterLoopIndex = idx;
     midiMasterDuration = dur;
-    midiLoopStartAbsoluteTime = performance.now();
+    midiLoopStartAbsoluteTime = nowMs();
   } else if (dur > midiMasterDuration) {
     midiMasterLoopIndex = idx;
     midiMasterDuration = dur;
   }
-  const now = performance.now();
+  const now = nowMs();
   const start = (startTime !== null)
     ? startTime
     : ((idx === midiMasterLoopIndex && !midiLoopIntervals.some(Boolean))
@@ -6562,7 +6566,7 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
     midiLoopEvents[idx].forEach(ev => {
       if (first && ev.time < offset) return;
       const t = cycleStart + ev.time - (first ? offset : 0);
-      const d = t - performance.now();
+      const d = t - nowMs();
       if (d >= 0) {
         setTimeout(() => {
           if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
@@ -6570,7 +6574,7 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
         }, d);
       }
     });
-    const nextDelay = midiNextCycleTimes[idx] - performance.now();
+    const nextDelay = midiNextCycleTimes[idx] - nowMs();
     midiLoopIntervals[idx] = setTimeout(() => {
       if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
         schedule(midiNextCycleTimes[idx], false);
@@ -6595,7 +6599,7 @@ function stopMidiLoop(idx) {
 function resumeMidiLoop(idx) {
   const dur = midiLoopDurations[idx];
   if (!dur) return;
-  const now = performance.now();
+  const now = nowMs();
   let offset = 0;
   if (midiLoopStartAbsoluteTime !== null) {
     offset = (now - midiLoopStartAbsoluteTime) % dur;
@@ -6660,9 +6664,9 @@ function recordMidiEvent(type, payload) {
   const idx = activeMidiLoopIndex;
   if (!useMidiLoopers || midiPlaybackFlag) return;
   if (midiLoopStates[idx] === 'recording') {
-    midiLoopEvents[idx].push({ time: performance.now() - midiRecordingStart, type, payload });
+    midiLoopEvents[idx].push({ time: nowMs() - midiRecordingStart, type, payload });
   } else if (midiLoopStates[idx] === 'overdubbing') {
-    const pos = ((performance.now() - midiLoopStartTimes[idx]) % midiLoopDurations[idx]);
+    const pos = ((nowMs() - midiLoopStartTimes[idx]) % midiLoopDurations[idx]);
     midiLoopEvents[idx].push({ time: pos, type, payload });
   }
 }
