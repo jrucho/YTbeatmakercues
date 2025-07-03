@@ -679,6 +679,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiLastClickTime = 0,
       midiDoublePressHoldStartTime = null,
       midiPlaybackFlag = false,
+      midiOverdubStartTimeouts = new Array(MAX_MIDI_LOOPS).fill(null),
       skipLooperMouseUp = new Array(MAX_MIDI_LOOPS).fill(false),
       midiStopTimeouts = new Array(MAX_MIDI_LOOPS).fill(null),
       midiRecordLines = new Array(MAX_MIDI_LOOPS).fill(null),
@@ -6231,7 +6232,10 @@ function onMidiLooperButtonMouseUp() {
     if (holdMs >= holdEraseDelay) {
       eraseMidiLoop(activeMidiLoopIndex);
     } else {
-      stopMidiLoop(activeMidiLoopIndex);
+      const idx = activeMidiLoopIndex;
+      if (midiOverdubStartTimeouts[idx]) { clearTimeout(midiOverdubStartTimeouts[idx]); midiOverdubStartTimeouts[idx] = null; }
+      if (midiLoopStates[idx] === 'overdubbing') midiLoopStates[idx] = 'playing';
+      stopMidiLoop(idx);
       updateLooperButtonColor();
     }
     midiIsDoublePress = false;
@@ -6451,7 +6455,11 @@ function startMidiLoopOverdub(idx) {
   if (other) {
     const now = performance.now();
     const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
-    setTimeout(() => beginMidiLoopOverdub(idx), remain);
+    if (midiOverdubStartTimeouts[idx]) clearTimeout(midiOverdubStartTimeouts[idx]);
+    midiOverdubStartTimeouts[idx] = setTimeout(() => {
+      midiOverdubStartTimeouts[idx] = null;
+      beginMidiLoopOverdub(idx);
+    }, remain);
   } else {
     midiLoopStartAbsoluteTime = performance.now();
     midiMasterLoopIndex = idx;
@@ -6525,6 +6533,7 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
 function stopMidiLoop(idx) {
   if (midiLoopIntervals[idx]) { clearTimeout(midiLoopIntervals[idx]); midiLoopIntervals[idx] = null; }
   midiLoopPlaying[idx] = false;
+  if (midiOverdubStartTimeouts[idx]) { clearTimeout(midiOverdubStartTimeouts[idx]); midiOverdubStartTimeouts[idx] = null; }
   if (midiStopTimeouts[idx]) {
     clearTimeout(midiStopTimeouts[idx]);
     midiStopTimeouts[idx] = null;
@@ -6560,6 +6569,7 @@ function playMidiEvent(ev) {
 
 function eraseMidiLoop(idx) {
   stopMidiLoop(idx);
+  if (midiOverdubStartTimeouts[idx]) { clearTimeout(midiOverdubStartTimeouts[idx]); midiOverdubStartTimeouts[idx] = null; }
   midiLoopEvents[idx] = [];
   midiLoopDurations[idx] = 0;
   midiLoopStates[idx] = 'idle';
