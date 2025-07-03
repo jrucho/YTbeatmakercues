@@ -6465,8 +6465,9 @@ function getClock() {
 
 // ─── MIDI LOOPERS ───────────────────────────────────────────────
 function getNextMidiBarTime(after) {
-  if (midiLoopStartAbsoluteTime === null || !midiMasterDuration) return after;
-  return midiLoopStartAbsoluteTime + Math.ceil((after - midiLoopStartAbsoluteTime) / midiMasterDuration) * midiMasterDuration;
+  if (midiLoopStartAbsoluteTime === null || !loopsBPM) return after;
+  const barMs = 240000 / loopsBPM;
+  return midiLoopStartAbsoluteTime + Math.ceil((after - midiLoopStartAbsoluteTime) / barMs) * barMs;
 }
 
 function updateMidiMasterLoopIndex() {
@@ -6499,9 +6500,10 @@ function startMidiLoopRecording(idx) {
     beginMidiLoopRecording(idx, nowMs());
     return;
   }
-  if (otherActive && midiMasterDuration) {
+  if (otherActive && loopsBPM) {
+    const barMs = 240000 / loopsBPM;
     const now = nowMs();
-    const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
+    const remain = barMs - ((now - midiLoopStartAbsoluteTime) % barMs);
     const start = now + remain;
     setTimeout(() => beginMidiLoopRecording(idx, start), remain);
   } else {
@@ -6516,10 +6518,11 @@ function beginMidiLoopOverdub(idx, startTime = nowMs()) {
 }
 
 function startMidiLoopOverdub(idx) {
-  const other = midiMasterDuration && midiMasterLoopIndex !== null;
+  const other = midiMasterLoopIndex !== null && loopsBPM;
   if (other) {
+    const barMs = 240000 / loopsBPM;
     const now = nowMs();
-    const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
+    const remain = barMs - ((now - midiLoopStartAbsoluteTime) % barMs);
     const start = now + remain;
     if (midiOverdubStartTimeouts[idx]) clearTimeout(midiOverdubStartTimeouts[idx]);
     midiOverdubStartTimeouts[idx] = setTimeout(() => {
