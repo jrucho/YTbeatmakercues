@@ -2240,7 +2240,18 @@ function captureAppState() {
     loopPitchPercentage,
 
     videoAudioEnabled,
-    audioLoopInVideo
+    audioLoopInVideo,
+
+    useMidiLoopers,
+    midiLoopStates: midiLoopStates.slice(),
+    midiLoopEvents: midiLoopEvents.map(arr => arr.map(ev => ({...ev}))),
+    midiLoopDurations: midiLoopDurations.slice(),
+    midiLoopPlaying: midiLoopPlaying.slice(),
+    midiLoopStartTimes: midiLoopStartTimes.slice(),
+    midiLoopStartAbsoluteTime,
+    midiMasterLoopIndex,
+    midiMasterDuration,
+    activeMidiLoopIndex
   };
 }
 
@@ -2283,6 +2294,20 @@ function restoreAppState(st) {
   videoAudioEnabled = st.videoAudioEnabled;
   audioLoopInVideo = st.audioLoopInVideo;
 
+  useMidiLoopers = st.useMidiLoopers;
+  midiLoopStates = st.midiLoopStates ? st.midiLoopStates.slice() : new Array(MAX_MIDI_LOOPS).fill('idle');
+  midiLoopEvents = st.midiLoopEvents ? st.midiLoopEvents.map(a=>a.map(ev=>({...ev}))) : Array.from({length:MAX_MIDI_LOOPS},()=>[]);
+  midiLoopDurations = st.midiLoopDurations ? st.midiLoopDurations.slice() : new Array(MAX_MIDI_LOOPS).fill(0);
+  midiLoopPlaying = st.midiLoopPlaying ? st.midiLoopPlaying.slice() : new Array(MAX_MIDI_LOOPS).fill(false);
+  midiLoopStartTimes = st.midiLoopStartTimes ? st.midiLoopStartTimes.slice() : new Array(MAX_MIDI_LOOPS).fill(0);
+  midiLoopIntervals.forEach((t,i)=>{ if(t) clearTimeout(t); midiLoopIntervals[i]=null; });
+  midiOverdubStartTimeouts.forEach((t,i)=>{ if(t) clearTimeout(t); midiOverdubStartTimeouts[i]=null; });
+  midiStopTimeouts.forEach((t,i)=>{ if(t) clearTimeout(t); midiStopTimeouts[i]=null; });
+  midiLoopStartAbsoluteTime = st.midiLoopStartAbsoluteTime || null;
+  midiMasterLoopIndex = (typeof st.midiMasterLoopIndex==='number') ? st.midiMasterLoopIndex : null;
+  midiMasterDuration = st.midiMasterDuration || 0;
+  activeMidiLoopIndex = st.activeMidiLoopIndex || 0;
+
   // Re-apply everything
   saveCuePointsToURL();
   updateCueMarkers();
@@ -2302,6 +2327,10 @@ function restoreAppState(st) {
   updateCassetteButtonColor();
 
   updatePitch(pitchPercentage);
+
+  for (let i = 0; i < MAX_MIDI_LOOPS; i++) {
+    if (midiLoopPlaying[i]) playMidiLoop(i);
+  }
 
   if (looperState === "playing") {
     playLoop();
@@ -6494,6 +6523,7 @@ function stopMidiLoopRecording(idx) {
 }
 
 function finalizeMidiLoopRecording(idx, autoPlay = true) {
+  pushUndoState();
   midiStopTimeouts[idx] = null;
   if (midiLoopStates[idx] === 'recording') {
     midiLoopDurations[idx] = performance.now() - midiRecordingStart;
@@ -6580,6 +6610,7 @@ function playMidiEvent(ev) {
 }
 
 function eraseMidiLoop(idx) {
+  if (midiLoopEvents[idx].length) pushUndoState();
   stopMidiLoop(idx);
   if (midiOverdubStartTimeouts[idx]) { clearTimeout(midiOverdubStartTimeouts[idx]); midiOverdubStartTimeouts[idx] = null; }
   midiLoopEvents[idx] = [];
@@ -6592,6 +6623,7 @@ function eraseMidiLoop(idx) {
 }
 
 function eraseAllMidiLoops() {
+  if (midiLoopEvents.some(arr => arr.length)) pushUndoState();
   for (let i = 0; i < MAX_MIDI_LOOPS; i++) eraseMidiLoop(i);
   midiLoopStartAbsoluteTime = null;
   midiMasterLoopIndex = null;
@@ -6599,6 +6631,7 @@ function eraseAllMidiLoops() {
 }
 
 function quantizeMidiLoop(idx) {
+  pushUndoState();
   const events = midiLoopEvents[idx];
   const dur = midiLoopDurations[idx];
   if (!events.length || !dur) return;
