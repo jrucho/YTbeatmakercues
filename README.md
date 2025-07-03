@@ -10,6 +10,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 ## New in 1.6
 * Unified TransportClock syncs audio and MIDI loops with sample accuracy
 * Four MIDI loopers mirror the audio loopers with matching colors and progress bars
+* Switch between audio and MIDI loopers in the Advanced panel
 * Undo and redo restore MIDI loops perfectly
 * Quantize any MIDI looper with **Cmd+Option** + its key or button
 
