@@ -675,6 +675,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiMasterDuration = 0,
       activeMidiLoopIndex = 0,
       midiRecordingStart = 0,
+      midiStopPressTime = 0,
       midiPressTimes = [],
       midiIsDoublePress = false,
       midiLastClickTime = 0,
@@ -6491,6 +6492,10 @@ function beginMidiLoopRecording(idx, startTime = nowMs()) {
 function startMidiLoopRecording(idx) {
   ensureAudioContext();
   const otherActive = midiLoopStates.some((s,i)=>i!==idx && (s==='playing'||s==='overdubbing'));
+  if (!loopsBPM && !otherActive) {
+    beginMidiLoopRecording(idx, nowMs());
+    return;
+  }
   if (otherActive && midiMasterDuration) {
     const now = nowMs();
     const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
@@ -6529,13 +6534,19 @@ function startMidiLoopOverdub(idx) {
 
 function stopMidiLoopRecording(idx) {
   if (midiLoopStates[idx] !== 'recording' && midiLoopStates[idx] !== 'overdubbing') return;
-  const bpm = getClock().bpm || 120;
-  const barMs = (240000 / bpm);
-  const ref = midiLoopStartAbsoluteTime !== null ? midiLoopStartAbsoluteTime : midiRecordingStart;
-  const now = nowMs();
-  const remain = barMs - ((now - ref) % barMs);
-  if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
-  midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
+  midiStopPressTime = nowMs();
+  const otherActive = midiLoopStates.some((s,i)=>i!==idx && (s==='playing'||s==='overdubbing'));
+  if (!loopsBPM && !otherActive) {
+    finalizeMidiLoopRecording(idx);
+  } else {
+    const bpm = getClock().bpm || 120;
+    const barMs = (240000 / bpm);
+    const ref = midiLoopStartAbsoluteTime !== null ? midiLoopStartAbsoluteTime : midiRecordingStart;
+    const now = nowMs();
+    const remain = barMs - ((now - ref) % barMs);
+    if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
+    midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
+  }
   updateLooperButtonColor();
 }
 
@@ -6545,7 +6556,7 @@ function finalizeMidiLoopRecording(idx, autoPlay = true) {
   if (midiLoopStates[idx] === 'recording') {
     midiLoopDurations[idx] = nowMs() - midiRecordingStart;
     if (!loopsBPM) {
-      const durMs = midiLoopDurations[idx];
+      const durMs = midiStopPressTime ? (midiStopPressTime - midiRecordingStart) : midiLoopDurations[idx];
       if (durMs > 0) loopsBPM = Math.round(240000 / durMs);
     }
     midiLoopStates[idx] = 'playing';
@@ -6554,6 +6565,7 @@ function finalizeMidiLoopRecording(idx, autoPlay = true) {
   } else if (midiLoopStates[idx] === 'overdubbing') {
     midiLoopStates[idx] = 'playing';
   }
+  midiStopPressTime = 0;
   updateLooperButtonColor();
 }
 
