@@ -2965,12 +2965,23 @@ function mixBuffers(b1, b2) {
  * Minimal UI Updates
  **************************************/
 function updateMinimalLoopButtonColor(btn) {
-  let color = "grey";
-  if (looperState === "recording") color = "red";
-  else if (looperState === "overdubbing") color = "orange";
-  else if (looperState === "playing") color = "green";
-  else if (videoLooperState === "recording") color = "red";
-  else if (videoLooperState === "playing") color = "green";
+  let color = 'grey';
+  if (useMidiLoopers) {
+    const anyRec  = midiLoopStates.includes('recording');
+    const anyOD   = midiLoopStates.includes('overdubbing');
+    const anyPlay = midiLoopPlaying.some(p => p);
+    if (anyRec)       color = 'red';
+    else if (anyOD)   color = 'orange';
+    else if (anyPlay) color = 'green';
+    else if (videoLooperState === 'recording') color = 'red';
+    else if (videoLooperState === 'playing')   color = 'green';
+  } else {
+    if (looperState === 'recording')       color = 'red';
+    else if (looperState === 'overdubbing') color = 'orange';
+    else if (looperState === 'playing')     color = 'green';
+    else if (videoLooperState === 'recording') color = 'red';
+    else if (videoLooperState === 'playing')   color = 'green';
+  }
   btn.style.backgroundColor = color;
   updateLoopProgressState();
 }
