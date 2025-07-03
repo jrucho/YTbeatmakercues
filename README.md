@@ -13,6 +13,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Hold Alt for legato starts or Shift for free-length recording
 * Undo and redo restore MIDI loops perfectly
 * Export loops as a Standard MIDI File with four tracks
+* Quantize any MIDI looper with **Cmd+Option** + its key or button
 
 ## New in 1.5
 * "Nova Bass" synth window with realtime controls and pitch sync to the video feed

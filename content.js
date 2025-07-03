@@ -6146,8 +6146,15 @@ function playUserSample(us) {
   });
 }
 
-function onLooperButtonMouseDown() {
-  if (useMidiLoopers) return onMidiLooperButtonMouseDown();
+function onLooperButtonMouseDown(e) {
+  if (useMidiLoopers) {
+    if (e && e.metaKey && e.altKey) {
+      quantizeMidiLoop(activeMidiLoopIndex);
+      skipLooperMouseUp[activeMidiLoopIndex] = true;
+      return;
+    }
+    return onMidiLooperButtonMouseDown();
+  }
   const now = Date.now();
 
   // 1) Record this press time
