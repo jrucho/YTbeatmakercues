@@ -2494,7 +2494,8 @@ function loopProgressStep() {
         Array.from(min.parentElement.querySelectorAll('.bar-ind'))
           .forEach((el, idx) => el.style.opacity = active && idx === bar ? 1 : 0.3);
       }
-      const recPct = dur ? ((performance.now() - midiRecordingStart) / dur) * 100 : 0;
+      const recPctRaw = dur ? ((performance.now() - midiRecordingStart) / dur) * 100 : 0;
+      const recPct = Math.min(recPctRaw, 100);
       if (recAdv) {
         recAdv.style.left = recPct + '%';
         recAdv.style.opacity = midiLoopStates[i] === 'recording' ? 1 : 0;
