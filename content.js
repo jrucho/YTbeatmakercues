@@ -1592,6 +1592,7 @@ function triggerPadCue(padIndex) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      return;
     }
     if (e.key.toLowerCase() === "t") {
       if (touchPopup && touchPopup.style.display !== "none") {
@@ -5962,6 +5963,10 @@ function onKeyDown(e) {
   }
   const loopKeys = [extensionKeys.looperA, extensionKeys.looperB, extensionKeys.looperC, extensionKeys.looperD];
   for (let i = 0; i < loopKeys.length; i++) {
+    if (touchPopup && touchPopup.style.display !== 'none' && k === extensionKeys.looperB.toLowerCase()) {
+      // Allow 'S' to control the touch sequencer without affecting the looper
+      return;
+    }
     if (k === loopKeys[i].toLowerCase()) {
       e.preventDefault();
       e.stopPropagation();
