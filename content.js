@@ -6446,6 +6446,19 @@ function nowMs() {
   return audioContext ? audioContext.currentTime * 1000 : performance.now();
 }
 
+// Return basic transport info derived from current audio context time
+function getClock() {
+  const bpm = loopsBPM || 120;
+  const t = audioContext ? audioContext.currentTime : 0;
+  const barDur = (60 / bpm) * 4;
+  const pos = t / barDur;
+  const bar = Math.floor(pos) + 1;
+  const beat = Math.floor((pos % 1) * 4) + 1;
+  const sixteenth = Math.floor((pos % 1) * 16);
+  const tick = audioContext ? Math.floor((t - (bar - 1) * barDur) * audioContext.sampleRate) : 0;
+  return { bpm, bar, beat, sixteenth, tick };
+}
+
 // ─── MIDI LOOPERS ───────────────────────────────────────────────
 function getNextMidiBarTime(after) {
   if (midiLoopStartAbsoluteTime === null || !midiMasterDuration) return after;
