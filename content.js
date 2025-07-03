@@ -669,6 +669,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       midiLoopIntervals = new Array(MAX_MIDI_LOOPS).fill(null),
       midiLoopPlaying = new Array(MAX_MIDI_LOOPS).fill(false),
       midiLoopStartTimes = new Array(MAX_MIDI_LOOPS).fill(0),
+      midiNextCycleTimes = new Array(MAX_MIDI_LOOPS).fill(0),
       midiLoopStartAbsoluteTime = null,
       midiMasterLoopIndex = null,
       midiMasterDuration = 0,
@@ -6549,31 +6550,41 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
     midiMasterDuration = dur;
   }
   const now = performance.now();
-  const start = (startTime !== null) ? startTime : ((idx === midiMasterLoopIndex && !midiLoopIntervals.some(Boolean)) ? now : getNextMidiBarTime(now));
+  const start = (startTime !== null)
+    ? startTime
+    : ((idx === midiMasterLoopIndex && !midiLoopIntervals.some(Boolean))
+        ? now
+        : getNextMidiBarTime(now));
+  const firstCycleStart = start - offset;
   const delay = Math.max(0, start - now);
-  function schedule(first, off) {
-    const st = first ? start : performance.now();
-    midiLoopStartTimes[idx] = st - off;
+  function schedule(cycleStart, first) {
+    midiLoopStartTimes[idx] = cycleStart;
     midiLoopPlaying[idx] = true;
+    midiNextCycleTimes[idx] = cycleStart + dur;
     midiLoopEvents[idx].forEach(ev => {
-      if (first && ev.time < off) return;
-      const t = first ? (ev.time - off) : ev.time;
-      setTimeout(() => {
-        if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
-          playMidiEvent(ev);
-      }, t);
+      if (first && ev.time < offset) return;
+      const t = cycleStart + ev.time - (first ? offset : 0);
+      const d = t - performance.now();
+      if (d >= 0) {
+        setTimeout(() => {
+          if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
+            playMidiEvent(ev);
+        }, d);
+      }
     });
+    const nextDelay = midiNextCycleTimes[idx] - performance.now();
     midiLoopIntervals[idx] = setTimeout(() => {
       if (midiLoopStates[idx] === 'playing' || midiLoopStates[idx] === 'overdubbing')
-        schedule(false, 0);
-    }, first ? (dur - off) : dur);
+        schedule(midiNextCycleTimes[idx], false);
+    }, Math.max(0, nextDelay));
   }
-  setTimeout(() => schedule(true, offset), delay);
+  setTimeout(() => schedule(firstCycleStart, true), delay);
 }
 
 function stopMidiLoop(idx) {
   if (midiLoopIntervals[idx]) { clearTimeout(midiLoopIntervals[idx]); midiLoopIntervals[idx] = null; }
   midiLoopPlaying[idx] = false;
+  midiNextCycleTimes[idx] = 0;
   if (midiOverdubStartTimeouts[idx]) { clearTimeout(midiOverdubStartTimeouts[idx]); midiOverdubStartTimeouts[idx] = null; }
   if (midiStopTimeouts[idx]) {
     clearTimeout(midiStopTimeouts[idx]);
