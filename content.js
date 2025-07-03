@@ -6571,7 +6571,10 @@ function finalizeMidiLoopRecording(idx, autoPlay = true) {
     midiLoopDurations[idx] = bars * barMs;
     midiLoopStates[idx] = 'playing';
     updateMidiMasterLoopIndex();
-    if (autoPlay) playMidiLoop(idx);
+    if (autoPlay) {
+      const start = Math.max(stopTime, nowMs());
+      playMidiLoop(idx, 0, start);
+    }
   } else if (midiLoopStates[idx] === 'overdubbing') {
     midiLoopStates[idx] = 'playing';
   }
