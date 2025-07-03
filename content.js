@@ -6511,15 +6511,13 @@ function startMidiLoopOverdub(idx) {
 
 function stopMidiLoopRecording(idx) {
   if (midiLoopStates[idx] !== 'recording' && midiLoopStates[idx] !== 'overdubbing') return;
-  if (midiMasterDuration) {
-    const now = performance.now();
-    const elapsed = (now - midiRecordingStart) % midiMasterDuration;
-    const remain = midiMasterDuration - elapsed;
-    if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
-    midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
-  } else {
-    finalizeMidiLoopRecording(idx);
-  }
+  const bpm = getClock().bpm || 120;
+  const barMs = (240000 / bpm);
+  const ref = midiLoopStartAbsoluteTime !== null ? midiLoopStartAbsoluteTime : midiRecordingStart;
+  const now = performance.now();
+  const remain = barMs - ((now - ref) % barMs);
+  if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
+  midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
   updateLooperButtonColor();
 }
 
