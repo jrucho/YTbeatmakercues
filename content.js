@@ -1590,6 +1590,8 @@ function triggerPadCue(padIndex) {
     if (touchPopup && touchPopup.style.display !== "none" && e.key.toLowerCase() === "s") {
       if (sequencerPlaying) { stopSequencer(); } else { startSequencer(); }
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
     }
     if (e.key.toLowerCase() === "t") {
       if (touchPopup && touchPopup.style.display !== "none") {
@@ -2400,6 +2402,7 @@ function updateLooperButtonColor() {
     updateLooperButtonLabel();
     updateLoopProgressState();
   }
+  if (window.refreshMinimalState) window.refreshMinimalState();
 }
 function updateVideoLooperButtonColor() {
   if (!videoLooperButton) return;
@@ -6421,14 +6424,14 @@ function updateMidiMasterLoopIndex() {
   midiMasterDuration = longest;
 }
 
-function beginMidiLoopRecording(idx) {
+function beginMidiLoopRecording(idx, startTime = performance.now()) {
   stopMidiLoop(idx);
   midiLoopStates[idx] = 'recording';
   midiLoopEvents[idx] = [];
-  midiRecordingStart = performance.now();
+  midiRecordingStart = startTime;
   if (midiMasterLoopIndex === null) {
     midiMasterLoopIndex = idx;
-    midiLoopStartAbsoluteTime = midiRecordingStart;
+    midiLoopStartAbsoluteTime = startTime;
   }
   updateLooperButtonColor();
 }
@@ -6438,15 +6441,16 @@ function startMidiLoopRecording(idx) {
   if (otherActive && midiMasterDuration) {
     const now = performance.now();
     const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
-    setTimeout(() => beginMidiLoopRecording(idx), remain);
+    const start = now + remain;
+    setTimeout(() => beginMidiLoopRecording(idx, start), remain);
   } else {
-    beginMidiLoopRecording(idx);
+    beginMidiLoopRecording(idx, performance.now());
   }
 }
 
-function beginMidiLoopOverdub(idx) {
+function beginMidiLoopOverdub(idx, startTime = performance.now()) {
   midiLoopStates[idx] = 'overdubbing';
-  midiRecordingStart = performance.now();
+  midiRecordingStart = startTime;
   updateLooperButtonColor();
 }
 
@@ -6455,16 +6459,18 @@ function startMidiLoopOverdub(idx) {
   if (other) {
     const now = performance.now();
     const remain = midiMasterDuration - ((now - midiLoopStartAbsoluteTime) % midiMasterDuration);
+    const start = now + remain;
     if (midiOverdubStartTimeouts[idx]) clearTimeout(midiOverdubStartTimeouts[idx]);
     midiOverdubStartTimeouts[idx] = setTimeout(() => {
       midiOverdubStartTimeouts[idx] = null;
-      beginMidiLoopOverdub(idx);
+      beginMidiLoopOverdub(idx, start);
     }, remain);
   } else {
-    midiLoopStartAbsoluteTime = performance.now();
+    const t = performance.now();
+    midiLoopStartAbsoluteTime = t;
     midiMasterLoopIndex = idx;
     midiMasterDuration = midiLoopDurations[idx];
-    beginMidiLoopOverdub(idx);
+    beginMidiLoopOverdub(idx, t);
   }
 }
 
@@ -6539,6 +6545,7 @@ function stopMidiLoop(idx) {
     midiStopTimeouts[idx] = null;
     finalizeMidiLoopRecording(idx, false);
   }
+  updateLooperButtonColor();
 }
 
 function resumeMidiLoop(idx) {
