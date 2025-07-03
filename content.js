@@ -6227,8 +6227,12 @@ function onMidiLooperButtonMouseUp() {
   }
   if (midiIsDoublePress) {
     const holdMs = midiDoublePressHoldStartTime ? (Date.now() - midiDoublePressHoldStartTime) : 0;
-    if (holdMs >= holdEraseDelay) eraseMidiLoop(activeMidiLoopIndex);
-    else stopMidiLoop(activeMidiLoopIndex);
+    if (holdMs >= holdEraseDelay) {
+      eraseMidiLoop(activeMidiLoopIndex);
+    } else {
+      stopMidiLoop(activeMidiLoopIndex);
+      updateLooperButtonColor();
+    }
     midiIsDoublePress = false;
     midiPressTimes = [];
     midiDoublePressHoldStartTime = null;
@@ -6469,13 +6473,13 @@ function stopMidiLoopRecording(idx) {
   updateLooperButtonColor();
 }
 
-function finalizeMidiLoopRecording(idx) {
+function finalizeMidiLoopRecording(idx, autoPlay = true) {
   midiStopTimeouts[idx] = null;
   if (midiLoopStates[idx] === 'recording') {
     midiLoopDurations[idx] = performance.now() - midiRecordingStart;
     midiLoopStates[idx] = 'playing';
     updateMidiMasterLoopIndex();
-    playMidiLoop(idx);
+    if (autoPlay) playMidiLoop(idx);
   } else if (midiLoopStates[idx] === 'overdubbing') {
     midiLoopStates[idx] = 'playing';
   }
@@ -6520,7 +6524,11 @@ function playMidiLoop(idx, offset = 0, startTime = null) {
 function stopMidiLoop(idx) {
   if (midiLoopIntervals[idx]) { clearTimeout(midiLoopIntervals[idx]); midiLoopIntervals[idx] = null; }
   midiLoopPlaying[idx] = false;
-  if (midiStopTimeouts[idx]) { clearTimeout(midiStopTimeouts[idx]); midiStopTimeouts[idx] = null; }
+  if (midiStopTimeouts[idx]) {
+    clearTimeout(midiStopTimeouts[idx]);
+    midiStopTimeouts[idx] = null;
+    finalizeMidiLoopRecording(idx, false);
+  }
 }
 
 function resumeMidiLoop(idx) {
