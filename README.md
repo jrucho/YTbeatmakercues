@@ -8,11 +8,10 @@ Mark cue points, loop audio/video, apply live effects, and customize your beatma
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
 ## New in 1.6
-* Unified TransportClock syncs audio and MIDI loops with sample accuracy
+* Unified TransportClock syncs audio and MIDI loops
 * Four MIDI loopers mirror the audio loopers with matching colors and progress bars
 * Switch between audio and MIDI loopers in the Advanced panel
-* Undo and redo restore MIDI loops perfectly
-* Quantize any MIDI looper with **Cmd+Option** + its key or button
+* Undo and redo restore MIDI loops
 
 ## New in 1.5
 * "Nova Bass" synth window with realtime controls and pitch sync to the video feed
