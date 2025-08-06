@@ -110,6 +110,10 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 - 🎹 **MIDI Support**
   Use your MIDI controller to trigger actions. Custom mappings are available via UI, including key and MIDI assignments for all four loopers.
 
+- ⏯️ **Shift Play/Pause**
+  Quick-tap the Shift key (or mapped MIDI Shift note) to play when paused.
+  Double-tap Shift while playing to pause the video, and holding Shift still acts as a modifier for other controls.
+
 - 🔄 **Super Knob**
   Select any cue via pad, keyboard, or MIDI note and twist the mapped knob to
   slide its position left or right. Endless encoders currently act like normal
