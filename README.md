@@ -11,7 +11,7 @@ The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, aud
 * Added state tracking and a handleShiftTap routine so Shift (midi button) taps can play the video on pause or pause it on double-tap
 
 ## New in 1.6.1
-* Add shift+pad/keyboard key to use as a mute toggle for drum samples
+* Added shift+pad to use as a mute toggle for drum samples
   
 ## New in 1.6
 * Unified TransportClock syncs audio and MIDI loops
