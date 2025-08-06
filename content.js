@@ -650,6 +650,9 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       isShiftKeyDown = false,
       isAltKeyDown = false,
       isMetaKeyDown = false,
+      shiftDownTime = 0,
+      shiftUsedAsModifier = false,
+      lastShiftTapTime = 0,
       pitchDownInterval = null,
       pitchUpInterval = null,
       // Track last processed MIDI message to filter duplicates
@@ -5804,13 +5807,16 @@ function isTypingInTextField(e) {
 function onKeyDown(e) {
   if (e.key === "Shift") {
     isShiftKeyDown = true;
+    shiftDownTime = Date.now();
+    shiftUsedAsModifier = false;
     return;
   }
+  if (isShiftKeyDown) shiftUsedAsModifier = true;
   if (e.key === "Alt") { isAltKeyDown = true; return; }
   if (e.key === "Meta") { isMetaKeyDown = true; return; }
   if (isTypingInTextField(e)) {
-  return;
-}
+    return;
+  }
   // Check for Cmd+Delete to toggle visuals.
   if (e.metaKey && (e.key === "Delete" || e.key === "Backspace" || e.keyCode === 46)) {
     e.preventDefault();
@@ -6079,14 +6085,18 @@ function onKeyDown(e) {
 function onKeyUp(e) {
   if (e.key === "Shift") {
     isShiftKeyDown = false;
+    const holdMs = Date.now() - shiftDownTime;
+    if (!shiftUsedAsModifier && holdMs < clickDelay) {
+      handleShiftTap();
+    }
     return;
   }
   if (e.key === "Alt") { isAltKeyDown = false; return; }
   if (e.key === "Meta") { isMetaKeyDown = false; return; }
   const k = e.key.toLowerCase();
   if (isTypingInTextField(e)) {
-  return;
-}
+    return;
+  }
 
   if (instrumentPreset > 0) {
     const idx = KEYBOARD_INST_KEYS.indexOf(k);
@@ -6116,6 +6126,21 @@ function onKeyUp(e) {
 }
 addTrackedListener(document, "keydown", onKeyDown, true);
 addTrackedListener(document, "keyup", onKeyUp, true);
+
+function handleShiftTap() {
+  const vid = getVideoElement();
+  if (!vid) return;
+  const now = Date.now();
+  if (!vid.paused) {
+    if (now - lastShiftTapTime < clickDelay) {
+      vid.pause();
+    }
+    lastShiftTapTime = now;
+  } else {
+    vid.play().catch(() => {});
+    lastShiftTapTime = 0;
+  }
+}
 
 function playSample(n) {
   ensureAudioContext().then(() => {
@@ -8043,6 +8068,10 @@ function handleMIDIMessage(e) {
   let [st, note] = e.data;
   const command = st & 0xf0;
 
+  if (isModPressed && note !== midiNotes.shift) {
+    shiftUsedAsModifier = true;
+  }
+
   if (st === 144 && note === midiNotes.instrumentToggle) {
     showInstrumentWindowToggle();
     return;
@@ -8069,10 +8098,19 @@ function handleMIDIMessage(e) {
   }
 
   if (note === midiNotes.shift) {
-    if (st === 144) isModPressed = true;
-    else if (st === 128) isModPressed = false;
+    if (st === 144) {
+      isModPressed = true;
+      shiftDownTime = Date.now();
+      shiftUsedAsModifier = false;
+    } else if (st === 128) {
+      isModPressed = false;
+      const holdMs = Date.now() - shiftDownTime;
+      if (!shiftUsedAsModifier && holdMs < clickDelay) {
+        handleShiftTap();
+      }
+    }
     return;
-	
+
   }
   if (currentlyDetectingMidi && st === 144) {
     if (midiNotes[currentlyDetectingMidi] !== undefined) {
