@@ -536,6 +536,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
         fxPadY: 17             // MIDI CC for FX pad Y axis
       },
       sampleVolumes = { kick: 1, hihat: 1, snare: 1 },
+      sampleMutes = { kick: false, hihat: false, snare: false },
       // Arrays of samples
       audioBuffers = { kick: [], hihat: [], snare: [] },
       currentSampleIndex = { kick: 0, hihat: 0, snare: 0 },
@@ -2360,6 +2361,7 @@ function captureCurrentState() {
     // For example, capture the current sample index and volumes:
     currentSampleIndex: { ...currentSampleIndex },
     sampleVolumes: { ...sampleVolumes },
+    sampleMutes: { ...sampleMutes },
     // If you have other state variables, add them here.
     // e.g., loopBuffer, eqFilter settings, cuePoints, etc.
   };
@@ -2377,6 +2379,9 @@ function restoreState(state) {
   if (state.sampleVolumes) {
     sampleVolumes = { ...state.sampleVolumes };
     // Also update any corresponding UI elements such as fader labels.
+  }
+  if (state.sampleMutes) {
+    sampleMutes = { ...state.sampleMutes };
   }
   // Restore any other state properties as needed.
   
@@ -6040,7 +6045,11 @@ function onKeyDown(e) {
 
   for (let [sn, kc] of Object.entries(sampleKeys)) {
     if (k === kc.toLowerCase()) {
-      playSample(sn);
+      if (isShiftKeyDown) {
+        toggleSampleMute(sn);
+      } else {
+        playSample(sn);
+      }
       return;
     }
   }
@@ -6111,6 +6120,7 @@ addTrackedListener(document, "keyup", onKeyUp, true);
 function playSample(n) {
   ensureAudioContext().then(() => {
     recordMidiEvent('sample', n);
+    if (sampleMutes[n]) return;
     let samples = audioBuffers[n];
     if (!samples.length) return;
     const buffer = samples[currentSampleIndex[n]];
@@ -8000,6 +8010,10 @@ function dbToLinear(dbVal) {
   return Math.pow(10, dbVal / 20);
 }
 
+function toggleSampleMute(which) {
+  sampleMutes[which] = !sampleMutes[which];
+}
+
 
 /**************************************
  * MIDI
@@ -8117,9 +8131,15 @@ function handleMIDIMessage(e) {
     }
     if (note === midiNotes.pitchDown) startPitchDownRepeat();
     if (note === midiNotes.pitchUp) startPitchUpRepeat();
-    if (note === midiNotes.kick) playSample("kick");
-    if (note === midiNotes.hihat) playSample("hihat");
-    if (note === midiNotes.snare) playSample("snare");
+    if (note === midiNotes.kick) {
+      if (isModPressed) toggleSampleMute("kick"); else playSample("kick");
+    }
+    if (note === midiNotes.hihat) {
+      if (isModPressed) toggleSampleMute("hihat"); else playSample("hihat");
+    }
+    if (note === midiNotes.snare) {
+      if (isModPressed) toggleSampleMute("snare"); else playSample("snare");
+    }
     if (note === midiNotes.looperA) {
       activeLoopIndex = 0;
       activeMidiLoopIndex = 0;
