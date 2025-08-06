@@ -7,6 +7,9 @@
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+## New in 1.6.1
+* Add shift+pad/keyboard key to use as a mute toggle for drum samples
+  
 ## New in 1.6
 * Unified TransportClock syncs audio and MIDI loops
 * Four MIDI loopers mirror the audio loopers with matching colors and progress bars
