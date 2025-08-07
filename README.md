@@ -7,6 +7,9 @@
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+
+## Web App
+A standalone page lives in `webapp/index.html`. Open it in a browser to try the beatmaker without installing the extension. The page now features a responsive layout that fills the screen on desktop, iPad, and iPhone. Use the search bar to look up YouTube clips (via the public [Piped](https://piped.video) API) and click results to load them into the player, or choose a local file. The player mirrors YouTube’s DOM (`.html5-video-player`, `.ytp-chrome-bottom`, `.ytp-right-controls`, and the progress bar) so `content.js` attaches its UI in the same way as on YouTube, preserving features, keyboard shortcuts, MIDI mappings, and low‑latency cue playback. Audio unlock helpers ensure routing works on touch devices, and the video element can toggle fullscreen with `F` or a double‑tap.
 ## New in 1.6.2
 * Added state tracking and a handleShiftTap routine so Shift (midi button) taps can play the video on pause or pause it on double-tap
 
