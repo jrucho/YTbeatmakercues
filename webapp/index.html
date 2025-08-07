@@ -6,20 +6,48 @@
   <title>YouTube Beatmaker Web</title>
   <link rel="stylesheet" href="../style.css" />
   <style>
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
       background: #000;
+      color: #fff;
+      font-family: sans-serif;
+    }
+    #app {
       display: flex;
       flex-direction: column;
-      align-items: center;
+      height: 100%;
+      width: 100%;
     }
-    .html5-video-player {
+    header {
+      display: flex;
+      gap: 8px;
+      padding: 4px;
+      background: #111;
+    }
+    header input {
+      flex: 1;
+      padding: 6px 8px;
+      background: #222;
+      border: none;
+      color: #fff;
+    }
+    #main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    #movie_player {
+      flex: 1;
       position: relative;
-      max-width: 100%;
+      background: #000;
     }
     video {
       width: 100%;
-      height: auto;
+      height: 100%;
+      object-fit: contain;
       display: block;
     }
     .ytp-chrome-bottom {
@@ -47,8 +75,6 @@
       align-items: center;
       justify-content: space-between;
       padding: 4px;
-      color: #fff;
-      font-family: sans-serif;
       font-size: 14px;
     }
     .ytp-left-controls {
@@ -66,26 +92,50 @@
     .ytp-time-display {
       font-variant-numeric: tabular-nums;
     }
+    #search-results {
+      width: 260px;
+      background: #111;
+      overflow-y: auto;
+    }
+    .search-item {
+      padding: 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #222;
+    }
+    .search-item:hover {
+      background: #222;
+    }
+    @media (max-width: 768px) {
+      #main { flex-direction: column; }
+      #search-results { width: 100%; max-height: 30%; }
+    }
   </style>
-</head>
-<body>
-  <h1 style="color:white;">YouTube Beatmaker Web</h1>
-  <input id="load-video" type="file" accept="video/*" style="color:white; margin-bottom:8px;" />
-  <div id="movie_player" class="html5-video-player">
-    <video id="ytbm-video" playsinline src="https://www.w3schools.com/html/mov_bbb.mp4"></video>
-    <div class="ytp-chrome-bottom">
-      <div class="ytp-progress-bar"><div class="ytp-progress-bar-played"></div></div>
-      <div class="ytp-chrome-controls">
-        <div class="ytp-left-controls">
-          <button class="ytp-play-button" aria-label="Play (k)">▶</button>
-          <div class="ytp-time-display"><span class="ytp-time-current">0:00</span> / <span class="ytp-time-duration">0:00</span></div>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <input id="search-query" placeholder="Search YouTube" />
+        <input id="load-video" type="file" accept="video/*" />
+      </header>
+      <div id="main">
+        <div id="movie_player" class="html5-video-player">
+          <video id="ytbm-video" playsinline crossorigin="anonymous"></video>
+          <div class="ytp-chrome-bottom">
+            <div class="ytp-progress-bar"><div class="ytp-progress-bar-played"></div></div>
+            <div class="ytp-chrome-controls">
+              <div class="ytp-left-controls">
+                <button class="ytp-play-button" aria-label="Play (k)">▶</button>
+                <div class="ytp-time-display"><span class="ytp-time-current">0:00</span> / <span class="ytp-time-duration">0:00</span></div>
+              </div>
+              <div class="ytp-right-controls"></div>
+            </div>
+          </div>
         </div>
-        <div class="ytp-right-controls"></div>
+        <div id="search-results"></div>
       </div>
     </div>
-  </div>
-  <script src="chrome-stubs.js"></script>
-  <script src="../content.js"></script>
-  <script src="app.js"></script>
-</body>
-</html>
+    <script src="chrome-stubs.js"></script>
+    <script src="../content.js"></script>
+    <script src="app.js"></script>
+  </body>
+  </html>
