@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube Beatmaker Web</title>
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .html5-video-player {
+      position: relative;
+      max-width: 100%;
+    }
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .ytp-chrome-bottom {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .ytp-progress-bar {
+      position: relative;
+      height: 5px;
+      background: #555;
+      cursor: pointer;
+    }
+    .ytp-progress-bar-played {
+      position: absolute;
+      height: 100%;
+      width: 0;
+      background: #f00;
+    }
+    .ytp-chrome-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px;
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 14px;
+    }
+    .ytp-left-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ytp-play-button {
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .ytp-time-display {
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <h1 style="color:white;">YouTube Beatmaker Web</h1>
+  <input id="load-video" type="file" accept="video/*" style="color:white; margin-bottom:8px;" />
+  <div id="movie_player" class="html5-video-player">
+    <video id="ytbm-video" playsinline src="https://www.w3schools.com/html/mov_bbb.mp4"></video>
+    <div class="ytp-chrome-bottom">
+      <div class="ytp-progress-bar"><div class="ytp-progress-bar-played"></div></div>
+      <div class="ytp-chrome-controls">
+        <div class="ytp-left-controls">
+          <button class="ytp-play-button" aria-label="Play (k)">▶</button>
+          <div class="ytp-time-display"><span class="ytp-time-current">0:00</span> / <span class="ytp-time-duration">0:00</span></div>
+        </div>
+        <div class="ytp-right-controls"></div>
+      </div>
+    </div>
+  </div>
+  <script src="chrome-stubs.js"></script>
+  <script src="../content.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
