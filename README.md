@@ -1,4 +1,4 @@
-# YouTube Beatmaker Cues - Chrome Extension
+# YouTube Beatmaker Cues - Chrome & Safari Extension
 
 > This extension was inspired by the muscle memory workflow of the OP-Z, the versatility of Ableton Live, and the hands-on approach I developed over the years using the SP-404.
 
@@ -6,7 +6,7 @@
 
 Mark cue points, loop audio/video, apply live effects, and customize your beatmaking experience on YouTube.
 
-The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
+The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control. It now works on Safari via Apple's web extension system, with full MIDI support thanks to a small compatibility layer.
 ## New in 1.6.2
 * Added state tracking and a handleShiftTap routine so Shift (midi button) taps can play the video on pause or pause it on double-tap
 
@@ -130,8 +130,8 @@ Samples and cue points persist between sessions. Easily export loops, manage cue
 ## Installation
 
 1. Download the latest version of the Extension.
-2. Go to `chrome://extensions/` and enable **Developer Mode**.
-3. Click **Load unpacked** and select the unzipped folder.
+2. **Chrome/Chromium browsers:** Visit `chrome://extensions/`, enable **Developer Mode**, click **Load unpacked**, and select the unzipped folder.
+3. **Safari:** Run `bash build_release.sh` on macOS and open the generated Xcode project in the `safari` directory to finish installation.
 4. Refresh any YouTube tab and click on the extension UI to activate audio.
 
 To create the downloadable archive yourself, run `bash build_release.sh`. The script outputs `ytbeatmakercues-<version>.zip`.
