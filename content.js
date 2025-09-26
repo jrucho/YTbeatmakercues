@@ -6331,14 +6331,28 @@ function onMidiLooperButtonMouseUp() {
   }
 }
 
+function deactivateOtherMidiLoops(targetIdx) {
+  for (let i = 0; i < MAX_MIDI_LOOPS; i++) {
+    if (i === targetIdx) continue;
+    if (midiLoopStates[i] === 'recording' || midiLoopStates[i] === 'overdubbing') {
+      stopMidiLoopRecording(i, false);
+    }
+    if (midiLoopPlaying[i] || midiLoopIntervals[i]) {
+      stopMidiLoop(i);
+    }
+  }
+}
+
 function singlePressMidiLooperAction() {
   const idx = activeMidiLoopIndex;
   const state = midiLoopStates[idx];
   if (state === 'idle') {
     if (midiLoopEvents[idx].length) {
+      deactivateOtherMidiLoops(idx);
       midiLoopStates[idx] = 'playing';
       playMidiLoop(idx);
     } else {
+      deactivateOtherMidiLoops(idx);
       startMidiLoopRecording(idx);
     }
   } else if (state === 'recording' || state === 'overdubbing') {
@@ -6347,6 +6361,7 @@ function singlePressMidiLooperAction() {
     if (midiLoopPlaying[idx]) {
       startMidiLoopOverdub(idx);
     } else {
+      deactivateOtherMidiLoops(idx);
       resumeMidiLoop(idx);
     }
   }
@@ -6536,6 +6551,7 @@ function beginMidiLoopRecording(idx, startTime = nowMs()) {
 }
 
 function startMidiLoopRecording(idx) {
+  deactivateOtherMidiLoops(idx);
   ensureAudioContext();
   const otherActive = midiLoopStates.some((s,i)=>i!==idx && (s==='playing'||s==='overdubbing'));
   if (!loopsBPM && !otherActive) {
@@ -6580,13 +6596,13 @@ function startMidiLoopOverdub(idx) {
   }
 }
 
-function stopMidiLoopRecording(idx) {
+function stopMidiLoopRecording(idx, autoPlay = true) {
   if (midiLoopStates[idx] !== 'recording' && midiLoopStates[idx] !== 'overdubbing') return;
   midiStopPressTime = nowMs();
   const otherActive = midiLoopStates.some((s,i)=>i!==idx && (s==='playing'||s==='overdubbing'));
   if (!loopsBPM && !otherActive) {
     midiStopTargets[idx] = nowMs();
-    finalizeMidiLoopRecording(idx);
+    finalizeMidiLoopRecording(idx, autoPlay);
   } else {
     const bpm = getClock().bpm || 120;
     const barMs = (240000 / bpm);
@@ -6595,7 +6611,7 @@ function stopMidiLoopRecording(idx) {
     const remain = barMs - ((now - ref) % barMs);
     if (midiStopTimeouts[idx]) clearTimeout(midiStopTimeouts[idx]);
     midiStopTargets[idx] = now + remain;
-    midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx), remain);
+    midiStopTimeouts[idx] = setTimeout(() => finalizeMidiLoopRecording(idx, autoPlay), remain);
   }
   updateLooperButtonColor();
 }
@@ -6630,6 +6646,7 @@ function finalizeMidiLoopRecording(idx, autoPlay = true) {
 
 function playMidiLoop(idx, offset = 0, startTime = null) {
   if (!midiLoopEvents[idx].length || midiLoopIntervals[idx]) return;
+  deactivateOtherMidiLoops(idx);
   const dur = midiLoopDurations[idx];
   if (!dur) return;
   if (midiMasterLoopIndex === null) {
