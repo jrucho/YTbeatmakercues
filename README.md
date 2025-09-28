@@ -1,6 +1,6 @@
 # YouTube Beatmaker Cues - Chrome Extension
 
-You can try out my new website with some of the extension’s features here, before downloading it: https://beatmakercuesowaegaweb.on.drv.tw/Beatmaker%20Cues%20-%20owae.ga/Beatmaker_Cues.html
+You can try out my new website with some of the extension’s features here, before downloading it: https://bit.ly/bcues
 
 > This extension was inspired by the muscle memory workflow of the OP-Z, the versatility of Ableton Live, and the hands-on approach I developed over the years using the SP-404.
 
