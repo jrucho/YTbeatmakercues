@@ -5149,24 +5149,27 @@ async function onImportAudioClicked() {
     try {
       let input = document.createElement("input");
       input.type = "file";
-      input.accept = "audio/*";
+      // Allow importing dedicated audio files as well as containers such as MP4
+      // that only carry an audio track. Browsers can still decode the audio
+      // portion via decodeAudioData.
+      input.accept = "audio/*,video/*";
       input.style.display = "none";
       document.body.appendChild(input);
       input.addEventListener("change", async e => {
         let file = e.target.files[0];
-        if (!file) { isImporting = false; return; }
+        if (!file) {
+          document.body.removeChild(input);
+          isImporting = false;
+          return;
+        }
         try {
           let arr = await file.arrayBuffer();
           let decoded = await audioContext.decodeAudioData(arr);
-
-          pushUndoState();
-          loopBuffer = decoded;
-          applyFadeToBuffer(loopBuffer, 0.01);
-          looperState = "playing";
-          playLoop();
-          updateLooperButtonColor();
-          updateExportButtonColor();
-          if (window.refreshMinimalState) window.refreshMinimalState();
+          applyFadeToBuffer(decoded, 0.01);
+          // Reuse the standard loop finalization pipeline so that the imported
+          // audio populates the active looper slot, synchronises durations and
+          // starts playback just like a freshly recorded loop.
+          finalizeLoopBuffer(decoded);
         } catch (err) {
           console.error("Error importing audio loop:", err);
           alert("Error importing audio file!");
