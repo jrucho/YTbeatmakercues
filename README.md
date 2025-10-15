@@ -10,6 +10,11 @@ Mark cue points, loop audio/video, apply live effects, and customize your beatma
 
 The **YouTube Beatmaker Cues** extension supports precise pitch adjustments, audio and video looping, effects toggling, and intuitive cue management. Use keyboard shortcuts or the detailed Advanced Panel for quick control.
 
+## New in 1.6.4
+* Super Knob: absolute & endless encoder support. The master “Super Knob” now auto-detects standard absolute MIDI knobs and endless/relative encoders, with configurable sensitivity and wrap-safe smoothing.
+* MIDI Loopers = Session-View style. MIDI loopers now behave like Ableton’s Session View: launching one clip/slot on a track stops the previously playing clip on that track (exclusive switching), quantized to the global grid. This lets you structure beats on the fly. (Audio loopers remain classic synced loopers.)
+* Modifier-mute for pads & keys. Hold Shift or Cmd (Ctrl on Windows/Linux) and press a sample pad or mapped keyboard key to mute/unmute that looper instantly.
+
 ## New in 1.6.3
 * Allowed the looper import picker to accept both audio and video containers so MP4 audio tracks can be selected.
 * Reused the standard loop finalisation pipeline for imported media to populate the active looper slot and start playback reliably.
