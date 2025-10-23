@@ -7966,7 +7966,7 @@ function buildMinimalUIBar() {
   reverbButtonMin.className = "looper-btn";
   reverbButtonMin.innerText = "FXPad";
   reverbButtonMin.title = "Open FX Pad";
-  reverbButtonMin.addEventListener("click", toggleFxPad);
+  reverbButtonMin.addEventListener("click", showFxPadWindowToggle);
   minimalLeftCluster.appendChild(reverbButtonMin);
 
   const cassetteButtonMin = document.createElement("button");
