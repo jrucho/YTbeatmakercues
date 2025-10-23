@@ -1408,6 +1408,44 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     return `hsl(${hue},70%,60%)`;
   }
 
+  function computeAccentSoft(accent, alpha = 0.24) {
+    if (!accent) return '';
+    if (accent.startsWith('#')) {
+      let hex = accent.slice(1);
+      if (hex.length === 3) {
+        hex = hex.split('').map(ch => ch + ch).join('');
+      }
+      const int = parseInt(hex, 16);
+      const r = (int >> 16) & 255;
+      const g = (int >> 8) & 255;
+      const b = int & 255;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    const pct = Math.round(alpha * 100);
+    return `color-mix(in srgb, ${accent} ${pct}%, transparent)`;
+  }
+
+  function styleMinimalButton(btn, { active, accent, tone } = {}) {
+    if (!btn) return;
+    if (typeof active === 'boolean') {
+      btn.dataset.state = active ? 'on' : 'off';
+    } else if (!btn.dataset.state) {
+      btn.dataset.state = 'off';
+    }
+    if (accent) {
+      btn.style.setProperty('--btn-accent', accent);
+      btn.style.setProperty('--btn-accent-soft', computeAccentSoft(accent));
+    } else {
+      btn.style.removeProperty('--btn-accent');
+      btn.style.removeProperty('--btn-accent-soft');
+    }
+    if (tone) {
+      btn.dataset.tone = tone;
+    } else {
+      btn.removeAttribute('data-tone');
+    }
+  }
+
   function createWavetable(harmonics) {
     const len = harmonics.length + 1;
     const real = new Float32Array(len);
@@ -1616,11 +1654,11 @@ async function toggleMicInput() {
 function updateMicButtonColor() {
   if (!micButton) return;
   if (micState === 0) {
-    micButton.style.backgroundColor = "#333"; // Off
+    styleMinimalButton(micButton, { active: false, tone: "muted" });
   } else if (micState === 1) {
-    micButton.style.backgroundColor = "green"; // Recording only
+    styleMinimalButton(micButton, { active: true, accent: "#38bdf8", tone: "arm" });
   } else if (micState === 2) {
-    micButton.style.backgroundColor = "red"; // Monitoring
+    styleMinimalButton(micButton, { active: true, accent: "#f97316", tone: "monitor" });
   }
 }
 
@@ -1643,7 +1681,7 @@ function updateSuperKnobStep() {
 // Add the mic button to the minimal UI
 function addMicButtonToMinimalUI() {
   // If the mic button is already inside the container, do nothing
-if (micButton && minimalUIContainer.contains(micButton)) return;
+  if (micButton && minimalUIContainer.contains(micButton)) return;
   if (!minimalUIContainer) return;
   micButton = document.createElement("button");
   micButton.className = "looper-btn";
@@ -1651,6 +1689,7 @@ if (micButton && minimalUIContainer.contains(micButton)) return;
   micButton.title = "Toggle microphone input for looper and video looper";
   micButton.addEventListener("click", toggleMicInput);
   minimalUIContainer.appendChild(micButton);
+  updateMicButtonColor();
   // Always (re)-attach the BPM display
   addBpmDisplayToMinimalUI();
 }
@@ -2354,7 +2393,18 @@ hideYouTubePopups();
   
   function updateCompUIButtons(label, color) {
     if (loFiCompButton) { loFiCompButton.innerText = "Comp: " + label; loFiCompButton.style.backgroundColor = color; }
-    if (compButtonMin) { compButtonMin.innerText = "Comp: " + label; compButtonMin.style.backgroundColor = color; }
+    if (compButtonMin) {
+      compButtonMin.innerText = "Comp: " + label;
+      if (color === "#222" || label === "Off") {
+        styleMinimalButton(compButtonMin, { active: false, tone: "muted" });
+      } else {
+        let accent = color;
+        if (color === "darkorange") accent = "#f97316";
+        else if (color === "cornflowerblue") accent = "#60a5fa";
+        else if (color === "mediumorchid") accent = "#c084fc";
+        styleMinimalButton(compButtonMin, { active: true, accent, tone: "accent" });
+      }
+    }
   }
   function makeSaturationCurve(amount) {
     const n_samples = 44100;
@@ -3435,7 +3485,12 @@ function updateInstrumentButtonColor() {
   }
   if (instrumentButtonMin) {
     instrumentButtonMin.innerText = `Instrument:${name}`;
-    instrumentButtonMin.style.backgroundColor = color;
+    const active = firstIdx > 0;
+    styleMinimalButton(instrumentButtonMin, {
+      active,
+      accent: active ? color : null,
+      tone: active ? "accent" : "muted"
+    });
   }
   if (instrumentPowerButton) {
     instrumentPowerButton.innerText = instrumentPreset === 0 ? "Power:Off" : "Power:On";
@@ -3670,33 +3725,41 @@ function mixBuffers(b1, b2) {
  * Minimal UI Updates
  **************************************/
 function updateMinimalLoopButtonColor(btn) {
-  let color = 'grey';
+  if (!btn) return;
+  const palette = {
+    record: "#ef4444",
+    overdub: "#f59e0b",
+    play: "#22c55e"
+  };
+  let tone = null;
   if (useMidiLoopers) {
-    const anyRec  = midiLoopStates.includes('recording');
-    const anyOD   = midiLoopStates.includes('overdubbing');
-    const anyPlay = midiLoopPlaying.some(p => p);
-    if (anyRec)       color = 'red';
-    else if (anyOD)   color = 'orange';
-    else if (anyPlay) color = 'green';
-    else if (videoLooperState === 'recording') color = 'red';
-    else if (videoLooperState === 'playing')   color = 'green';
+    const anyRec = midiLoopStates.includes('recording') || videoLooperState === 'recording';
+    const anyOD = midiLoopStates.includes('overdubbing');
+    const anyPlay = midiLoopPlaying.some(p => p) || videoLooperState === 'playing';
+    if (anyRec) tone = 'record';
+    else if (anyOD) tone = 'overdub';
+    else if (anyPlay) tone = 'play';
   } else {
-    if (looperState === 'recording')       color = 'red';
-    else if (looperState === 'overdubbing') color = 'orange';
-    else if (looperState === 'playing')     color = 'green';
-    else if (videoLooperState === 'recording') color = 'red';
-    else if (videoLooperState === 'playing')   color = 'green';
+    if (looperState === 'recording' || videoLooperState === 'recording') tone = 'record';
+    else if (looperState === 'overdubbing') tone = 'overdub';
+    else if (looperState === 'playing' || videoLooperState === 'playing') tone = 'play';
   }
-  btn.style.backgroundColor = color;
+  if (tone) {
+    styleMinimalButton(btn, { active: true, accent: palette[tone], tone });
+  } else {
+    styleMinimalButton(btn, { active: false, tone: 'muted' });
+  }
   updateLoopProgressState();
 }
 function updateMinimalExportColor(btn) {
-  if (videoLooperState !== "idle" && videoPreviewURL)
-    btn.style.backgroundColor = "#A0F";
-  else if (loopBuffer)
-    btn.style.backgroundColor = "#449";
-  else
-    btn.style.backgroundColor = "#666";
+  if (!btn) return;
+  if (videoLooperState !== "idle" && videoPreviewURL) {
+    styleMinimalButton(btn, { active: true, accent: "#a855f7", tone: "preview" });
+  } else if (loopBuffer) {
+    styleMinimalButton(btn, { active: true, accent: "#38bdf8", tone: "ready" });
+  } else {
+    styleMinimalButton(btn, { active: false, tone: "muted" });
+  }
 }
 
 
@@ -7803,19 +7866,14 @@ if (!container) {
   minimalUIContainer = document.createElement("div");
   minimalUIContainer.className = "ytbm-minimal-bar";
   minimalUIContainer.style.display = "none";
-  minimalUIContainer.style.alignItems = "center";
-  minimalUIContainer.style.gap = "8px";
   // Now proceed to insert your minimalUIContainer
 container.insertBefore(minimalUIContainer, container.firstChild);
 
   let pitchWrap = document.createElement("div");
-  pitchWrap.style.display = "flex";
-  pitchWrap.style.alignItems = "center";
-  pitchWrap.style.gap = "4px";
+  pitchWrap.className = "ytbm-minimal-block";
 
   let label = document.createElement("span");
-  label.style.color = "#fff";
-  label.style.fontSize = "11px";
+  label.className = "ytbm-minimal-label";
   label.innerText = "Pitch";
   pitchWrap.appendChild(label);
 
@@ -7825,8 +7883,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   sldr.max = 100;
   sldr.value = pitchPercentage;
   sldr.step = 1;
-  sldr.style.width = "60px";
-  sldr.className = "looper-btn";
+  sldr.className = "looper-knob ytbm-minimal-slider";
   sldr.title = "Pitch (%)";
   sldr.addEventListener("input", e => updatePitch(parseInt(e.target.value, 10)));
   sldr.addEventListener("dblclick", () => {
@@ -7836,11 +7893,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   pitchWrap.appendChild(sldr);
 
   let valSpan = document.createElement("span");
-  valSpan.style.marginLeft = "8px";
-  valSpan.style.color = "#fff";
-  valSpan.style.fontSize = "11px";
-  valSpan.style.width = "40px";
-  valSpan.style.textAlign = "right";
+  valSpan.className = "ytbm-minimal-value";
   valSpan.innerText = pitchPercentage + "%";
   pitchWrap.appendChild(valSpan);
 
@@ -7862,7 +7915,6 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   eqButtonMin.className = "looper-btn";
   eqButtonMin.innerText = "EQ:Off";
   eqButtonMin.title = "Toggle EQ Filter On/Off";
-  eqButtonMin.style.backgroundColor = "#444";
   eqButtonMin.addEventListener("click", () => {
     toggleEQFilter();
     refreshMinimalState();
@@ -7873,7 +7925,6 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   compButtonMin.className = "looper-btn";
   compButtonMin.innerText = "Comp:Off";
   compButtonMin.title = "Toggle Lo-Fi Compressor On/Off";
-  compButtonMin.style.backgroundColor = "#444";
   compButtonMin.addEventListener("click", () => {
     toggleCompressor();
     refreshMinimalState();
@@ -7885,7 +7936,6 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   reverbButtonMin.className = "looper-btn";
   reverbButtonMin.innerText = "Rev:Off";
   reverbButtonMin.title = "Toggle Reverb On/Off";
-  reverbButtonMin.style.backgroundColor = "#444";
   reverbButtonMin.addEventListener("click", () => {
     toggleReverb();
     refreshMinimalState();
@@ -7896,7 +7946,6 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   cassetteButtonMin.className = "looper-btn";
   cassetteButtonMin.innerText = "Tape:Off";
   cassetteButtonMin.title = "Toggle Cassette On/Off";
-  cassetteButtonMin.style.backgroundColor = "#444";
   cassetteButtonMin.addEventListener("click", () => {
     toggleCassette();
     refreshMinimalState();
@@ -7907,7 +7956,6 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   instrumentButtonMin.className = "looper-btn";
   instrumentButtonMin.innerText = "Instrument:Off";
   instrumentButtonMin.title = "Nova Bass";
-  instrumentButtonMin.style.backgroundColor = "#444";
   instrumentButtonMin.addEventListener("click", () => {
     if (instrumentPreset === 0) {
       setInstrumentPreset(instrumentLastPreset || 1);
@@ -7954,8 +8002,8 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   looperPulseElMin.style.top = '0';
   looperPulseElMin.style.right = '0';
   looperPulseElMin.style.bottom = '0';
-  looperPulseElMin.style.borderRadius = '3px';
-  looperPulseElMin.style.background = 'rgba(255,255,255,0.25)';
+  looperPulseElMin.style.borderRadius = '999px';
+  looperPulseElMin.style.background = 'rgba(255, 255, 255, 0.18)';
   looperPulseElMin.style.opacity = 0;
   looperPulseElMin.style.transition = 'opacity 0.1s';
   looperPulseElMin.style.pointerEvents = 'none';
@@ -7978,7 +8026,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   pWrap.style.right = '0';
   pWrap.style.bottom = '-6px';
   pWrap.style.height = '6px';
-  pWrap.style.background = '#222';
+  pWrap.style.background = 'rgba(255,255,255,0.08)';
   pWrap.style.pointerEvents = 'none';
   pWrap.style.display = 'flex';
   pWrap.style.flexDirection = 'column';
@@ -7987,7 +8035,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     const b = document.createElement('div');
     b.style.position = 'relative';
     b.style.height = '1.4px';
-    b.style.background = '#333';
+    b.style.background = 'rgba(255,255,255,0.12)';
     const f = document.createElement('div');
     f.style.position = 'absolute';
     f.style.left = '0';
@@ -8004,7 +8052,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     rec.style.bottom = '0';
     rec.style.left = '0';
     rec.style.width = '2px';
-    rec.style.background = 'red';
+    rec.style.background = '#ff4e45';
     rec.style.opacity = 0;
     b.appendChild(rec);
     for (let j=1;j<4;j++){
@@ -8096,68 +8144,117 @@ minimalUIContainer.appendChild(importMediaBtn);
     if (minimalPitchLabel) minimalPitchLabel.innerText = pitchPercentage + "%";
     if (sldr) sldr.value = pitchPercentage;
     if (pitchTargetButtonMin) {
-      pitchTargetButtonMin.innerText = (pitchTarget === "video") ? "Vid" : "Loop";
+      const isLoopTarget = pitchTarget !== "video";
+      pitchTargetButtonMin.innerText = isLoopTarget ? "Loop" : "Vid";
+      styleMinimalButton(pitchTargetButtonMin, {
+        active: isLoopTarget,
+        accent: isLoopTarget ? "#22d3ee" : null,
+        tone: isLoopTarget ? "accent" : "muted"
+      });
     }
 
-    let cc = Object.keys(cuePoints).length;
+    const cc = Object.keys(cuePoints).length;
     if (cuesBtnMin) {
       if (cc < 10) {
         cuesBtnMin.innerText = `Cue+(${cc}/10)`;
-        cuesBtnMin.style.backgroundColor = "#333";
+        styleMinimalButton(cuesBtnMin, {
+          active: cc > 0,
+          accent: cc > 0 ? "#22c55e" : null,
+          tone: cc > 0 ? "accent" : "muted"
+        });
       } else {
         cuesBtnMin.innerText = `EraseCues(${cc}/10)`;
-        cuesBtnMin.style.backgroundColor = "#C22";
+        styleMinimalButton(cuesBtnMin, {
+          active: true,
+          accent: "#f87171",
+          tone: "danger"
+        });
       }
     }
     updateMinimalLoopButtonColor(loopBtnMin);
     updateMinimalExportColor(exportBtnMin);
 
-    eqButtonMin.innerText = "EQ:" + (eqFilterActive ? "On" : "Off");
-    eqButtonMin.style.backgroundColor = eqFilterActive ? "darkcyan" : "#444";
-
-    // Update the minimal compressor button based on the current mode
-  if (loFiCompActive) {
-    switch (compMode) {
-      case "native":
-        compButtonMin.innerText = "Comp: Native";
-        compButtonMin.style.backgroundColor = "darkorange";
-        break;
-      case "boss303":
-        compButtonMin.innerText = "Comp: Ultra Tape";
-        compButtonMin.style.backgroundColor = "cornflowerblue";
-        break;
-      case "roland404":
-        compButtonMin.innerText = "Comp: Bright Open";
-        compButtonMin.style.backgroundColor = "mediumorchid";
-        break;
-      default:
-        compButtonMin.innerText = "Comp: On";
-        compButtonMin.style.backgroundColor = "#444";
-        break;
+    if (eqButtonMin) {
+      eqButtonMin.innerText = "EQ:" + (eqFilterActive ? "On" : "Off");
+      styleMinimalButton(eqButtonMin, {
+        active: eqFilterActive,
+        accent: eqFilterActive ? "#14b8a6" : null,
+        tone: eqFilterActive ? "accent" : "muted"
+      });
     }
-  } else {
-    compButtonMin.innerText = "Comp: Off";
-    compButtonMin.style.backgroundColor = "#222";
-  }
 
-    reverbButtonMin.innerText = "Rev:" + (reverbActive ? "On" : "Off");
-    reverbButtonMin.style.backgroundColor = reverbActive ? "#4287f5" : "#444";
+    if (compButtonMin) {
+      if (loFiCompActive) {
+        let label = "On";
+        let accent = "#f97316";
+        switch (compMode) {
+          case "native":
+            label = "Native";
+            accent = "#f97316";
+            break;
+          case "boss303":
+            label = "Ultra Tape";
+            accent = "#60a5fa";
+            break;
+          case "roland404":
+            label = "Bright Open";
+            accent = "#c084fc";
+            break;
+          default:
+            label = "On";
+            accent = "#f97316";
+            break;
+        }
+        compButtonMin.innerText = "Comp: " + label;
+        styleMinimalButton(compButtonMin, { active: true, accent, tone: "accent" });
+      } else {
+        compButtonMin.innerText = "Comp: Off";
+        styleMinimalButton(compButtonMin, { active: false, tone: "muted" });
+      }
+    }
 
-    cassetteButtonMin.innerText = "Tape:" + (cassetteActive ? "On" : "Off");
-    cassetteButtonMin.style.backgroundColor = cassetteActive ? "#b05af5" : "#444";
+    if (reverbButtonMin) {
+      reverbButtonMin.innerText = "Rev:" + (reverbActive ? "On" : "Off");
+      styleMinimalButton(reverbButtonMin, {
+        active: reverbActive,
+        accent: reverbActive ? "#38bdf8" : null,
+        tone: reverbActive ? "accent" : "muted"
+      });
+    }
+
+    if (cassetteButtonMin) {
+      cassetteButtonMin.innerText = "Tape:" + (cassetteActive ? "On" : "Off");
+      styleMinimalButton(cassetteButtonMin, {
+        active: cassetteActive,
+        accent: cassetteActive ? "#f472b6" : null,
+        tone: cassetteActive ? "accent" : "muted"
+      });
+    }
 
     if (instrumentButtonMin) {
       let name = "Off";
-      let color = "#222";
+      let accent = null;
       if (instrumentPreset > 0) {
         const p = instrumentPresets[instrumentPreset];
         if (p) {
           name = p.name;
-          color = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
+          accent = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
         }
       }
       instrumentButtonMin.innerText = "Instrument:" + name;
-      instrumentButtonMin.style.backgroundColor = color;
+      styleMinimalButton(instrumentButtonMin, {
+        active: instrumentPreset > 0,
+        accent,
+        tone: instrumentPreset > 0 ? "accent" : "muted"
+      });
+    }
+
+    if (bpmDisplayButton) {
+      styleMinimalButton(bpmDisplayButton, {
+        active: true,
+        accent: "#818cf8",
+        tone: "info"
+      });
     }
     refreshBpmDisplay();
   }
@@ -11277,24 +11374,162 @@ function injectCustomCSS() {
     .ytbm-minimal-bar {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      gap: 6px;
+      gap: 10px;
       margin-right: 6px;
+      padding: 8px 14px;
+      background: rgba(16,16,16,0.82);
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(24px);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      font-family: 'Roboto','Noto Sans',sans-serif;
+      color: #f1f1f1;
       overflow-x: auto;
+      max-width: min(96vw, 1200px);
+    }
+    .ytbm-minimal-bar::-webkit-scrollbar {
+      height: 6px;
+    }
+    .ytbm-minimal-bar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.25);
+      border-radius: 999px;
+    }
+    .ytbm-minimal-bar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .ytbm-minimal-block {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .ytbm-minimal-label {
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.16em;
+      color: rgba(255,255,255,0.65);
+    }
+    .ytbm-minimal-value {
+      font-variant-numeric: tabular-nums;
+      font-size: 0.85rem;
+      min-width: 42px;
+      text-align: right;
+      color: #fff;
+    }
+    .ytbm-minimal-bar input.looper-knob {
+      appearance: none;
+      width: 100px;
+      height: 4px;
+      background: rgba(255,255,255,0.16);
+      border-radius: 999px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+    }
+    .ytbm-minimal-bar input.looper-knob::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ff4e45;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
+      transition: transform 0.2s ease;
+    }
+    .ytbm-minimal-bar input.looper-knob::-webkit-slider-thumb:hover {
+      transform: scale(1.08);
+    }
+    .ytbm-minimal-bar input.looper-knob::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ff4e45;
+      border: none;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
+      transition: transform 0.2s ease;
+    }
+    .ytbm-minimal-bar input.looper-knob::-moz-range-thumb:hover {
+      transform: scale(1.08);
     }
     .ytbm-minimal-bar .looper-btn {
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 3px;
-      padding: 3px 6px;
-      font-size: 10px;
-      cursor: pointer;
-      transition: 0.2s;
+      background: rgba(255,255,255,0.06);
+      color: inherit;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
+      white-space: nowrap;
     }
     .ytbm-minimal-bar .looper-btn:hover {
-      background: #444;
-      border-color: #666;
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(255,255,255,0.22);
+      transform: translateY(-1px);
+    }
+    .ytbm-minimal-bar .looper-btn:active {
+      transform: translateY(0);
+    }
+    .ytbm-minimal-bar .looper-btn[data-state="on"] {
+      background: linear-gradient(135deg, var(--btn-accent-soft, rgba(255,78,69,0.28)), rgba(255,255,255,0.08));
+      border-color: var(--btn-accent, #ff4e45);
+      box-shadow: 0 14px 26px rgba(0,0,0,0.35);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="muted"] {
+      color: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.08);
+      box-shadow: none;
+    }
+    .ytbm-minimal-bar .looper-btn[data-state="on"][data-tone="muted"] {
+      box-shadow: none;
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="danger"] {
+      --btn-accent: #f43f5e;
+      --btn-accent-soft: rgba(244, 63, 94, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="record"] {
+      --btn-accent: #ef4444;
+      --btn-accent-soft: rgba(239, 68, 68, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="overdub"] {
+      --btn-accent: #f59e0b;
+      --btn-accent-soft: rgba(245, 158, 11, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="play"] {
+      --btn-accent: #22c55e;
+      --btn-accent-soft: rgba(34, 197, 94, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="ready"] {
+      --btn-accent: #38bdf8;
+      --btn-accent-soft: rgba(56, 189, 248, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="preview"] {
+      --btn-accent: #a855f7;
+      --btn-accent-soft: rgba(168, 85, 247, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="accent"] {
+      --btn-accent: #ff4e45;
+      --btn-accent-soft: rgba(255, 78, 69, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="info"] {
+      --btn-accent: #818cf8;
+      --btn-accent-soft: rgba(129, 140, 248, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="arm"] {
+      --btn-accent: #38bdf8;
+      --btn-accent-soft: rgba(56, 189, 248, 0.28);
+    }
+    .ytbm-minimal-bar .looper-btn[data-tone="monitor"] {
+      --btn-accent: #f97316;
+      --btn-accent-soft: rgba(249, 115, 22, 0.28);
     }
     .looper-manual-container,
     .looper-keymap-container,
@@ -11541,7 +11776,9 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
       display: flex !important;
       flex-wrap: wrap !important;
       overflow-x: auto !important;
-      gap: 4px !important;
+      gap: 10px !important;
+      row-gap: 12px !important;
+      padding: 10px 12px !important;
     }
   `;
   document.head.appendChild(style);
