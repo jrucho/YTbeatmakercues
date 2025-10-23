@@ -7796,26 +7796,6 @@ function analyseBPMFromEnergies(energies) {
   return Math.round(bpm);
 }
 
-      let color = "#222";
-      if (instrumentPreset > 0) {
-        const p = instrumentPresets[instrumentPreset];
-        if (p) {
-          name = p.name;
-          color = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
-        }
-      }
-      instrumentButtonMin.innerText = "Instrument:" + name;
-      instrumentButtonMin.style.backgroundColor = color;
-    }
-    refreshBpmDisplay();
-  }
-  window.refreshMinimalState = refreshMinimalState;
-}
-
-
-/**************************************
- * UI Toggle
- **************************************/
 function goAdvancedUI() {
   minimalActive = false;
   if (panelContainer) panelContainer.style.display = "block";
