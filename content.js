@@ -3713,6 +3713,184 @@ function updateMinimalExportColor(btn) {
 }
 
 
+const YTBM_ICON_PATHS = {
+  cues: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 5v4h4v2h-4v4h-2v-4H7v-2h4V7h2z",
+  loop: "M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 .34-.03.67-.08 1h2.02c.04-.33.06-.66.06-1 0-4.41-3.59-8-8-8zm-6 8c0-.34.03-.67.08-1H4.06c-.04.33-.06.66-.06 1 0 4.41 3.59 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6z",
+  import: "M5 20h14v-2H5v2zm7-18-5 5h3v6h4V7h3l-5-5z",
+  advanced: "M3 18v-2h6v2H3zm0-5v-2h10v2H3zm0-5V6h14v2H3zm18 10h-2v-2h2v2zm0-5h-4v-2h4v2zm0-5h-6V6h6v2z",
+  mic: "M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"
+};
+
+function createIconButton(iconPath, labelText) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "looper-btn ytbm-icon-btn";
+  button.innerHTML =
+    `<svg class="ytbm-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${iconPath}" fill="currentColor"/></svg>` +
+    `<span class="ytbm-label">${labelText}</span>`;
+  const labelEl = button.querySelector(".ytbm-label");
+  return { button, labelEl };
+}
+
+/**************************************
+ * Minimal UI Bar
+ **************************************/
+function buildMinimalUIBar() {
+  const host = document.querySelector(".html5-video-player") || document.body;
+
+  minimalUIContainer = document.createElement("div");
+  minimalUIContainer.className = "ytbm-minimal-bar ytbm-glass";
+  minimalUIContainer.style.display = "none";
+  host.appendChild(minimalUIContainer);
+
+  const pitchCluster = document.createElement("div");
+  pitchCluster.className = "ytbm-pitch-cluster";
+
+  const pitchLabel = document.createElement("span");
+  pitchLabel.className = "ytbm-pitch-label";
+  pitchLabel.textContent = "Pitch";
+  pitchCluster.appendChild(pitchLabel);
+
+  minimalPitchSlider = document.createElement("input");
+  minimalPitchSlider.type = "range";
+  minimalPitchSlider.min = -50;
+  minimalPitchSlider.max = 100;
+  minimalPitchSlider.step = 1;
+  minimalPitchSlider.value = pitchPercentage;
+  minimalPitchSlider.className = "ytbm-pitch-slider ytbm-range";
+  minimalPitchSlider.title = "Pitch (%)";
+  minimalPitchSlider.addEventListener("input", (e) => {
+    updatePitch(parseInt(e.target.value, 10));
+  });
+  minimalPitchSlider.addEventListener("dblclick", () => {
+    minimalPitchSlider.value = 0;
+    updatePitch(0);
+  });
+  pitchCluster.appendChild(minimalPitchSlider);
+
+  minimalPitchLabel = document.createElement("span");
+  minimalPitchLabel.className = "ytbm-pitch-value";
+  minimalPitchLabel.textContent = `${pitchPercentage}%`;
+  pitchCluster.appendChild(minimalPitchLabel);
+
+  minimalUIContainer.appendChild(pitchCluster);
+
+  const cuesPieces = createIconButton(YTBM_ICON_PATHS.cues, "Cues");
+  cuesButtonMin = cuesPieces.button;
+  minimalCuesLabel = cuesPieces.labelEl;
+  cuesButtonMin.classList.add("ytbm-minimal-btn");
+  cuesButtonMin.title = "Add cues (Shift = suggest, Alt = random, Cmd/Ctrl = erase)";
+  cuesButtonMin.addEventListener("click", (e) => {
+    const cc = Object.keys(cuePoints).length;
+    pushUndoState();
+    if (e.shiftKey) {
+      suggestCuesFromTransients();
+      refreshMinimalState();
+      return;
+    }
+    if (e.altKey) {
+      randomizeCuesInOneClick();
+      refreshMinimalState();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      if (cc > 0) {
+        cuePoints = {};
+        saveCuePointsToURL();
+        updateCueMarkers();
+      }
+    } else if (cc >= 10) {
+      cuePoints = {};
+      saveCuePointsToURL();
+      updateCueMarkers();
+    } else {
+      addCueAtCurrentVideoTime();
+    }
+    refreshMinimalState();
+  });
+  minimalUIContainer.appendChild(cuesButtonMin);
+  randomCuesButtonMin = cuesButtonMin;
+
+  const loopGroup = document.createElement("div");
+  loopGroup.className = "ytbm-loop-group";
+
+  const loopPieces = createIconButton(YTBM_ICON_PATHS.loop, "Looper");
+  loopButtonMin = loopPieces.button;
+  loopButtonMin.classList.add("ytbm-minimal-btn", "ytbm-minimal-btn--primary");
+  loopButtonMin.title = "Audio/Video Looper (Cmd/Ctrl = video)";
+  loopButtonMin.dataset.loopState = "idle";
+  looperPulseElMin = document.createElement("div");
+  looperPulseElMin.className = "ytbm-loop-pulse";
+  loopButtonMin.appendChild(looperPulseElMin);
+  addTrackedListener(loopButtonMin, "mousedown", (e) => {
+    ensureAudioContext().then(() => {
+      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseDown();
+      else onLooperButtonMouseDown();
+    });
+  });
+  addTrackedListener(loopButtonMin, "mouseup", (e) => {
+    ensureAudioContext().then(() => {
+      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseUp();
+      else onLooperButtonMouseUp();
+    });
+  });
+  loopGroup.appendChild(loopButtonMin);
+
+  const loopMeter = document.createElement("div");
+  loopMeter.className = "ytbm-loop-meter";
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const track = document.createElement("div");
+    track.className = "ytbm-loop-track";
+
+    const fill = document.createElement("div");
+    fill.className = "ytbm-loop-fill";
+    track.appendChild(fill);
+
+    const rec = document.createElement("div");
+    rec.className = "ytbm-loop-rec";
+    track.appendChild(rec);
+
+    loopMeter.appendChild(track);
+    loopProgressFillsMin[i] = fill;
+    midiRecordLinesMin[i] = rec;
+  }
+  loopGroup.appendChild(loopMeter);
+  minimalUIContainer.appendChild(loopGroup);
+
+  const importPieces = createIconButton(YTBM_ICON_PATHS.import, "Import");
+  importLoopButtonMin = importPieces.button;
+  importLoopButtonMin.classList.add("ytbm-minimal-btn");
+  importLoopButtonMin.title = "Import an audio loop";
+  importLoopButtonMin.addEventListener("click", onImportAudioClicked);
+  minimalUIContainer.appendChild(importLoopButtonMin);
+
+  const advancedPieces = createIconButton(YTBM_ICON_PATHS.advanced, "Advanced");
+  advancedButtonMin = advancedPieces.button;
+  advancedButtonMin.classList.add("ytbm-minimal-btn");
+  advancedButtonMin.title = "Open the advanced panel";
+  advancedButtonMin.addEventListener("click", goAdvancedUI);
+  minimalUIContainer.appendChild(advancedButtonMin);
+
+  minimalUIContainer.style.display = minimalActive ? "flex" : "none";
+
+  function refreshMinimalState() {
+    if (minimalPitchLabel) minimalPitchLabel.textContent = `${pitchPercentage}%`;
+    if (minimalPitchSlider) minimalPitchSlider.value = pitchPercentage;
+
+    if (minimalCuesLabel && cuesButtonMin) {
+      const cc = Object.keys(cuePoints).length;
+      minimalCuesLabel.textContent = cc ? `Cues ${cc}/10` : "Cues";
+      cuesButtonMin.dataset.mode = cc >= 10 ? "erase" : "add";
+    }
+
+    updateMinimalLoopButtonColor(loopButtonMin);
+  }
+
+  window.refreshMinimalState = refreshMinimalState;
+  refreshMinimalState();
+}
+
+
 /**************************************
  * Deferred AudioContext & Node Setup
  **************************************/
@@ -11393,179 +11571,3 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
 // - MIDI play without modifiers = exclusive; with Shift/Cmd = multi-play.
 // - BPM display replaces "Detect BPM"; click to edit; arrows/typing/drag all work; all loopers retime.
 // - Start/stop/record actions always occur on next bar; phasing stable after 2+ minutes.
-const YTBM_ICON_PATHS = {
-  cues: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 5v4h4v2h-4v4h-2v-4H7v-2h4V7h2z",
-  loop: "M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 .34-.03.67-.08 1h2.02c.04-.33.06-.66.06-1 0-4.41-3.59-8-8-8zm-6 8c0-.34.03-.67.08-1H4.06c-.04.33-.06.66-.06 1 0 4.41 3.59 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6z",
-  import: "M5 20h14v-2H5v2zm7-18-5 5h3v6h4V7h3l-5-5z",
-  advanced: "M3 18v-2h6v2H3zm0-5v-2h10v2H3zm0-5V6h14v2H3zm18 10h-2v-2h2v2zm0-5h-4v-2h4v2zm0-5h-6V6h6v2z",
-  mic: "M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"
-};
-
-function createIconButton(iconPath, labelText) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "looper-btn ytbm-icon-btn";
-  button.innerHTML =
-    `<svg class="ytbm-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${iconPath}" fill="currentColor"/></svg>` +
-    `<span class="ytbm-label">${labelText}</span>`;
-  const labelEl = button.querySelector(".ytbm-label");
-  return { button, labelEl };
-}
-
-/**************************************
- * Minimal UI Bar
- **************************************/
-function buildMinimalUIBar() {
-  const host = document.querySelector(".html5-video-player") || document.body;
-
-  minimalUIContainer = document.createElement("div");
-  minimalUIContainer.className = "ytbm-minimal-bar ytbm-glass";
-  minimalUIContainer.style.display = "none";
-  host.appendChild(minimalUIContainer);
-
-  const pitchCluster = document.createElement("div");
-  pitchCluster.className = "ytbm-pitch-cluster";
-
-  const pitchLabel = document.createElement("span");
-  pitchLabel.className = "ytbm-pitch-label";
-  pitchLabel.textContent = "Pitch";
-  pitchCluster.appendChild(pitchLabel);
-
-  minimalPitchSlider = document.createElement("input");
-  minimalPitchSlider.type = "range";
-  minimalPitchSlider.min = -50;
-  minimalPitchSlider.max = 100;
-  minimalPitchSlider.step = 1;
-  minimalPitchSlider.value = pitchPercentage;
-  minimalPitchSlider.className = "ytbm-pitch-slider ytbm-range";
-  minimalPitchSlider.title = "Pitch (%)";
-  minimalPitchSlider.addEventListener("input", (e) => {
-    updatePitch(parseInt(e.target.value, 10));
-  });
-  minimalPitchSlider.addEventListener("dblclick", () => {
-    minimalPitchSlider.value = 0;
-    updatePitch(0);
-  });
-  pitchCluster.appendChild(minimalPitchSlider);
-
-  minimalPitchLabel = document.createElement("span");
-  minimalPitchLabel.className = "ytbm-pitch-value";
-  minimalPitchLabel.textContent = `${pitchPercentage}%`;
-  pitchCluster.appendChild(minimalPitchLabel);
-
-  minimalUIContainer.appendChild(pitchCluster);
-
-  const cuesPieces = createIconButton(YTBM_ICON_PATHS.cues, "Cues");
-  cuesButtonMin = cuesPieces.button;
-  minimalCuesLabel = cuesPieces.labelEl;
-  cuesButtonMin.classList.add("ytbm-minimal-btn");
-  cuesButtonMin.title = "Add cues (Shift = suggest, Alt = random, Cmd/Ctrl = erase)";
-  cuesButtonMin.addEventListener("click", (e) => {
-    const cc = Object.keys(cuePoints).length;
-    pushUndoState();
-    if (e.shiftKey) {
-      suggestCuesFromTransients();
-      refreshMinimalState();
-      return;
-    }
-    if (e.altKey) {
-      randomizeCuesInOneClick();
-      refreshMinimalState();
-      return;
-    }
-    if (e.metaKey || e.ctrlKey) {
-      if (cc > 0) {
-        cuePoints = {};
-        saveCuePointsToURL();
-        updateCueMarkers();
-      }
-    } else if (cc >= 10) {
-      cuePoints = {};
-      saveCuePointsToURL();
-      updateCueMarkers();
-    } else {
-      addCueAtCurrentVideoTime();
-    }
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(cuesButtonMin);
-  randomCuesButtonMin = cuesButtonMin;
-
-  const loopGroup = document.createElement("div");
-  loopGroup.className = "ytbm-loop-group";
-
-  const loopPieces = createIconButton(YTBM_ICON_PATHS.loop, "Looper");
-  loopButtonMin = loopPieces.button;
-  loopButtonMin.classList.add("ytbm-minimal-btn", "ytbm-minimal-btn--primary");
-  loopButtonMin.title = "Audio/Video Looper (Cmd/Ctrl = video)";
-  loopButtonMin.dataset.loopState = "idle";
-  looperPulseElMin = document.createElement("div");
-  looperPulseElMin.className = "ytbm-loop-pulse";
-  loopButtonMin.appendChild(looperPulseElMin);
-  addTrackedListener(loopButtonMin, "mousedown", (e) => {
-    ensureAudioContext().then(() => {
-      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseDown();
-      else onLooperButtonMouseDown();
-    });
-  });
-  addTrackedListener(loopButtonMin, "mouseup", (e) => {
-    ensureAudioContext().then(() => {
-      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseUp();
-      else onLooperButtonMouseUp();
-    });
-  });
-  loopGroup.appendChild(loopButtonMin);
-
-  const loopMeter = document.createElement("div");
-  loopMeter.className = "ytbm-loop-meter";
-  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
-    const track = document.createElement("div");
-    track.className = "ytbm-loop-track";
-
-    const fill = document.createElement("div");
-    fill.className = "ytbm-loop-fill";
-    track.appendChild(fill);
-
-    const rec = document.createElement("div");
-    rec.className = "ytbm-loop-rec";
-    track.appendChild(rec);
-
-    loopMeter.appendChild(track);
-    loopProgressFillsMin[i] = fill;
-    midiRecordLinesMin[i] = rec;
-  }
-  loopGroup.appendChild(loopMeter);
-  minimalUIContainer.appendChild(loopGroup);
-
-  const importPieces = createIconButton(YTBM_ICON_PATHS.import, "Import");
-  importLoopButtonMin = importPieces.button;
-  importLoopButtonMin.classList.add("ytbm-minimal-btn");
-  importLoopButtonMin.title = "Import an audio loop";
-  importLoopButtonMin.addEventListener("click", onImportAudioClicked);
-  minimalUIContainer.appendChild(importLoopButtonMin);
-
-  const advancedPieces = createIconButton(YTBM_ICON_PATHS.advanced, "Advanced");
-  advancedButtonMin = advancedPieces.button;
-  advancedButtonMin.classList.add("ytbm-minimal-btn");
-  advancedButtonMin.title = "Open the advanced panel";
-  advancedButtonMin.addEventListener("click", goAdvancedUI);
-  minimalUIContainer.appendChild(advancedButtonMin);
-
-  minimalUIContainer.style.display = minimalActive ? "flex" : "none";
-
-  function refreshMinimalState() {
-    if (minimalPitchLabel) minimalPitchLabel.textContent = `${pitchPercentage}%`;
-    if (minimalPitchSlider) minimalPitchSlider.value = pitchPercentage;
-
-    if (minimalCuesLabel && cuesButtonMin) {
-      const cc = Object.keys(cuePoints).length;
-      minimalCuesLabel.textContent = cc ? `Cues ${cc}/10` : "Cues";
-      cuesButtonMin.dataset.mode = cc >= 10 ? "erase" : "add";
-    }
-
-    updateMinimalLoopButtonColor(loopButtonMin);
-  }
-
-  window.refreshMinimalState = refreshMinimalState;
-  refreshMinimalState();
-}
