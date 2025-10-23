@@ -388,7 +388,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   function buildMonitorToggle(parent) {
     if (monitorToggleBtn || !parent) return;
     monitorToggleBtn = document.createElement('button');
-    monitorToggleBtn.className = 'looper-btn';
+    monitorToggleBtn.className = 'looper-btn ytbm-advanced-btn';
     monitorToggleBtn.style.flex = '0 0 auto';
     monitorToggleBtn.title = 'Toggle monitoring on/off';
     monitorToggleBtn.addEventListener('click', () => {
@@ -402,8 +402,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
 
   function updateMonitorToggleColor() {
     if (!monitorToggleBtn) return;
-    monitorToggleBtn.style.backgroundColor = monitorEnabled ? 'green' : '';
-    monitorToggleBtn.textContent = monitorEnabled ? 'Mon On' : 'Mon Off';
+    monitorToggleBtn.dataset.state = monitorEnabled ? 'on' : 'off';
+    monitorToggleBtn.textContent = monitorEnabled ? 'Monitor On' : 'Monitor Off';
   }
 
   async function startMonitoring() {
@@ -591,7 +591,13 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       minimalUIButton = null,
       pitchSliderElement = null,
       advancedPitchLabel = null,
+      minimalPitchSlider = null,
       minimalPitchLabel = null,
+      cuesButtonMin = null,
+      minimalCuesLabel = null,
+      loopButtonMin = null,
+      importLoopButtonMin = null,
+      advancedButtonMin = null,
       manualButton = null,
       keyMapButton = null,
       midiMapButton = null,
@@ -610,9 +616,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       // Minimal UI elements
       minimalUIContainer = null,
       randomCuesButtonMin = null,
-      eqButtonMin = null,
-      compButtonMin = null,
-      micButton = null,          // <-- NEW: declare it here
+      micButton = null,
+      micButtonLabel = null,
       instrumentButton = null,
       instrumentButtonMin = null,
       instrumentPowerButton = null,
@@ -1615,13 +1620,17 @@ async function toggleMicInput() {
 
 function updateMicButtonColor() {
   if (!micButton) return;
-  if (micState === 0) {
-    micButton.style.backgroundColor = "#333"; // Off
-  } else if (micState === 1) {
-    micButton.style.backgroundColor = "green"; // Recording only
+  let state = "off";
+  let label = "Mic Off";
+  if (micState === 1) {
+    state = "arm";
+    label = "Mic Arm";
   } else if (micState === 2) {
-    micButton.style.backgroundColor = "red"; // Monitoring
+    state = "live";
+    label = "Mic Live";
   }
+  micButton.dataset.micState = state;
+  if (micButtonLabel) micButtonLabel.textContent = label;
 }
 
 function updateMonitorSelectColor() {
@@ -1640,19 +1649,24 @@ function updateSuperKnobStep() {
   localStorage.setItem('ytbm_superKnobSpeed', String(superKnobSpeedLevel));
 }
 
-// Add the mic button to the minimal UI
-function addMicButtonToMinimalUI() {
-  // If the mic button is already inside the container, do nothing
-if (micButton && minimalUIContainer.contains(micButton)) return;
-  if (!minimalUIContainer) return;
-  micButton = document.createElement("button");
-  micButton.className = "looper-btn";
-  micButton.innerText = "Mic";
-  micButton.title = "Toggle microphone input for looper and video looper";
-  micButton.addEventListener("click", toggleMicInput);
-  minimalUIContainer.appendChild(micButton);
-  // Always (re)-attach the BPM display
-  addBpmDisplayToMinimalUI();
+// Ensure the mic toggle is present in the advanced UI
+function ensureMicButtonInAdvancedUI(parent) {
+  if (!parent) return;
+
+  if (!micButton) {
+    const pieces = createIconButton(YTBM_ICON_PATHS.mic, "Mic Off");
+    micButton = pieces.button;
+    micButtonLabel = pieces.labelEl;
+    micButton.classList.add("ytbm-advanced-btn");
+    micButton.title = "Toggle microphone input for looper and video looper";
+    micButton.addEventListener("click", toggleMicInput);
+  }
+
+  if (micButton.parentElement !== parent) {
+    parent.appendChild(micButton);
+  }
+
+  updateMicButtonColor();
 }
 // BPM UI
 function clampBpmValue(value) {
@@ -1802,18 +1816,18 @@ function handleBpmButtonKeydown(e) {
   }
 }
 
-function addBpmDisplayToMinimalUI() {
-  if (!minimalUIContainer || !micButton) return;
+function ensureBpmDisplayInAdvancedUI(parent) {
+  if (!parent) return;
   if (!bpmDisplayButton) {
     bpmDisplayButton = document.createElement("button");
-    bpmDisplayButton.className = "looper-btn";
+    bpmDisplayButton.className = "looper-btn ytbm-advanced-btn";
     bpmDisplayButton.textContent = formatBpmLabel();
     bpmDisplayButton.title = "Click to edit BPM. Drag to adjust.";
     bpmDisplayButton.addEventListener("pointerdown", onBpmPointerDown);
     bpmDisplayButton.addEventListener("keydown", handleBpmButtonKeydown);
   }
-  if (!minimalUIContainer.contains(bpmDisplayButton)) {
-    minimalUIContainer.insertBefore(bpmDisplayButton, micButton.nextSibling);
+  if (bpmDisplayButton.parentElement !== parent) {
+    parent.appendChild(bpmDisplayButton);
   }
   refreshBpmDisplay();
 }
@@ -2272,28 +2286,6 @@ function triggerPadCue(padIndex) {
 }
 hideYouTubePopups();
   
-  /**************************************
-   * Integration into Minimal UI
-   **************************************/
-  function addTouchButtonToMinimalUI() {
-  const touchBtn = document.createElement("button");
-  touchBtn.className = "looper-btn";
-  touchBtn.innerText = "Touch";
-  touchBtn.title = "Toggle Touch Sequencer (MIDI: Note 27)";
-  touchBtn.addEventListener("click", () => {
-    if (touchPopup && touchPopup.style.display !== "none") {
-      touchPopup.style.display = "none";
-    } else {
-      buildTouchPopup();
-    }
-  });
-  if (minimalUIContainer) {
-    minimalUIContainer.appendChild(touchBtn);
-  }
-}
-  addTouchButtonToMinimalUI();
-
-  
   function addTouchSequencerButtonToAdvancedUI() {
   const advancedTouchBtn = document.createElement("button");
   advancedTouchBtn.className = "looper-btn";
@@ -2354,7 +2346,10 @@ hideYouTubePopups();
   
   function updateCompUIButtons(label, color) {
     if (loFiCompButton) { loFiCompButton.innerText = "Comp: " + label; loFiCompButton.style.backgroundColor = color; }
-    if (compButtonMin) { compButtonMin.innerText = "Comp: " + label; compButtonMin.style.backgroundColor = color; }
+    if (typeof compButtonMin !== "undefined" && compButtonMin) {
+      compButtonMin.innerText = "Comp: " + label;
+      compButtonMin.style.backgroundColor = color;
+    }
   }
   function makeSaturationCurve(amount) {
     const n_samples = 44100;
@@ -3670,24 +3665,42 @@ function mixBuffers(b1, b2) {
  * Minimal UI Updates
  **************************************/
 function updateMinimalLoopButtonColor(btn) {
-  let color = 'grey';
+  if (!btn) {
+    updateLoopProgressState();
+    return;
+  }
+
+  let state = "idle";
   if (useMidiLoopers) {
     const anyRec  = midiLoopStates.includes('recording');
     const anyOD   = midiLoopStates.includes('overdubbing');
     const anyPlay = midiLoopPlaying.some(p => p);
-    if (anyRec)       color = 'red';
-    else if (anyOD)   color = 'orange';
-    else if (anyPlay) color = 'green';
-    else if (videoLooperState === 'recording') color = 'red';
-    else if (videoLooperState === 'playing')   color = 'green';
+    if (anyRec) {
+      state = 'recording';
+    } else if (anyOD) {
+      state = 'overdubbing';
+    } else if (anyPlay) {
+      state = 'playing';
+    } else if (videoLooperState === 'recording') {
+      state = 'video-recording';
+    } else if (videoLooperState === 'playing') {
+      state = 'video-playing';
+    }
   } else {
-    if (looperState === 'recording')       color = 'red';
-    else if (looperState === 'overdubbing') color = 'orange';
-    else if (looperState === 'playing')     color = 'green';
-    else if (videoLooperState === 'recording') color = 'red';
-    else if (videoLooperState === 'playing')   color = 'green';
+    if (looperState === 'recording') {
+      state = 'recording';
+    } else if (looperState === 'overdubbing') {
+      state = 'overdubbing';
+    } else if (looperState === 'playing') {
+      state = 'playing';
+    } else if (videoLooperState === 'recording') {
+      state = 'video-recording';
+    } else if (videoLooperState === 'playing') {
+      state = 'video-playing';
+    }
   }
-  btn.style.backgroundColor = color;
+
+  btn.dataset.loopState = state;
   updateLoopProgressState();
 }
 function updateMinimalExportColor(btn) {
@@ -7783,371 +7796,6 @@ function analyseBPMFromEnergies(energies) {
   return Math.round(bpm);
 }
 
-/**************************************
- * Minimal UI Bar
- **************************************/
-// Updated minimal UI container builder
-function buildMinimalUIBar() {
-  // Try to get the container where you want to insert the minimal UI.
-  let container = document.querySelector(".ytp-right-controls");
-if (!container) {
-  // Attempt a second known element, e.g. the main .ytp-chrome-controls
-  container = document.querySelector(".ytp-chrome-controls");
-}
-
-// If still not found, fall back:
-if (!container) {
-  container = document.body;
-}
-  
-  minimalUIContainer = document.createElement("div");
-  minimalUIContainer.className = "ytbm-minimal-bar";
-  minimalUIContainer.style.display = "none";
-  minimalUIContainer.style.alignItems = "center";
-  minimalUIContainer.style.gap = "8px";
-  // Now proceed to insert your minimalUIContainer
-container.insertBefore(minimalUIContainer, container.firstChild);
-
-  let pitchWrap = document.createElement("div");
-  pitchWrap.style.display = "flex";
-  pitchWrap.style.alignItems = "center";
-  pitchWrap.style.gap = "4px";
-
-  let label = document.createElement("span");
-  label.style.color = "#fff";
-  label.style.fontSize = "11px";
-  label.innerText = "Pitch";
-  pitchWrap.appendChild(label);
-
-  let sldr = document.createElement("input");
-  sldr.type = "range";
-  sldr.min = -50;
-  sldr.max = 100;
-  sldr.value = pitchPercentage;
-  sldr.step = 1;
-  sldr.style.width = "60px";
-  sldr.className = "looper-btn";
-  sldr.title = "Pitch (%)";
-  sldr.addEventListener("input", e => updatePitch(parseInt(e.target.value, 10)));
-  sldr.addEventListener("dblclick", () => {
-    sldr.value = 0;
-    updatePitch(0);
-  });
-  pitchWrap.appendChild(sldr);
-
-  let valSpan = document.createElement("span");
-  valSpan.style.marginLeft = "8px";
-  valSpan.style.color = "#fff";
-  valSpan.style.fontSize = "11px";
-  valSpan.style.width = "40px";
-  valSpan.style.textAlign = "right";
-  valSpan.innerText = pitchPercentage + "%";
-  pitchWrap.appendChild(valSpan);
-
-  pitchTargetButtonMin = document.createElement("button");
-  pitchTargetButtonMin.className = "looper-btn";
-  pitchTargetButtonMin.innerText = (pitchTarget === "video") ? "Vid" : "Loop";
-  pitchTargetButtonMin.title = "Toggle Pitch Target (Video / Loop)";
-  pitchTargetButtonMin.addEventListener("click", () => {
-    pushUndoState();
-    togglePitchTarget();
-    pitchTargetButtonMin.innerText = (pitchTarget === "video") ? "Vid" : "Loop";
-  });
-  pitchWrap.appendChild(pitchTargetButtonMin);
-
-  minimalPitchLabel = valSpan;
-  minimalUIContainer.appendChild(pitchWrap);
-
-  eqButtonMin = document.createElement("button");
-  eqButtonMin.className = "looper-btn";
-  eqButtonMin.innerText = "EQ:Off";
-  eqButtonMin.title = "Toggle EQ Filter On/Off";
-  eqButtonMin.style.backgroundColor = "#444";
-  eqButtonMin.addEventListener("click", () => {
-    toggleEQFilter();
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(eqButtonMin);
-
-  compButtonMin = document.createElement("button");
-  compButtonMin.className = "looper-btn";
-  compButtonMin.innerText = "Comp:Off";
-  compButtonMin.title = "Toggle Lo-Fi Compressor On/Off";
-  compButtonMin.style.backgroundColor = "#444";
-  compButtonMin.addEventListener("click", () => {
-    toggleCompressor();
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(compButtonMin);
-
-  // Reverb + Cassette
-  reverbButtonMin = document.createElement("button");
-  reverbButtonMin.className = "looper-btn";
-  reverbButtonMin.innerText = "Rev:Off";
-  reverbButtonMin.title = "Toggle Reverb On/Off";
-  reverbButtonMin.style.backgroundColor = "#444";
-  reverbButtonMin.addEventListener("click", () => {
-    toggleReverb();
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(reverbButtonMin);
-
-  cassetteButtonMin = document.createElement("button");
-  cassetteButtonMin.className = "looper-btn";
-  cassetteButtonMin.innerText = "Tape:Off";
-  cassetteButtonMin.title = "Toggle Cassette On/Off";
-  cassetteButtonMin.style.backgroundColor = "#444";
-  cassetteButtonMin.addEventListener("click", () => {
-    toggleCassette();
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(cassetteButtonMin);
-
-  instrumentButtonMin = document.createElement("button");
-  instrumentButtonMin.className = "looper-btn";
-  instrumentButtonMin.innerText = "Instrument:Off";
-  instrumentButtonMin.title = "Nova Bass";
-  instrumentButtonMin.style.backgroundColor = "#444";
-  instrumentButtonMin.addEventListener("click", () => {
-    if (instrumentPreset === 0) {
-      setInstrumentPreset(instrumentLastPreset || 1);
-    } else {
-      deactivateInstrument();
-    }
-  });
-  minimalUIContainer.appendChild(instrumentButtonMin);
-
-  let cuesBtnMin = document.createElement("button");
-  cuesBtnMin.className = "looper-btn";
-  cuesBtnMin.innerText = "Cue+";
-  cuesBtnMin.title = "Add or Erase Cues (Cmd => Erase)";
-  cuesBtnMin.addEventListener("click", e => {
-    let cc = Object.keys(cuePoints).length;
-    pushUndoState();
-    if (e.metaKey || e.ctrlKey) {
-      if (cc > 0) {
-        cuePoints = {};
-        saveCuePointsToURL();
-        updateCueMarkers();
-      }
-    } else {
-      if (cc >= 10) {
-        cuePoints = {};
-        saveCuePointsToURL();
-        updateCueMarkers();
-      } else {
-        addCueAtCurrentVideoTime();
-      }
-    }
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(cuesBtnMin);
-
-  let loopBtnMin = document.createElement("button");
-  loopBtnMin.className = "looper-btn";
-  loopBtnMin.style.position = "relative";
-  loopBtnMin.innerText = "Looper(R/S/D/F/V)";
-  loopBtnMin.title = "Audio/Video Looper";
-  looperPulseElMin = document.createElement('div');
-  looperPulseElMin.style.position = 'absolute';
-  looperPulseElMin.style.left = '0';
-  looperPulseElMin.style.top = '0';
-  looperPulseElMin.style.right = '0';
-  looperPulseElMin.style.bottom = '0';
-  looperPulseElMin.style.borderRadius = '3px';
-  looperPulseElMin.style.background = 'rgba(255,255,255,0.25)';
-  looperPulseElMin.style.opacity = 0;
-  looperPulseElMin.style.transition = 'opacity 0.1s';
-  looperPulseElMin.style.pointerEvents = 'none';
-  loopBtnMin.appendChild(looperPulseElMin);
-  addTrackedListener(loopBtnMin, "mousedown", e => {
-    ensureAudioContext().then(() => {
-      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseDown();
-      else onLooperButtonMouseDown();
-    });
-  });
-  addTrackedListener(loopBtnMin, "mouseup", e => {
-    ensureAudioContext().then(() => {
-      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseUp();
-      else onLooperButtonMouseUp();
-    });
-  });
-  const pWrap = document.createElement('div');
-  pWrap.style.position = 'absolute';
-  pWrap.style.left = '0';
-  pWrap.style.right = '0';
-  pWrap.style.bottom = '-6px';
-  pWrap.style.height = '6px';
-  pWrap.style.background = '#222';
-  pWrap.style.pointerEvents = 'none';
-  pWrap.style.display = 'flex';
-  pWrap.style.flexDirection = 'column';
-  pWrap.style.justifyContent = 'space-between';
-  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
-    const b = document.createElement('div');
-    b.style.position = 'relative';
-    b.style.height = '1.4px';
-    b.style.background = '#333';
-    const f = document.createElement('div');
-    f.style.position = 'absolute';
-    f.style.left = '0';
-    f.style.right = 'auto';
-    f.style.top = '0';
-    f.style.bottom = '0';
-    f.style.width = '0%';
-    f.style.opacity = 0;
-    f.style.background = LOOP_COLORS[i % 4];
-    b.appendChild(f);
-    const rec = document.createElement('div');
-    rec.style.position = 'absolute';
-    rec.style.top = '0';
-    rec.style.bottom = '0';
-    rec.style.left = '0';
-    rec.style.width = '2px';
-    rec.style.background = 'red';
-    rec.style.opacity = 0;
-    b.appendChild(rec);
-    for (let j=1;j<4;j++){
-      const di=document.createElement('div');
-      di.className='bar-ind';
-      di.style.position='absolute';
-      di.style.left=(j*25)+'%';
-      di.style.top='0';
-      di.style.bottom='0';
-      di.style.width='1px';
-      di.style.background='#555';
-      di.style.opacity=0.3;
-      b.appendChild(di);
-    }
-    pWrap.appendChild(b);
-    loopProgressFillsMin[i] = f;
-    midiRecordLinesMin[i] = rec;
-  }
-  const loopWrapMin = document.createElement('div');
-  loopWrapMin.style.position = 'relative';
-  loopWrapMin.style.display = 'flex';
-  loopWrapMin.style.overflow = 'visible';
-  loopWrapMin.style.paddingBottom = '0';
-  loopWrapMin.style.flexDirection = 'column';
-  loopWrapMin.style.alignItems = 'stretch';
-  loopWrapMin.appendChild(loopBtnMin);
-  loopWrapMin.appendChild(pWrap);
-  minimalUIContainer.appendChild(loopWrapMin);
-
-  let exportBtnMin = document.createElement("button");
-  exportBtnMin.className = "looper-btn";
-  exportBtnMin.innerText = "Export";
-  exportBtnMin.title = "Export Loop";
-  exportBtnMin.addEventListener("click", exportLoop);
-  minimalUIContainer.appendChild(exportBtnMin);
-
-  let undoBtnMin = document.createElement("button");
-  undoBtnMin.className = "looper-btn";
-  undoBtnMin.innerText = "Undo";
-  undoBtnMin.title = "Undo/Redo (Double Press => Redo)";
-  undoBtnMin.addEventListener("click", () => {
-  // Single click triggers an undo
-  undoAction();
-});
-
-undoBtnMin.addEventListener("dblclick", () => {
-  // Double click triggers a redo
-  redoAction();
-});
-  minimalUIContainer.appendChild(undoBtnMin);
-  
-  let importMediaBtn = document.createElement("button");
-importMediaBtn.className = "looper-btn";
-importMediaBtn.innerText = "Import Media";
-importMediaBtn.title = "Import a local video or audio file (Cmd+I)";
-importMediaBtn.addEventListener("click", importMedia);
-minimalUIContainer.appendChild(importMediaBtn);
-
-  let importBtnMin = document.createElement("button");
-  importBtnMin.className = "looper-btn";
-  importBtnMin.innerText = "Import loop";
-  importBtnMin.title = "Import an Audio Loop for the Looper";
-  importBtnMin.addEventListener("click", onImportAudioClicked);
-  minimalUIContainer.appendChild(importBtnMin);
-  
-  // *** Add the Mic button here ***
-    addMicButtonToMinimalUI();
-
-  randomCuesButtonMin = document.createElement("button");
-  randomCuesButtonMin.className = "looper-btn";
-  randomCuesButtonMin.innerText = "RndCues";
-  randomCuesButtonMin.title = "Randomize 10 cues (sorted)";
-  randomCuesButtonMin.addEventListener("click", () => {
-    pushUndoState();
-    randomizeCuesInOneClick();
-  });
-  minimalUIContainer.appendChild(randomCuesButtonMin);
-
-  let advBtnMin = document.createElement("button");
-  advBtnMin.className = "looper-btn";
-  advBtnMin.innerText = "Advanced";
-  advBtnMin.title = "Open the Advanced Panel";
-  advBtnMin.addEventListener("click", goAdvancedUI);
-  minimalUIContainer.appendChild(advBtnMin);
-
-  minimalUIContainer.style.display = minimalActive ? "flex" : "none";
-
-  function refreshMinimalState() {
-    if (minimalPitchLabel) minimalPitchLabel.innerText = pitchPercentage + "%";
-    if (sldr) sldr.value = pitchPercentage;
-    if (pitchTargetButtonMin) {
-      pitchTargetButtonMin.innerText = (pitchTarget === "video") ? "Vid" : "Loop";
-    }
-
-    let cc = Object.keys(cuePoints).length;
-    if (cuesBtnMin) {
-      if (cc < 10) {
-        cuesBtnMin.innerText = `Cue+(${cc}/10)`;
-        cuesBtnMin.style.backgroundColor = "#333";
-      } else {
-        cuesBtnMin.innerText = `EraseCues(${cc}/10)`;
-        cuesBtnMin.style.backgroundColor = "#C22";
-      }
-    }
-    updateMinimalLoopButtonColor(loopBtnMin);
-    updateMinimalExportColor(exportBtnMin);
-
-    eqButtonMin.innerText = "EQ:" + (eqFilterActive ? "On" : "Off");
-    eqButtonMin.style.backgroundColor = eqFilterActive ? "darkcyan" : "#444";
-
-    // Update the minimal compressor button based on the current mode
-  if (loFiCompActive) {
-    switch (compMode) {
-      case "native":
-        compButtonMin.innerText = "Comp: Native";
-        compButtonMin.style.backgroundColor = "darkorange";
-        break;
-      case "boss303":
-        compButtonMin.innerText = "Comp: Ultra Tape";
-        compButtonMin.style.backgroundColor = "cornflowerblue";
-        break;
-      case "roland404":
-        compButtonMin.innerText = "Comp: Bright Open";
-        compButtonMin.style.backgroundColor = "mediumorchid";
-        break;
-      default:
-        compButtonMin.innerText = "Comp: On";
-        compButtonMin.style.backgroundColor = "#444";
-        break;
-    }
-  } else {
-    compButtonMin.innerText = "Comp: Off";
-    compButtonMin.style.backgroundColor = "#222";
-  }
-
-    reverbButtonMin.innerText = "Rev:" + (reverbActive ? "On" : "Off");
-    reverbButtonMin.style.backgroundColor = reverbActive ? "#4287f5" : "#444";
-
-    cassetteButtonMin.innerText = "Tape:" + (cassetteActive ? "On" : "Off");
-    cassetteButtonMin.style.backgroundColor = cassetteActive ? "#b05af5" : "#444";
-
-    if (instrumentButtonMin) {
-      let name = "Off";
       let color = "#222";
       if (instrumentPreset > 0) {
         const p = instrumentPresets[instrumentPreset];
@@ -8184,13 +7832,10 @@ function goMinimalUI() {
   // Rebuild the minimal UI if it doesn't exist.
   if (!minimalUIContainer) {
     buildMinimalUIBar();
-    addTouchButtonToMinimalUI();
   } else {
     minimalUIContainer.style.display = "flex";
   }
   if (window.refreshMinimalState) window.refreshMinimalState();
-  // Make sure Mic + Detect-BPM buttons exist every time we return
-  addMicButtonToMinimalUI();
 }
 
 /**************************************
@@ -8223,21 +7868,24 @@ function addControls() {
   buildMonitorInputDropdown(cw);
   buildMonitorToggle(cw);
 
+  const micUtilityRow = document.createElement("div");
+  micUtilityRow.className = "ytbm-panel-row";
+  ensureMicButtonInAdvancedUI(micUtilityRow);
+  ensureBpmDisplayInAdvancedUI(micUtilityRow);
+  cw.appendChild(micUtilityRow);
+
   buildInputDeviceDropdown(cw);
   updateMonitorSelectColor();
 
   makePanelDraggable(panelContainer, dragHandle, "ytbm_panelPos");
 
-  let pitchWrap = document.createElement("div");
-  pitchWrap.style.display = "flex";
-  pitchWrap.style.alignItems = "center";
-  pitchWrap.style.gap = "8px";
-  pitchWrap.style.marginBottom = "8px";
+  const pitchWrap = document.createElement("div");
+  pitchWrap.className = "ytbm-panel-row ytbm-panel-row--pitch";
   cw.appendChild(pitchWrap);
 
-  let pitchLabel = document.createElement("span");
-  pitchLabel.innerText = "Pitch:";
-  pitchLabel.style.width = "50px";
+  const pitchLabel = document.createElement("span");
+  pitchLabel.className = "ytbm-panel-label";
+  pitchLabel.textContent = "Pitch";
   pitchWrap.appendChild(pitchLabel);
 
   pitchSliderElement = document.createElement("input");
@@ -8246,8 +7894,7 @@ function addControls() {
   pitchSliderElement.max = 100;
   pitchSliderElement.value = pitchPercentage;
   pitchSliderElement.step = 1;
-  pitchSliderElement.style.flex = "1";
-  pitchSliderElement.style.maxWidth = "150px";
+  pitchSliderElement.className = "ytbm-range";
   pitchSliderElement.addEventListener("input", e => updatePitch(parseInt(e.target.value, 10)));
   pitchSliderElement.addEventListener("dblclick", () => {
     pitchSliderElement.value = 0;
@@ -8256,15 +7903,13 @@ function addControls() {
   pitchWrap.appendChild(pitchSliderElement);
 
   advancedPitchLabel = document.createElement("span");
-  advancedPitchLabel.innerText = pitchPercentage + "%";
-  advancedPitchLabel.style.width = "50px";
-  advancedPitchLabel.style.textAlign = "right";
+  advancedPitchLabel.className = "ytbm-pitch-value";
+  advancedPitchLabel.textContent = `${pitchPercentage}%`;
   pitchWrap.appendChild(advancedPitchLabel);
 
   pitchTargetButton = document.createElement("button");
-  pitchTargetButton.className = "looper-btn";
+  pitchTargetButton.className = "looper-btn ytbm-advanced-btn";
   pitchTargetButton.innerText = (pitchTarget === "video") ? "Video" : "Loop";
-  pitchTargetButton.style.width = "60px";
   pitchTargetButton.addEventListener("click", () => {
     pushUndoState();
     togglePitchTarget();
@@ -8558,10 +8203,18 @@ function addControls() {
   actionWrap.appendChild(cuesButton);
 
   randomCuesButton = document.createElement("button");
-  randomCuesButton.className = "looper-btn";
-  randomCuesButton.innerText = "RndCues";
+  randomCuesButton.className = "looper-btn ytbm-advanced-btn";
+  randomCuesButton.innerText = "Suggest Cues";
   randomCuesButton.style.flex = '1 1 calc(50% - 4px)';
-  randomCuesButton.addEventListener("click", randomizeCuesInOneClick);
+  randomCuesButton.title = "Suggest cues from transients (Cmd/Ctrl = random)";
+  randomCuesButton.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey) {
+      pushUndoState();
+      randomizeCuesInOneClick();
+    } else {
+      suggestCuesFromTransients();
+    }
+  });
   actionWrap.appendChild(randomCuesButton);
 
   const copyCuesButton = document.createElement("button");
@@ -11233,68 +10886,263 @@ function injectCustomCSS() {
   let css = `
     .looper-panel-container {
       z-index: 999999;
-      background: rgba(30,30,30,0.96);
+      background: rgba(18,18,18,0.78);
       color: #fff;
-      font-family: sans-serif;
-      border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-      width: 210px;
-      max-height: 70vh;
+      font-family: "Roboto","Helvetica Neue",Arial,sans-serif;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 24px 48px rgba(0,0,0,0.45);
+      width: 260px;
+      max-height: 72vh;
       overflow-y: auto;
+      padding-bottom: 16px;
+      backdrop-filter: blur(24px);
     }
     .looper-drag-handle {
-      background: #222;
-      padding: 6px 10px;
+      background: transparent;
+      padding: 16px;
       font-weight: 600;
-      border-bottom: 1px solid #444;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
       cursor: move;
       user-select: none;
+      letter-spacing: 0.08em;
+      font-size: 11px;
+      text-transform: uppercase;
     }
     .looper-content-wrap {
       display: flex;
       flex-direction: column;
-      padding: 6px;
-      gap: 6px;
+      padding: 16px;
+      gap: 16px;
     }
     .looper-btn {
-      background: #333;
+      background: rgba(255,255,255,0.08);
       color: #fff;
-      border: 1px solid #555;
-      border-radius: 4px;
-      padding: 3px 4px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      padding: 0 16px;
       cursor: pointer;
-      font-size: 11px;
-      transition: .2s;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      outline: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 38px;
+      min-width: 0;
+      font-family: inherit;
+    }
+    .looper-btn:hover,
+    .looper-btn:focus-visible {
+      background: rgba(255,255,255,0.18);
+      border-color: rgba(255,255,255,0.36);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
       outline: none;
     }
-    .looper-btn:hover {
-      background: #444;
-      border-color: #666;
+    .ytbm-icon-btn .ytbm-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+    .ytbm-icon-btn .ytbm-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .html5-video-player {
+      position: relative;
+    }
+    .ytbm-minimal-bar {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 84px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 12px 20px;
+      border-radius: 999px;
+      background: rgba(18,18,18,0.62);
+      border: 1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(22px);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+      color: #fff;
+      pointer-events: auto;
+      z-index: 999999;
+      max-width: calc(100% - 48px);
+      flex-wrap: nowrap;
+    }
+    .ytbm-pitch-cluster {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .ytbm-pitch-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.8);
+    }
+    .ytbm-pitch-value {
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 52px;
+      text-align: right;
+      color: #fff;
+    }
+    .ytbm-range,
+    .looper-content-wrap input[type="range"],
+    .looper-manual-container input[type="range"],
+    .looper-keymap-container input[type="range"],
+    .looper-midimap-container input[type="range"],
+    .ytbm-minimal-bar input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.25);
+      outline: none;
+    }
+    .ytbm-range {
+      flex: 1 1 140px;
+      max-width: 180px;
+    }
+    .ytbm-range::-webkit-slider-thumb,
+    .looper-content-wrap input[type="range"]::-webkit-slider-thumb,
+    .looper-manual-container input[type="range"]::-webkit-slider-thumb,
+    .looper-keymap-container input[type="range"]::-webkit-slider-thumb,
+    .looper-midimap-container input[type="range"]::-webkit-slider-thumb,
+    .ytbm-minimal-bar input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      cursor: pointer;
+      border: none;
+    }
+    .ytbm-range::-moz-range-thumb,
+    .looper-content-wrap input[type="range"]::-moz-range-thumb,
+    .looper-manual-container input[type="range"]::-moz-range-thumb,
+    .looper-keymap-container input[type="range"]::-moz-range-thumb,
+    .looper-midimap-container input[type="range"]::-moz-range-thumb,
+    .ytbm-minimal-bar input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      cursor: pointer;
+      border: none;
+    }
+    .ytbm-range::-webkit-slider-runnable-track,
+    .ytbm-range::-moz-range-track {
+      background: transparent;
+    }
+    .ytbm-loop-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+    .ytbm-loop-meter {
+      display: flex;
+      gap: 6px;
+    }
+    .ytbm-loop-track {
+      position: relative;
+      width: 12px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.16);
+      overflow: hidden;
+    }
+    .ytbm-loop-fill {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      background: rgba(255,255,255,0.9);
+      opacity: 0;
+      transition: width 0.12s linear, opacity 0.18s ease;
+    }
+    .ytbm-loop-rec {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 2px;
+      background: rgba(255,82,82,0.9);
+      opacity: 0;
+    }
+    .ytbm-loop-pulse {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.22);
+      opacity: 0;
+      transition: opacity 0.12s ease;
+      pointer-events: none;
+    }
+    .ytbm-minimal-btn[data-mode="erase"] {
+      background: rgba(255,82,82,0.28);
+      border-color: rgba(255,82,82,0.45);
+    }
+    .ytbm-minimal-btn[data-loop-state="recording"], .looper-btn[data-loop-state="recording"] {
+      background: rgba(255,82,82,0.3);
+      border-color: rgba(255,82,82,0.5);
+    }
+    .ytbm-minimal-btn[data-loop-state="overdubbing"], .looper-btn[data-loop-state="overdubbing"] {
+      background: rgba(255,160,0,0.28);
+      border-color: rgba(255,160,0,0.45);
+    }
+    .ytbm-minimal-btn[data-loop-state="playing"], .ytbm-minimal-btn[data-loop-state="video-playing"], .looper-btn[data-loop-state="playing"], .looper-btn[data-loop-state="video-playing"] {
+      background: rgba(76,175,80,0.26);
+      border-color: rgba(76,175,80,0.44);
+    }
+    .ytbm-minimal-btn[data-loop-state="video-recording"], .looper-btn[data-loop-state="video-recording"] {
+      background: rgba(244,67,54,0.32);
+      border-color: rgba(244,67,54,0.52);
+    }
+    .looper-btn[data-mic-state="arm"] {
+      background: rgba(138,180,248,0.28);
+      border-color: rgba(138,180,248,0.46);
+    }
+    .looper-btn[data-mic-state="live"] {
+      background: rgba(255,82,82,0.32);
+      border-color: rgba(255,82,82,0.54);
+    }
+    .looper-btn[data-state="on"] {
+      background: rgba(138,180,248,0.26);
+      border-color: rgba(138,180,248,0.46);
+    }
+    .ytbm-panel-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .ytbm-panel-row--pitch .ytbm-range {
+      flex: 1 1 140px;
+    }
+    .ytbm-panel-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.72);
+      min-width: 56px;
+    }
+    .ytbm-advanced-btn {
+      flex: 0 0 auto;
     }
     .cue-marker {
       pointer-events: auto !important;
-    }
-    .ytbm-minimal-bar {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 6px;
-      margin-right: 6px;
-      overflow-x: auto;
-    }
-    .ytbm-minimal-bar .looper-btn {
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 3px;
-      padding: 3px 6px;
-      font-size: 10px;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    .ytbm-minimal-bar .looper-btn:hover {
-      background: #444;
-      border-color: #666;
     }
     .looper-manual-container,
     .looper-keymap-container,
@@ -11302,30 +11150,34 @@ function injectCustomCSS() {
       position: fixed;
       top: 100px;
       left: 100px;
-      background: rgba(30,30,30,0.95);
+      background: rgba(18,18,18,0.85);
       color: #fff;
-      border: 1px solid #444;
-      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 14px;
       z-index: 999999999;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.45);
       display: none;
-      font-family: sans-serif;
-      padding-bottom: 4px;
+      font-family: "Roboto","Helvetica Neue",Arial,sans-serif;
+      padding-bottom: 8px;
+      backdrop-filter: blur(18px);
     }
     .looper-manual-drag-handle,
     .looper-keymap-drag-handle,
     .looper-midimap-drag-handle {
-      background: #222;
-      padding: 6px 10px;
+      background: transparent;
+      padding: 12px 16px;
       font-weight: 600;
-      border-bottom: 1px solid #444;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
       cursor: move;
       user-select: none;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 11px;
     }
     .looper-manual-content,
     .looper-keymap-content,
     .looper-midimap-content {
-      padding: 8px;
+      padding: 12px 16px;
       font-size: 13px;
       max-height: 400px;
       overflow-y: auto;
@@ -11333,59 +11185,66 @@ function injectCustomCSS() {
     .looper-manual-close-btn,
     .looper-keymap-save-btn,
     .looper-midimap-save-btn {
-      background: #333;
-      border: 1px solid #666;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.24);
       color: #fff;
-      border-radius: 4px;
-      padding: 3px 6px;
+      border-radius: 999px;
+      padding: 6px 14px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
+      transition: background 0.2s ease, border-color 0.2s ease;
     }
-    input[type="range"] {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 80px;
-      height: 4px;
-      background: #ccc;
-      border-radius: 2px;
-      outline: none;
-      margin-top: 4px;
+    .looper-manual-close-btn:hover,
+    .looper-keymap-save-btn:hover,
+    .looper-midimap-save-btn:hover {
+      background: rgba(255,255,255,0.22);
+      border-color: rgba(255,255,255,0.36);
     }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      height: 12px;
-      width: 12px;
-      border-radius: 50%;
-      background: #888;
-      cursor: pointer;
+    select.looper-btn {
+      display: inline-block;
+      height: 38px;
+      padding: 0 14px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #fff;
     }
-    input[type="range"]::-moz-range-thumb {
-      height: 12px;
-      width: 12px;
-      border-radius: 50%;
-      background: #888;
-      cursor: pointer;
-    }
-    .keymap-row, .user-sample-row, .midimap-row {
+    .keymap-row,
+    .user-sample-row,
+    .midimap-row {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 6px;
+      gap: 8px;
+      margin-bottom: 8px;
     }
-    .keymap-row label, .midimap-row label,
+    .keymap-row label,
+    .midimap-row label,
     .user-sample-row label {
       width: 80px;
+      font-weight: 500;
     }
-    .keymap-row input, .midimap-row input,
+    .keymap-row input,
+    .midimap-row input,
     .user-sample-row input {
-      width: 40px;
-      background: #222;
+      width: 48px;
+      background: rgba(255,255,255,0.08);
       color: #fff;
-      border: 1px solid #555;
-      border-radius: 4px;
-      padding: 2px 4px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 4px 6px;
       font-size: 13px;
       text-align: center;
+    }
+    @media (max-width: 900px) {
+      .ytbm-minimal-bar {
+        flex-wrap: wrap;
+        row-gap: 12px;
+        bottom: 72px;
+      }
+      .ytbm-pitch-cluster {
+        width: 100%;
+        justify-content: center;
+      }
     }
   `;
   let st = document.createElement("style");
@@ -11471,7 +11330,6 @@ async function initialize() {
     }
     addControls();
     buildMinimalUIBar();
-    addTouchButtonToMinimalUI();
     addTouchSequencerButtonToAdvancedUI();
     buildFxPadWindow();
     attachAudioPriming();
@@ -11555,3 +11413,179 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
 // - MIDI play without modifiers = exclusive; with Shift/Cmd = multi-play.
 // - BPM display replaces "Detect BPM"; click to edit; arrows/typing/drag all work; all loopers retime.
 // - Start/stop/record actions always occur on next bar; phasing stable after 2+ minutes.
+const YTBM_ICON_PATHS = {
+  cues: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 5v4h4v2h-4v4h-2v-4H7v-2h4V7h2z",
+  loop: "M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 .34-.03.67-.08 1h2.02c.04-.33.06-.66.06-1 0-4.41-3.59-8-8-8zm-6 8c0-.34.03-.67.08-1H4.06c-.04.33-.06.66-.06 1 0 4.41 3.59 8 8 8v3l4-4-4-4v3c-3.31 0-6-2.69-6-6z",
+  import: "M5 20h14v-2H5v2zm7-18-5 5h3v6h4V7h3l-5-5z",
+  advanced: "M3 18v-2h6v2H3zm0-5v-2h10v2H3zm0-5V6h14v2H3zm18 10h-2v-2h2v2zm0-5h-4v-2h4v2zm0-5h-6V6h6v2z",
+  mic: "M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"
+};
+
+function createIconButton(iconPath, labelText) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "looper-btn ytbm-icon-btn";
+  button.innerHTML =
+    `<svg class="ytbm-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${iconPath}" fill="currentColor"/></svg>` +
+    `<span class="ytbm-label">${labelText}</span>`;
+  const labelEl = button.querySelector(".ytbm-label");
+  return { button, labelEl };
+}
+
+/**************************************
+ * Minimal UI Bar
+ **************************************/
+function buildMinimalUIBar() {
+  const host = document.querySelector(".html5-video-player") || document.body;
+
+  minimalUIContainer = document.createElement("div");
+  minimalUIContainer.className = "ytbm-minimal-bar ytbm-glass";
+  minimalUIContainer.style.display = "none";
+  host.appendChild(minimalUIContainer);
+
+  const pitchCluster = document.createElement("div");
+  pitchCluster.className = "ytbm-pitch-cluster";
+
+  const pitchLabel = document.createElement("span");
+  pitchLabel.className = "ytbm-pitch-label";
+  pitchLabel.textContent = "Pitch";
+  pitchCluster.appendChild(pitchLabel);
+
+  minimalPitchSlider = document.createElement("input");
+  minimalPitchSlider.type = "range";
+  minimalPitchSlider.min = -50;
+  minimalPitchSlider.max = 100;
+  minimalPitchSlider.step = 1;
+  minimalPitchSlider.value = pitchPercentage;
+  minimalPitchSlider.className = "ytbm-pitch-slider ytbm-range";
+  minimalPitchSlider.title = "Pitch (%)";
+  minimalPitchSlider.addEventListener("input", (e) => {
+    updatePitch(parseInt(e.target.value, 10));
+  });
+  minimalPitchSlider.addEventListener("dblclick", () => {
+    minimalPitchSlider.value = 0;
+    updatePitch(0);
+  });
+  pitchCluster.appendChild(minimalPitchSlider);
+
+  minimalPitchLabel = document.createElement("span");
+  minimalPitchLabel.className = "ytbm-pitch-value";
+  minimalPitchLabel.textContent = `${pitchPercentage}%`;
+  pitchCluster.appendChild(minimalPitchLabel);
+
+  minimalUIContainer.appendChild(pitchCluster);
+
+  const cuesPieces = createIconButton(YTBM_ICON_PATHS.cues, "Cues");
+  cuesButtonMin = cuesPieces.button;
+  minimalCuesLabel = cuesPieces.labelEl;
+  cuesButtonMin.classList.add("ytbm-minimal-btn");
+  cuesButtonMin.title = "Add cues (Shift = suggest, Alt = random, Cmd/Ctrl = erase)";
+  cuesButtonMin.addEventListener("click", (e) => {
+    const cc = Object.keys(cuePoints).length;
+    pushUndoState();
+    if (e.shiftKey) {
+      suggestCuesFromTransients();
+      refreshMinimalState();
+      return;
+    }
+    if (e.altKey) {
+      randomizeCuesInOneClick();
+      refreshMinimalState();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      if (cc > 0) {
+        cuePoints = {};
+        saveCuePointsToURL();
+        updateCueMarkers();
+      }
+    } else if (cc >= 10) {
+      cuePoints = {};
+      saveCuePointsToURL();
+      updateCueMarkers();
+    } else {
+      addCueAtCurrentVideoTime();
+    }
+    refreshMinimalState();
+  });
+  minimalUIContainer.appendChild(cuesButtonMin);
+  randomCuesButtonMin = cuesButtonMin;
+
+  const loopGroup = document.createElement("div");
+  loopGroup.className = "ytbm-loop-group";
+
+  const loopPieces = createIconButton(YTBM_ICON_PATHS.loop, "Looper");
+  loopButtonMin = loopPieces.button;
+  loopButtonMin.classList.add("ytbm-minimal-btn", "ytbm-minimal-btn--primary");
+  loopButtonMin.title = "Audio/Video Looper (Cmd/Ctrl = video)";
+  loopButtonMin.dataset.loopState = "idle";
+  looperPulseElMin = document.createElement("div");
+  looperPulseElMin.className = "ytbm-loop-pulse";
+  loopButtonMin.appendChild(looperPulseElMin);
+  addTrackedListener(loopButtonMin, "mousedown", (e) => {
+    ensureAudioContext().then(() => {
+      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseDown();
+      else onLooperButtonMouseDown();
+    });
+  });
+  addTrackedListener(loopButtonMin, "mouseup", (e) => {
+    ensureAudioContext().then(() => {
+      if (e.metaKey || e.ctrlKey) onVideoLooperButtonMouseUp();
+      else onLooperButtonMouseUp();
+    });
+  });
+  loopGroup.appendChild(loopButtonMin);
+
+  const loopMeter = document.createElement("div");
+  loopMeter.className = "ytbm-loop-meter";
+  for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
+    const track = document.createElement("div");
+    track.className = "ytbm-loop-track";
+
+    const fill = document.createElement("div");
+    fill.className = "ytbm-loop-fill";
+    track.appendChild(fill);
+
+    const rec = document.createElement("div");
+    rec.className = "ytbm-loop-rec";
+    track.appendChild(rec);
+
+    loopMeter.appendChild(track);
+    loopProgressFillsMin[i] = fill;
+    midiRecordLinesMin[i] = rec;
+  }
+  loopGroup.appendChild(loopMeter);
+  minimalUIContainer.appendChild(loopGroup);
+
+  const importPieces = createIconButton(YTBM_ICON_PATHS.import, "Import");
+  importLoopButtonMin = importPieces.button;
+  importLoopButtonMin.classList.add("ytbm-minimal-btn");
+  importLoopButtonMin.title = "Import an audio loop";
+  importLoopButtonMin.addEventListener("click", onImportAudioClicked);
+  minimalUIContainer.appendChild(importLoopButtonMin);
+
+  const advancedPieces = createIconButton(YTBM_ICON_PATHS.advanced, "Advanced");
+  advancedButtonMin = advancedPieces.button;
+  advancedButtonMin.classList.add("ytbm-minimal-btn");
+  advancedButtonMin.title = "Open the advanced panel";
+  advancedButtonMin.addEventListener("click", goAdvancedUI);
+  minimalUIContainer.appendChild(advancedButtonMin);
+
+  minimalUIContainer.style.display = minimalActive ? "flex" : "none";
+
+  function refreshMinimalState() {
+    if (minimalPitchLabel) minimalPitchLabel.textContent = `${pitchPercentage}%`;
+    if (minimalPitchSlider) minimalPitchSlider.value = pitchPercentage;
+
+    if (minimalCuesLabel && cuesButtonMin) {
+      const cc = Object.keys(cuePoints).length;
+      minimalCuesLabel.textContent = cc ? `Cues ${cc}/10` : "Cues";
+      cuesButtonMin.dataset.mode = cc >= 10 ? "erase" : "add";
+    }
+
+    updateMinimalLoopButtonColor(loopButtonMin);
+  }
+
+  window.refreshMinimalState = refreshMinimalState;
+  refreshMinimalState();
+}
