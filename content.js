@@ -594,7 +594,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       minimalPitchSlider = null,
       minimalPitchLabel = null,
       cuesButtonMin = null,
-      minimalCuesLabel = null,
+      minimalCuesBadge = null,
       loopButtonMin = null,
       importLoopButtonMin = null,
       advancedButtonMin = null,
@@ -3721,15 +3721,43 @@ const YTBM_ICON_PATHS = {
   mic: "M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"
 };
 
-function createIconButton(iconPath, labelText) {
+function createIconButton(iconPath, labelText, options = {}) {
+  const { showLabel = true, showBadge = false } = options;
   const button = document.createElement("button");
   button.type = "button";
   button.className = "looper-btn ytbm-icon-btn";
-  button.innerHTML =
-    `<svg class="ytbm-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${iconPath}" fill="currentColor"/></svg>` +
-    `<span class="ytbm-label">${labelText}</span>`;
-  const labelEl = button.querySelector(".ytbm-label");
-  return { button, labelEl };
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("ytbm-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", iconPath);
+  path.setAttribute("fill", "currentColor");
+  svg.appendChild(path);
+  button.appendChild(svg);
+
+  let labelEl = null;
+  if (showLabel) {
+    labelEl = document.createElement("span");
+    labelEl.className = "ytbm-label";
+    labelEl.textContent = labelText;
+    button.appendChild(labelEl);
+  } else {
+    button.setAttribute("aria-label", labelText);
+    button.classList.add("ytbm-icon-btn--compact");
+  }
+
+  let badgeEl = null;
+  if (showBadge) {
+    badgeEl = document.createElement("span");
+    badgeEl.className = "ytbm-badge";
+    badgeEl.hidden = true;
+    button.appendChild(badgeEl);
+  }
+
+  return { button, labelEl, badgeEl };
 }
 
 /**************************************
@@ -3775,9 +3803,12 @@ function buildMinimalUIBar() {
 
   minimalUIContainer.appendChild(pitchCluster);
 
-  const cuesPieces = createIconButton(YTBM_ICON_PATHS.cues, "Cues");
+  const cuesPieces = createIconButton(YTBM_ICON_PATHS.cues, "Cues", {
+    showLabel: false,
+    showBadge: true
+  });
   cuesButtonMin = cuesPieces.button;
-  minimalCuesLabel = cuesPieces.labelEl;
+  minimalCuesBadge = cuesPieces.badgeEl;
   cuesButtonMin.classList.add("ytbm-minimal-btn");
   cuesButtonMin.title = "Add cues (Shift = suggest, Alt = random, Cmd/Ctrl = erase)";
   cuesButtonMin.addEventListener("click", (e) => {
@@ -3814,7 +3845,9 @@ function buildMinimalUIBar() {
   const loopGroup = document.createElement("div");
   loopGroup.className = "ytbm-loop-group";
 
-  const loopPieces = createIconButton(YTBM_ICON_PATHS.loop, "Looper");
+  const loopPieces = createIconButton(YTBM_ICON_PATHS.loop, "Looper", {
+    showLabel: false
+  });
   loopButtonMin = loopPieces.button;
   loopButtonMin.classList.add("ytbm-minimal-btn", "ytbm-minimal-btn--primary");
   loopButtonMin.title = "Audio/Video Looper (Cmd/Ctrl = video)";
@@ -3838,6 +3871,7 @@ function buildMinimalUIBar() {
 
   const loopMeter = document.createElement("div");
   loopMeter.className = "ytbm-loop-meter";
+  loopMeter.setAttribute("aria-hidden", "true");
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const track = document.createElement("div");
     track.className = "ytbm-loop-track";
@@ -3857,14 +3891,18 @@ function buildMinimalUIBar() {
   loopGroup.appendChild(loopMeter);
   minimalUIContainer.appendChild(loopGroup);
 
-  const importPieces = createIconButton(YTBM_ICON_PATHS.import, "Import");
+  const importPieces = createIconButton(YTBM_ICON_PATHS.import, "Import", {
+    showLabel: false
+  });
   importLoopButtonMin = importPieces.button;
   importLoopButtonMin.classList.add("ytbm-minimal-btn");
   importLoopButtonMin.title = "Import an audio loop";
   importLoopButtonMin.addEventListener("click", onImportAudioClicked);
   minimalUIContainer.appendChild(importLoopButtonMin);
 
-  const advancedPieces = createIconButton(YTBM_ICON_PATHS.advanced, "Advanced");
+  const advancedPieces = createIconButton(YTBM_ICON_PATHS.advanced, "Advanced", {
+    showLabel: false
+  });
   advancedButtonMin = advancedPieces.button;
   advancedButtonMin.classList.add("ytbm-minimal-btn");
   advancedButtonMin.title = "Open the advanced panel";
@@ -3877,10 +3915,13 @@ function buildMinimalUIBar() {
     if (minimalPitchLabel) minimalPitchLabel.textContent = `${pitchPercentage}%`;
     if (minimalPitchSlider) minimalPitchSlider.value = pitchPercentage;
 
-    if (minimalCuesLabel && cuesButtonMin) {
+    if (minimalCuesBadge && cuesButtonMin) {
       const cc = Object.keys(cuePoints).length;
-      minimalCuesLabel.textContent = cc ? `Cues ${cc}/10` : "Cues";
+      minimalCuesBadge.textContent = cc ? `${cc}` : "";
+      minimalCuesBadge.hidden = cc === 0;
+      cuesButtonMin.dataset.count = cc ? `${cc}` : "";
       cuesButtonMin.dataset.mode = cc >= 10 ? "erase" : "add";
+      cuesButtonMin.title = `Add cues (Shift = suggest, Alt = random, Cmd/Ctrl = erase) — ${cc}/10 set`;
     }
 
     updateMinimalLoopButtonColor(loopButtonMin);
@@ -11110,6 +11151,62 @@ function injectCustomCSS() {
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
+    .ytbm-icon-btn--compact {
+      padding: 0;
+      gap: 0;
+    }
+    .ytbm-icon-btn--compact .ytbm-icon {
+      width: 20px;
+      height: 20px;
+    }
+    .ytbm-minimal-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      gap: 0;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .ytbm-minimal-btn:hover,
+    .ytbm-minimal-btn:focus-visible {
+      background: rgba(255,255,255,0.2);
+      border-color: rgba(255,255,255,0.36);
+      box-shadow: 0 16px 36px rgba(0,0,0,0.4);
+      outline: none;
+    }
+    .ytbm-minimal-btn:active {
+      transform: scale(0.95);
+    }
+    .ytbm-minimal-btn--primary {
+      background: rgba(255,255,255,0.18);
+      border-color: rgba(255,255,255,0.32);
+    }
+    .ytbm-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.92);
+      color: #111;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
     .html5-video-player {
       position: relative;
     }
@@ -11120,35 +11217,46 @@ function injectCustomCSS() {
       bottom: 84px;
       display: flex;
       align-items: center;
-      gap: 18px;
-      padding: 12px 20px;
+      gap: 16px;
+      padding: 10px 18px;
       border-radius: 999px;
-      background: rgba(18,18,18,0.62);
-      border: 1px solid rgba(255,255,255,0.18);
-      backdrop-filter: blur(22px);
-      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+      background: rgba(18,18,18,0.58);
+      border: 1px solid rgba(255,255,255,0.16);
+      backdrop-filter: blur(26px);
+      box-shadow: 0 26px 60px rgba(0,0,0,0.45);
       color: #fff;
       pointer-events: auto;
       z-index: 999999;
       max-width: calc(100% - 48px);
       flex-wrap: nowrap;
+      overflow: visible;
     }
     .ytbm-pitch-cluster {
       display: flex;
       align-items: center;
       gap: 12px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      backdrop-filter: blur(26px);
     }
     .ytbm-pitch-label {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      color: rgba(255,255,255,0.8);
+      color: rgba(255,255,255,0.82);
+    }
+    .ytbm-pitch-slider {
+      flex: 0 0 120px;
+      max-width: 140px;
+      height: 4px;
     }
     .ytbm-pitch-value {
       font-size: 12px;
       font-weight: 600;
-      min-width: 52px;
+      min-width: 42px;
       text-align: right;
       color: #fff;
     }
@@ -11203,22 +11311,32 @@ function injectCustomCSS() {
       background: transparent;
     }
     .ytbm-loop-group {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
       position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .ytbm-loop-meter {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
-      gap: 6px;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(18,18,18,0.72);
+      border: 1px solid rgba(255,255,255,0.2);
+      backdrop-filter: blur(16px);
+      pointer-events: none;
+      z-index: 2;
     }
     .ytbm-loop-track {
       position: relative;
-      width: 12px;
-      height: 6px;
+      width: 14px;
+      height: 4px;
       border-radius: 999px;
-      background: rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.2);
       overflow: hidden;
     }
     .ytbm-loop-fill {
