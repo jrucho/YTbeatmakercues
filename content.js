@@ -1694,8 +1694,6 @@ function addMicButtonToMinimalUI() {
   micButton.addEventListener("click", toggleMicInput);
   minimalRightCluster.appendChild(micButton);
   updateMicButtonColor();
-  // Always (re)-attach the BPM display
-  addBpmDisplayToMinimalUI();
 }
 // BPM UI
 function clampBpmValue(value) {
@@ -2341,9 +2339,6 @@ hideYouTubePopups();
       minimalCenterCluster.appendChild(touchButtonMin);
     }
   }
-  addTouchButtonToMinimalUI();
-
-  
   function addTouchSequencerButtonToAdvancedUI() {
   const advancedTouchBtn = document.createElement("button");
   advancedTouchBtn.className = "looper-btn";
@@ -7928,64 +7923,12 @@ function buildMinimalUIBar() {
   valSpan.innerText = pitchPercentage + "%";
   pitchWrap.appendChild(valSpan);
 
-  pitchTargetButtonMin = document.createElement("button");
-  pitchTargetButtonMin.className = "looper-btn";
-  pitchTargetButtonMin.innerText = (pitchTarget === "video") ? "Vid" : "Loop";
-  pitchTargetButtonMin.title = "Toggle Pitch Target (Video / Loop)";
-  pitchTargetButtonMin.addEventListener("click", () => {
-    pushUndoState();
-    togglePitchTarget();
-    pitchTargetButtonMin.innerText = (pitchTarget === "video") ? "Vid" : "Loop";
-  });
-  pitchWrap.appendChild(pitchTargetButtonMin);
-
   minimalPitchLabel = valSpan;
   minimalPitchRail.appendChild(pitchWrap);
-
-  eqButtonMin = document.createElement("button");
-  eqButtonMin.className = "looper-btn";
-  eqButtonMin.innerText = "EQ:Off";
-  eqButtonMin.title = "Toggle EQ Filter On/Off";
-  eqButtonMin.addEventListener("click", () => {
-    toggleEQFilter();
-    refreshMinimalState();
-  });
-  minimalLeftCluster.appendChild(eqButtonMin);
-
-  compButtonMin = document.createElement("button");
-  compButtonMin.className = "looper-btn";
-  compButtonMin.innerText = "Comp:Off";
-  compButtonMin.title = "Toggle Lo-Fi Compressor";
-  compButtonMin.addEventListener("click", () => {
-    toggleCompressor();
-    refreshMinimalState();
-  });
-  minimalLeftCluster.appendChild(compButtonMin);
-
-  const reverbButtonMin = document.createElement("button");
-  reverbButtonMin.className = "looper-btn";
-  reverbButtonMin.innerText = "FXPad";
-  reverbButtonMin.title = "Open FX Pad";
-  reverbButtonMin.addEventListener("click", showFxPadWindowToggle);
-  minimalLeftCluster.appendChild(reverbButtonMin);
-
-  const cassetteButtonMin = document.createElement("button");
-  cassetteButtonMin.className = "looper-btn";
-  cassetteButtonMin.innerText = "Cassette";
-  cassetteButtonMin.title = "Toggle Cassette";
-  cassetteButtonMin.addEventListener("click", toggleCassetteMode);
-  minimalLeftCluster.appendChild(cassetteButtonMin);
-
-  instrumentButtonMin = document.createElement("button");
-  instrumentButtonMin.className = "looper-btn";
-  instrumentButtonMin.innerText = "Instrument:Off";
-  instrumentButtonMin.title = "Select Instrument";
-  instrumentButtonMin.addEventListener("click", openInstrumentSelector);
-  minimalLeftCluster.appendChild(instrumentButtonMin);
-
+ 
   const cuesBtnMin = document.createElement("button");
   cuesBtnMin.className = "looper-btn";
-  cuesBtnMin.innerText = "Cue+ (0/10)";
+  cuesBtnMin.innerText = "Cue+(0/10)";
   cuesBtnMin.title = "Add Cue";
   cuesBtnMin.addEventListener("click", () => {
     pushUndoState();
@@ -7996,7 +7939,7 @@ function buildMinimalUIBar() {
     }
     refreshMinimalState();
   });
-  minimalCenterCluster.appendChild(cuesBtnMin);
+  minimalLeftCluster.appendChild(cuesBtnMin);
 
   loopBtnMin = document.createElement('button');
   loopBtnMin.className = 'looper-btn ytbm-minimal-loop-btn';
@@ -8065,31 +8008,19 @@ function buildMinimalUIBar() {
   exportBtnMin.addEventListener("click", exportLoop);
   minimalRightCluster.appendChild(exportBtnMin);
 
-  const undoBtnMin = document.createElement("button");
-  undoBtnMin.className = "looper-btn";
-  undoBtnMin.innerText = "Undo";
-  undoBtnMin.title = "Undo/Redo (Double Press => Redo)";
-  undoBtnMin.addEventListener("click", () => {
-    undoAction();
-  });
-  undoBtnMin.addEventListener("dblclick", () => {
-    redoAction();
-  });
-  minimalRightCluster.appendChild(undoBtnMin);
+  const importAudioBtnMin = document.createElement("button");
+  importAudioBtnMin.className = "looper-btn";
+  importAudioBtnMin.innerText = "Import Audio";
+  importAudioBtnMin.title = "Import a local audio track";
+  importAudioBtnMin.addEventListener("click", importMedia);
+  minimalRightCluster.appendChild(importAudioBtnMin);
 
-  const importMediaBtn = document.createElement("button");
-  importMediaBtn.className = "looper-btn";
-  importMediaBtn.innerText = "Import Media";
-  importMediaBtn.title = "Import a local video or audio file (Cmd+I)";
-  importMediaBtn.addEventListener("click", importMedia);
-  minimalRightCluster.appendChild(importMediaBtn);
-
-  const importBtnMin = document.createElement("button");
-  importBtnMin.className = "looper-btn";
-  importBtnMin.innerText = "Import loop";
-  importBtnMin.title = "Import an Audio Loop for the Looper";
-  importBtnMin.addEventListener("click", onImportAudioClicked);
-  minimalRightCluster.appendChild(importBtnMin);
+  const importLoopBtnMin = document.createElement("button");
+  importLoopBtnMin.className = "looper-btn";
+  importLoopBtnMin.innerText = "Import Loop";
+  importLoopBtnMin.title = "Import an Audio Loop for the Looper";
+  importLoopBtnMin.addEventListener("click", onImportAudioClicked);
+  minimalRightCluster.appendChild(importLoopBtnMin);
 
   addMicButtonToMinimalUI();
 
@@ -8101,7 +8032,7 @@ function buildMinimalUIBar() {
     pushUndoState();
     randomizeCuesInOneClick();
   });
-  minimalCenterCluster.appendChild(randomCuesButtonMin);
+  minimalLeftCluster.appendChild(randomCuesButtonMin);
 
   const advBtnMin = document.createElement("button");
   advBtnMin.className = "looper-btn";
@@ -8110,23 +8041,11 @@ function buildMinimalUIBar() {
   advBtnMin.addEventListener("click", goAdvancedUI);
   minimalRightCluster.appendChild(advBtnMin);
 
-  addTouchButtonToMinimalUI();
-
   minimalUIContainer.style.display = minimalActive ? "flex" : "none";
 
   function refreshMinimalState() {
     if (minimalPitchLabel) minimalPitchLabel.innerText = pitchPercentage + "%";
     if (sldr) sldr.value = pitchPercentage;
-    if (pitchTargetButtonMin) {
-      const isLoopTarget = pitchTarget !== "video";
-      pitchTargetButtonMin.innerText = isLoopTarget ? "Loop" : "Vid";
-      styleMinimalButton(pitchTargetButtonMin, {
-        active: isLoopTarget,
-        accent: isLoopTarget ? "#22d3ee" : null,
-        tone: isLoopTarget ? "accent" : "muted"
-      });
-    }
-
     const cc = Object.keys(cuePoints).length;
     if (cuesBtnMin) {
       if (cc < 10) {
@@ -8148,88 +8067,6 @@ function buildMinimalUIBar() {
     updateMinimalLoopButtonColor(loopBtnMin);
     updateMinimalExportColor(exportBtnMin);
 
-    if (eqButtonMin) {
-      eqButtonMin.innerText = "EQ:" + (eqFilterActive ? "On" : "Off");
-      styleMinimalButton(eqButtonMin, {
-        active: eqFilterActive,
-        accent: eqFilterActive ? "#14b8a6" : null,
-        tone: eqFilterActive ? "accent" : "muted"
-      });
-    }
-
-    if (compButtonMin) {
-      if (loFiCompActive) {
-        let label = "On";
-        let accent = "#f97316";
-        switch (compMode) {
-          case "native":
-            label = "Native";
-            accent = "#f97316";
-            break;
-          case "boss303":
-            label = "Ultra Tape";
-            accent = "#60a5fa";
-            break;
-          case "roland404":
-            label = "Bright Open";
-            accent = "#c084fc";
-            break;
-          default:
-            label = "On";
-            accent = "#f97316";
-            break;
-        }
-        compButtonMin.innerText = "Comp: " + label;
-        styleMinimalButton(compButtonMin, { active: true, accent, tone: "accent" });
-      } else {
-        compButtonMin.innerText = "Comp: Off";
-        styleMinimalButton(compButtonMin, { active: false, tone: "muted" });
-      }
-    }
-
-    if (reverbButtonMin) {
-      reverbButtonMin.innerText = "Rev:" + (reverbActive ? "On" : "Off");
-      styleMinimalButton(reverbButtonMin, {
-        active: reverbActive,
-        accent: reverbActive ? "#38bdf8" : null,
-        tone: reverbActive ? "accent" : "muted"
-      });
-    }
-
-    if (cassetteButtonMin) {
-      cassetteButtonMin.innerText = "Tape:" + (cassetteActive ? "On" : "Off");
-      styleMinimalButton(cassetteButtonMin, {
-        active: cassetteActive,
-        accent: cassetteActive ? "#f472b6" : null,
-        tone: cassetteActive ? "accent" : "muted"
-      });
-    }
-
-    if (instrumentButtonMin) {
-      let name = "Off";
-      let accent = null;
-      if (instrumentPreset > 0) {
-        const p = instrumentPresets[instrumentPreset];
-        if (p) {
-          name = p.name;
-          accent = p.color || PRESET_COLORS[(instrumentPreset - 1) % PRESET_COLORS.length];
-        }
-      }
-      instrumentButtonMin.innerText = "Instrument:" + name;
-      styleMinimalButton(instrumentButtonMin, {
-        active: instrumentPreset > 0,
-        accent,
-        tone: instrumentPreset > 0 ? "accent" : "muted"
-      });
-    }
-
-    if (bpmDisplayButton) {
-      styleMinimalButton(bpmDisplayButton, {
-        active: true,
-        accent: "#818cf8",
-        tone: "info"
-      });
-    }
     refreshBpmDisplay();
   }
   window.refreshMinimalState = refreshMinimalState;
@@ -8259,13 +8096,11 @@ function goMinimalUI() {
   // Rebuild the minimal UI if it doesn't exist.
   if (!minimalUIContainer) {
     buildMinimalUIBar();
-    addTouchButtonToMinimalUI();
   } else {
     minimalUIContainer.style.display = "flex";
-    addTouchButtonToMinimalUI();
   }
   if (window.refreshMinimalState) window.refreshMinimalState();
-  // Make sure Mic + Detect-BPM buttons exist every time we return
+  // Make sure the Mic button exists every time we return
   addMicButtonToMinimalUI();
 }
 
@@ -11794,7 +11629,6 @@ async function initialize() {
     }
     addControls();
     buildMinimalUIBar();
-    addTouchButtonToMinimalUI();
     addTouchSequencerButtonToAdvancedUI();
     buildFxPadWindow();
     attachAudioPriming();
