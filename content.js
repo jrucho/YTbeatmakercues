@@ -616,7 +616,8 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       randomCuesButtonMin = null,
       eqButtonMin = null,
       compButtonMin = null,
-      micButton = null,          // <-- NEW: declare it here
+      micButtonMinimal = null,
+      micButtonAdvanced = null,
       instrumentButton = null,
       instrumentButtonMin = null,
       instrumentPowerButton = null,
@@ -1656,15 +1657,54 @@ async function toggleMicInput() {
   await setMicMode(next);
 }
 
-function updateMicButtonColor() {
-  if (!micButton) return;
-  if (micState === 0) {
-    styleMinimalButton(micButton, { active: false, tone: "muted" });
-  } else if (micState === 1) {
-    styleMinimalButton(micButton, { active: true, accent: "#38bdf8", tone: "arm" });
-  } else if (micState === 2) {
-    styleMinimalButton(micButton, { active: true, accent: "#f97316", tone: "monitor" });
+function styleAdvancedButton(btn, { active, accent, tone } = {}) {
+  if (!btn) return;
+  if (typeof active === "boolean") {
+    btn.dataset.state = active ? "on" : "off";
   }
+  if (accent) {
+    btn.style.background = computeAccentSoft(accent, 0.35);
+    btn.style.borderColor = accent;
+    btn.style.color = "#fff";
+  } else {
+    btn.style.background = "";
+    btn.style.borderColor = "";
+    btn.style.color = "";
+  }
+  if (tone) {
+    btn.dataset.tone = tone;
+  } else {
+    btn.removeAttribute("data-tone");
+  }
+}
+
+function updateMicButtonColor() {
+  if (!micButtonMinimal && !micButtonAdvanced) return;
+  const applyState = (btn, variant) => {
+    if (!btn) return;
+    btn.innerText = micState === 0 ? "Mic" : (micState === 1 ? "Mic Arm" : "Mic Mon");
+    if (micState === 0) {
+      if (variant === "minimal") {
+        styleMinimalButton(btn, { active: false, tone: "muted" });
+      } else {
+        styleAdvancedButton(btn, { active: false, tone: "muted" });
+      }
+    } else if (micState === 1) {
+      if (variant === "minimal") {
+        styleMinimalButton(btn, { active: true, accent: "#38bdf8", tone: "arm" });
+      } else {
+        styleAdvancedButton(btn, { active: true, accent: "#38bdf8", tone: "arm" });
+      }
+    } else if (micState === 2) {
+      if (variant === "minimal") {
+        styleMinimalButton(btn, { active: true, accent: "#f97316", tone: "monitor" });
+      } else {
+        styleAdvancedButton(btn, { active: true, accent: "#f97316", tone: "monitor" });
+      }
+    }
+  };
+  applyState(micButtonMinimal, "minimal");
+  applyState(micButtonAdvanced, "advanced");
 }
 
 function updateMonitorSelectColor() {
@@ -1686,13 +1726,16 @@ function updateSuperKnobStep() {
 // Add the mic button to the minimal UI
 function addMicButtonToMinimalUI() {
   if (!minimalRightCluster) return;
-  if (micButton && minimalRightCluster.contains(micButton)) return;
-  micButton = document.createElement("button");
-  micButton.className = "looper-btn";
-  micButton.innerText = "Mic";
-  micButton.title = "Toggle microphone input for looper and video looper";
-  micButton.addEventListener("click", toggleMicInput);
-  minimalRightCluster.appendChild(micButton);
+  if (!micButtonMinimal) {
+    micButtonMinimal = document.createElement("button");
+    micButtonMinimal.className = "looper-btn";
+    micButtonMinimal.innerText = "Mic";
+    micButtonMinimal.title = "Toggle microphone input for looper and video looper";
+    micButtonMinimal.addEventListener("click", toggleMicInput);
+  }
+  if (!minimalRightCluster.contains(micButtonMinimal)) {
+    minimalRightCluster.appendChild(micButtonMinimal);
+  }
   updateMicButtonColor();
 }
 // BPM UI
@@ -1854,8 +1897,8 @@ function addBpmDisplayToMinimalUI() {
     bpmDisplayButton.addEventListener("keydown", handleBpmButtonKeydown);
   }
   if (!minimalRightCluster.contains(bpmDisplayButton)) {
-    if (micButton && minimalRightCluster.contains(micButton)) {
-      minimalRightCluster.insertBefore(bpmDisplayButton, micButton);
+    if (micButtonMinimal && minimalRightCluster.contains(micButtonMinimal)) {
+      minimalRightCluster.insertBefore(bpmDisplayButton, micButtonMinimal);
     } else {
       minimalRightCluster.appendChild(bpmDisplayButton);
     }
@@ -7939,7 +7982,7 @@ function buildMinimalUIBar() {
     }
     refreshMinimalState();
   });
-  minimalLeftCluster.appendChild(cuesBtnMin);
+  minimalCenterCluster.appendChild(cuesBtnMin);
 
   loopBtnMin = document.createElement('button');
   loopBtnMin.className = 'looper-btn ytbm-minimal-loop-btn';
@@ -8001,45 +8044,19 @@ function buildMinimalUIBar() {
   loopWrapMin.appendChild(pWrap);
   minimalCenterCluster.appendChild(loopWrapMin);
 
-  const exportBtnMin = document.createElement("button");
-  exportBtnMin.className = "looper-btn";
-  exportBtnMin.innerText = "Export";
-  exportBtnMin.title = "Export Loop";
-  exportBtnMin.addEventListener("click", exportLoop);
-  minimalRightCluster.appendChild(exportBtnMin);
-
-  const importAudioBtnMin = document.createElement("button");
-  importAudioBtnMin.className = "looper-btn";
-  importAudioBtnMin.innerText = "Import Audio";
-  importAudioBtnMin.title = "Import a local audio track";
-  importAudioBtnMin.addEventListener("click", importMedia);
-  minimalRightCluster.appendChild(importAudioBtnMin);
-
   const importLoopBtnMin = document.createElement("button");
   importLoopBtnMin.className = "looper-btn";
   importLoopBtnMin.innerText = "Import Loop";
   importLoopBtnMin.title = "Import an Audio Loop for the Looper";
   importLoopBtnMin.addEventListener("click", onImportAudioClicked);
-  minimalRightCluster.appendChild(importLoopBtnMin);
-
-  addMicButtonToMinimalUI();
-
-  randomCuesButtonMin = document.createElement("button");
-  randomCuesButtonMin.className = "looper-btn";
-  randomCuesButtonMin.innerText = "RndCues";
-  randomCuesButtonMin.title = "Randomize 10 cues (sorted)";
-  randomCuesButtonMin.addEventListener("click", () => {
-    pushUndoState();
-    randomizeCuesInOneClick();
-  });
-  minimalLeftCluster.appendChild(randomCuesButtonMin);
+  minimalCenterCluster.appendChild(importLoopBtnMin);
 
   const advBtnMin = document.createElement("button");
   advBtnMin.className = "looper-btn";
   advBtnMin.innerText = "Advanced";
   advBtnMin.title = "Open the Advanced Panel";
   advBtnMin.addEventListener("click", goAdvancedUI);
-  minimalRightCluster.appendChild(advBtnMin);
+  minimalCenterCluster.appendChild(advBtnMin);
 
   minimalUIContainer.style.display = minimalActive ? "flex" : "none";
 
@@ -8065,9 +8082,6 @@ function buildMinimalUIBar() {
       }
     }
     updateMinimalLoopButtonColor(loopBtnMin);
-    updateMinimalExportColor(exportBtnMin);
-
-    refreshBpmDisplay();
   }
   window.refreshMinimalState = refreshMinimalState;
 }
@@ -8100,8 +8114,6 @@ function goMinimalUI() {
     minimalUIContainer.style.display = "flex";
   }
   if (window.refreshMinimalState) window.refreshMinimalState();
-  // Make sure the Mic button exists every time we return
-  addMicButtonToMinimalUI();
 }
 
 /**************************************
@@ -8182,6 +8194,22 @@ function addControls() {
     pitchTargetButton.innerText = (pitchTarget === "video") ? "Video" : "Loop";
   });
   pitchWrap.appendChild(pitchTargetButton);
+
+  const micRow = document.createElement("div");
+  micRow.style.display = "flex";
+  micRow.style.gap = "4px";
+  micRow.style.marginBottom = "8px";
+
+  if (!micButtonAdvanced) {
+    micButtonAdvanced = document.createElement("button");
+    micButtonAdvanced.className = "looper-btn";
+    micButtonAdvanced.innerText = "Mic";
+    micButtonAdvanced.title = "Toggle microphone input for looper and video looper";
+    micButtonAdvanced.addEventListener("click", toggleMicInput);
+  }
+  micRow.appendChild(micButtonAdvanced);
+  cw.appendChild(micRow);
+  updateMicButtonColor();
 
   let looperButtonRow = document.createElement("div");
   looperButtonRow.style.display = "flex";
@@ -11285,8 +11313,8 @@ function injectCustomCSS() {
       box-shadow: 0 0 0 3px rgba(255,78,69,0.35);
     }
     .ytbm-minimal-actions {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
+      display: flex;
+      justify-content: center;
       align-items: center;
       gap: 14px;
       width: 100%;
@@ -11316,8 +11344,9 @@ function injectCustomCSS() {
     .ytbm-minimal-cluster--center::-webkit-scrollbar-track {
       background: transparent;
     }
+    .ytbm-minimal-cluster--left,
     .ytbm-minimal-cluster--right {
-      justify-content: flex-end;
+      display: none;
     }
     .ytbm-minimal-bar .looper-btn {
       position: relative;
@@ -11705,13 +11734,12 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
         gap: 10px;
       }
       .ytbm-minimal-actions {
-        grid-template-columns: 1fr;
+        flex-wrap: wrap;
         gap: 10px;
       }
       .ytbm-minimal-cluster,
-      .ytbm-minimal-cluster--center,
-      .ytbm-minimal-cluster--right {
-        justify-content: flex-start;
+      .ytbm-minimal-cluster--center {
+        justify-content: center;
       }
     }
     @media (max-width: 500px) {
