@@ -609,6 +609,10 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       loFiCompActive = false,
       // Minimal UI elements
       minimalUIContainer = null,
+      minimalPitchRail = null,
+      minimalLeftCluster = null,
+      minimalCenterCluster = null,
+      minimalRightCluster = null,
       randomCuesButtonMin = null,
       eqButtonMin = null,
       compButtonMin = null,
@@ -616,6 +620,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       instrumentButton = null,
       instrumentButtonMin = null,
       instrumentPowerButton = null,
+      touchButtonMin = null,
       bpmDisplayButton = null,
       bpmInlineInput = null,
       minimalActive = true,
@@ -1680,15 +1685,14 @@ function updateSuperKnobStep() {
 
 // Add the mic button to the minimal UI
 function addMicButtonToMinimalUI() {
-  // If the mic button is already inside the container, do nothing
-  if (micButton && minimalUIContainer.contains(micButton)) return;
-  if (!minimalUIContainer) return;
+  if (!minimalRightCluster) return;
+  if (micButton && minimalRightCluster.contains(micButton)) return;
   micButton = document.createElement("button");
   micButton.className = "looper-btn";
   micButton.innerText = "Mic";
   micButton.title = "Toggle microphone input for looper and video looper";
   micButton.addEventListener("click", toggleMicInput);
-  minimalUIContainer.appendChild(micButton);
+  minimalRightCluster.appendChild(micButton);
   updateMicButtonColor();
   // Always (re)-attach the BPM display
   addBpmDisplayToMinimalUI();
@@ -1842,7 +1846,7 @@ function handleBpmButtonKeydown(e) {
 }
 
 function addBpmDisplayToMinimalUI() {
-  if (!minimalUIContainer || !micButton) return;
+  if (!minimalRightCluster) return;
   if (!bpmDisplayButton) {
     bpmDisplayButton = document.createElement("button");
     bpmDisplayButton.className = "looper-btn";
@@ -1851,8 +1855,12 @@ function addBpmDisplayToMinimalUI() {
     bpmDisplayButton.addEventListener("pointerdown", onBpmPointerDown);
     bpmDisplayButton.addEventListener("keydown", handleBpmButtonKeydown);
   }
-  if (!minimalUIContainer.contains(bpmDisplayButton)) {
-    minimalUIContainer.insertBefore(bpmDisplayButton, micButton.nextSibling);
+  if (!minimalRightCluster.contains(bpmDisplayButton)) {
+    if (micButton && minimalRightCluster.contains(micButton)) {
+      minimalRightCluster.insertBefore(bpmDisplayButton, micButton);
+    } else {
+      minimalRightCluster.appendChild(bpmDisplayButton);
+    }
   }
   refreshBpmDisplay();
 }
@@ -2315,21 +2323,24 @@ hideYouTubePopups();
    * Integration into Minimal UI
    **************************************/
   function addTouchButtonToMinimalUI() {
-  const touchBtn = document.createElement("button");
-  touchBtn.className = "looper-btn";
-  touchBtn.innerText = "Touch";
-  touchBtn.title = "Toggle Touch Sequencer (MIDI: Note 27)";
-  touchBtn.addEventListener("click", () => {
-    if (touchPopup && touchPopup.style.display !== "none") {
-      touchPopup.style.display = "none";
-    } else {
-      buildTouchPopup();
+    if (!minimalCenterCluster) return;
+    if (!touchButtonMin) {
+      touchButtonMin = document.createElement("button");
+      touchButtonMin.className = "looper-btn";
+      touchButtonMin.innerText = "Touch";
+      touchButtonMin.title = "Toggle Touch Sequencer (MIDI: Note 27)";
+      touchButtonMin.addEventListener("click", () => {
+        if (touchPopup && touchPopup.style.display !== "none") {
+          touchPopup.style.display = "none";
+        } else {
+          buildTouchPopup();
+        }
+      });
     }
-  });
-  if (minimalUIContainer) {
-    minimalUIContainer.appendChild(touchBtn);
+    if (!minimalCenterCluster.contains(touchButtonMin)) {
+      minimalCenterCluster.appendChild(touchButtonMin);
+    }
   }
-}
   addTouchButtonToMinimalUI();
 
   
@@ -7851,33 +7862,53 @@ function analyseBPMFromEnergies(energies) {
  **************************************/
 // Updated minimal UI container builder
 function buildMinimalUIBar() {
-  // Try to get the container where you want to insert the minimal UI.
   let container = document.querySelector(".ytp-right-controls");
-if (!container) {
-  // Attempt a second known element, e.g. the main .ytp-chrome-controls
-  container = document.querySelector(".ytp-chrome-controls");
-}
+  if (!container) {
+    container = document.querySelector(".ytp-chrome-controls");
+  }
+  if (!container) {
+    container = document.body;
+  }
 
-// If still not found, fall back:
-if (!container) {
-  container = document.body;
-}
-  
   minimalUIContainer = document.createElement("div");
   minimalUIContainer.className = "ytbm-minimal-bar";
   minimalUIContainer.style.display = "none";
-  // Now proceed to insert your minimalUIContainer
-container.insertBefore(minimalUIContainer, container.firstChild);
 
-  let pitchWrap = document.createElement("div");
-  pitchWrap.className = "ytbm-minimal-block";
+  const surface = document.createElement("div");
+  surface.className = "ytbm-minimal-surface";
+  minimalUIContainer.appendChild(surface);
 
-  let label = document.createElement("span");
+  minimalPitchRail = document.createElement("div");
+  minimalPitchRail.className = "ytbm-minimal-rail";
+  surface.appendChild(minimalPitchRail);
+
+  const actionsRow = document.createElement("div");
+  actionsRow.className = "ytbm-minimal-actions";
+  surface.appendChild(actionsRow);
+
+  minimalLeftCluster = document.createElement("div");
+  minimalLeftCluster.className = "ytbm-minimal-cluster ytbm-minimal-cluster--left";
+  actionsRow.appendChild(minimalLeftCluster);
+
+  minimalCenterCluster = document.createElement("div");
+  minimalCenterCluster.className = "ytbm-minimal-cluster ytbm-minimal-cluster--center";
+  actionsRow.appendChild(minimalCenterCluster);
+
+  minimalRightCluster = document.createElement("div");
+  minimalRightCluster.className = "ytbm-minimal-cluster ytbm-minimal-cluster--right";
+  actionsRow.appendChild(minimalRightCluster);
+
+  container.insertBefore(minimalUIContainer, container.firstChild);
+
+  const pitchWrap = document.createElement("div");
+  pitchWrap.className = "ytbm-minimal-card ytbm-minimal-card--pitch";
+
+  const label = document.createElement("span");
   label.className = "ytbm-minimal-label";
   label.innerText = "Pitch";
   pitchWrap.appendChild(label);
 
-  let sldr = document.createElement("input");
+  const sldr = document.createElement("input");
   sldr.type = "range";
   sldr.min = -50;
   sldr.max = 100;
@@ -7892,7 +7923,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   });
   pitchWrap.appendChild(sldr);
 
-  let valSpan = document.createElement("span");
+  const valSpan = document.createElement("span");
   valSpan.className = "ytbm-minimal-value";
   valSpan.innerText = pitchPercentage + "%";
   pitchWrap.appendChild(valSpan);
@@ -7909,7 +7940,7 @@ container.insertBefore(minimalUIContainer, container.firstChild);
   pitchWrap.appendChild(pitchTargetButtonMin);
 
   minimalPitchLabel = valSpan;
-  minimalUIContainer.appendChild(pitchWrap);
+  minimalPitchRail.appendChild(pitchWrap);
 
   eqButtonMin = document.createElement("button");
   eqButtonMin.className = "looper-btn";
@@ -7919,84 +7950,63 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     toggleEQFilter();
     refreshMinimalState();
   });
-  minimalUIContainer.appendChild(eqButtonMin);
+  minimalLeftCluster.appendChild(eqButtonMin);
 
   compButtonMin = document.createElement("button");
   compButtonMin.className = "looper-btn";
   compButtonMin.innerText = "Comp:Off";
-  compButtonMin.title = "Toggle Lo-Fi Compressor On/Off";
+  compButtonMin.title = "Toggle Lo-Fi Compressor";
   compButtonMin.addEventListener("click", () => {
     toggleCompressor();
     refreshMinimalState();
   });
-  minimalUIContainer.appendChild(compButtonMin);
+  minimalLeftCluster.appendChild(compButtonMin);
 
-  // Reverb + Cassette
-  reverbButtonMin = document.createElement("button");
+  const reverbButtonMin = document.createElement("button");
   reverbButtonMin.className = "looper-btn";
-  reverbButtonMin.innerText = "Rev:Off";
-  reverbButtonMin.title = "Toggle Reverb On/Off";
-  reverbButtonMin.addEventListener("click", () => {
-    toggleReverb();
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(reverbButtonMin);
+  reverbButtonMin.innerText = "FXPad";
+  reverbButtonMin.title = "Open FX Pad";
+  reverbButtonMin.addEventListener("click", toggleFxPad);
+  minimalLeftCluster.appendChild(reverbButtonMin);
 
-  cassetteButtonMin = document.createElement("button");
+  const cassetteButtonMin = document.createElement("button");
   cassetteButtonMin.className = "looper-btn";
-  cassetteButtonMin.innerText = "Tape:Off";
-  cassetteButtonMin.title = "Toggle Cassette On/Off";
-  cassetteButtonMin.addEventListener("click", () => {
-    toggleCassette();
-    refreshMinimalState();
-  });
-  minimalUIContainer.appendChild(cassetteButtonMin);
+  cassetteButtonMin.innerText = "Cassette";
+  cassetteButtonMin.title = "Toggle Cassette";
+  cassetteButtonMin.addEventListener("click", toggleCassetteMode);
+  minimalLeftCluster.appendChild(cassetteButtonMin);
 
   instrumentButtonMin = document.createElement("button");
   instrumentButtonMin.className = "looper-btn";
   instrumentButtonMin.innerText = "Instrument:Off";
-  instrumentButtonMin.title = "Nova Bass";
-  instrumentButtonMin.addEventListener("click", () => {
-    if (instrumentPreset === 0) {
-      setInstrumentPreset(instrumentLastPreset || 1);
-    } else {
-      deactivateInstrument();
-    }
-  });
-  minimalUIContainer.appendChild(instrumentButtonMin);
+  instrumentButtonMin.title = "Select Instrument";
+  instrumentButtonMin.addEventListener("click", openInstrumentSelector);
+  minimalLeftCluster.appendChild(instrumentButtonMin);
 
-  let cuesBtnMin = document.createElement("button");
+  const cuesBtnMin = document.createElement("button");
   cuesBtnMin.className = "looper-btn";
-  cuesBtnMin.innerText = "Cue+";
-  cuesBtnMin.title = "Add or Erase Cues (Cmd => Erase)";
-  cuesBtnMin.addEventListener("click", e => {
-    let cc = Object.keys(cuePoints).length;
+  cuesBtnMin.innerText = "Cue+ (0/10)";
+  cuesBtnMin.title = "Add Cue";
+  cuesBtnMin.addEventListener("click", () => {
     pushUndoState();
-    if (e.metaKey || e.ctrlKey) {
-      if (cc > 0) {
-        cuePoints = {};
-        saveCuePointsToURL();
-        updateCueMarkers();
-      }
+    if (Object.keys(cuePoints).length < 10) {
+      addCuePoint();
     } else {
-      if (cc >= 10) {
-        cuePoints = {};
-        saveCuePointsToURL();
-        updateCueMarkers();
-      } else {
-        addCueAtCurrentVideoTime();
-      }
+      clearCuePoints();
     }
     refreshMinimalState();
   });
-  minimalUIContainer.appendChild(cuesBtnMin);
+  minimalCenterCluster.appendChild(cuesBtnMin);
 
-  let loopBtnMin = document.createElement("button");
-  loopBtnMin.className = "looper-btn";
-  loopBtnMin.style.position = "relative";
-  loopBtnMin.innerText = "Looper(R/S/D/F/V)";
-  loopBtnMin.title = "Audio/Video Looper";
-  looperPulseElMin = document.createElement('div');
+  loopBtnMin = document.createElement('button');
+  loopBtnMin.className = 'looper-btn ytbm-minimal-loop-btn';
+  loopBtnMin.innerText = 'Looper';
+  loopBtnMin.title = 'Toggle looper / video looper';
+  loopBtnMin.style.position = 'relative';
+  loopBtnMin.style.padding = '12px 20px';
+  loopBtnMin.style.overflow = 'hidden';
+  const looperPulseElMin = document.createElement('div');
+  looperPulseElMin.className = 'looper-pulse-min';
   looperPulseElMin.style.position = 'absolute';
   looperPulseElMin.style.left = '0';
   looperPulseElMin.style.top = '0';
@@ -8021,50 +8031,21 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     });
   });
   const pWrap = document.createElement('div');
-  pWrap.style.position = 'absolute';
-  pWrap.style.left = '0';
-  pWrap.style.right = '0';
-  pWrap.style.bottom = '-6px';
-  pWrap.style.height = '6px';
-  pWrap.style.background = 'rgba(255,255,255,0.08)';
-  pWrap.style.pointerEvents = 'none';
-  pWrap.style.display = 'flex';
-  pWrap.style.flexDirection = 'column';
-  pWrap.style.justifyContent = 'space-between';
+  pWrap.className = 'ytbm-minimal-loop-progress';
   for (let i = 0; i < MAX_AUDIO_LOOPS; i++) {
     const b = document.createElement('div');
-    b.style.position = 'relative';
-    b.style.height = '1.4px';
-    b.style.background = 'rgba(255,255,255,0.12)';
+    b.className = 'ytbm-minimal-loop-track';
     const f = document.createElement('div');
-    f.style.position = 'absolute';
-    f.style.left = '0';
-    f.style.right = 'auto';
-    f.style.top = '0';
-    f.style.bottom = '0';
-    f.style.width = '0%';
-    f.style.opacity = 0;
+    f.className = 'ytbm-minimal-loop-fill';
     f.style.background = LOOP_COLORS[i % 4];
-    b.appendChild(f);
     const rec = document.createElement('div');
-    rec.style.position = 'absolute';
-    rec.style.top = '0';
-    rec.style.bottom = '0';
-    rec.style.left = '0';
-    rec.style.width = '2px';
-    rec.style.background = '#ff4e45';
-    rec.style.opacity = 0;
+    rec.className = 'ytbm-minimal-loop-record';
+    b.appendChild(f);
     b.appendChild(rec);
-    for (let j=1;j<4;j++){
-      const di=document.createElement('div');
-      di.className='bar-ind';
-      di.style.position='absolute';
-      di.style.left=(j*25)+'%';
-      di.style.top='0';
-      di.style.bottom='0';
-      di.style.width='1px';
-      di.style.background='#555';
-      di.style.opacity=0.3;
+    for (let j = 1; j < 4; j++) {
+      const di = document.createElement('div');
+      di.className = 'ytbm-minimal-loop-beat';
+      di.style.left = (j * 25) + '%';
       b.appendChild(di);
     }
     pWrap.appendChild(b);
@@ -8072,54 +8053,45 @@ container.insertBefore(minimalUIContainer, container.firstChild);
     midiRecordLinesMin[i] = rec;
   }
   const loopWrapMin = document.createElement('div');
-  loopWrapMin.style.position = 'relative';
-  loopWrapMin.style.display = 'flex';
-  loopWrapMin.style.overflow = 'visible';
-  loopWrapMin.style.paddingBottom = '0';
-  loopWrapMin.style.flexDirection = 'column';
-  loopWrapMin.style.alignItems = 'stretch';
+  loopWrapMin.className = 'ytbm-minimal-card ytbm-minimal-loop';
   loopWrapMin.appendChild(loopBtnMin);
   loopWrapMin.appendChild(pWrap);
-  minimalUIContainer.appendChild(loopWrapMin);
+  minimalCenterCluster.appendChild(loopWrapMin);
 
-  let exportBtnMin = document.createElement("button");
+  const exportBtnMin = document.createElement("button");
   exportBtnMin.className = "looper-btn";
   exportBtnMin.innerText = "Export";
   exportBtnMin.title = "Export Loop";
   exportBtnMin.addEventListener("click", exportLoop);
-  minimalUIContainer.appendChild(exportBtnMin);
+  minimalRightCluster.appendChild(exportBtnMin);
 
-  let undoBtnMin = document.createElement("button");
+  const undoBtnMin = document.createElement("button");
   undoBtnMin.className = "looper-btn";
   undoBtnMin.innerText = "Undo";
   undoBtnMin.title = "Undo/Redo (Double Press => Redo)";
   undoBtnMin.addEventListener("click", () => {
-  // Single click triggers an undo
-  undoAction();
-});
+    undoAction();
+  });
+  undoBtnMin.addEventListener("dblclick", () => {
+    redoAction();
+  });
+  minimalRightCluster.appendChild(undoBtnMin);
 
-undoBtnMin.addEventListener("dblclick", () => {
-  // Double click triggers a redo
-  redoAction();
-});
-  minimalUIContainer.appendChild(undoBtnMin);
-  
-  let importMediaBtn = document.createElement("button");
-importMediaBtn.className = "looper-btn";
-importMediaBtn.innerText = "Import Media";
-importMediaBtn.title = "Import a local video or audio file (Cmd+I)";
-importMediaBtn.addEventListener("click", importMedia);
-minimalUIContainer.appendChild(importMediaBtn);
+  const importMediaBtn = document.createElement("button");
+  importMediaBtn.className = "looper-btn";
+  importMediaBtn.innerText = "Import Media";
+  importMediaBtn.title = "Import a local video or audio file (Cmd+I)";
+  importMediaBtn.addEventListener("click", importMedia);
+  minimalRightCluster.appendChild(importMediaBtn);
 
-  let importBtnMin = document.createElement("button");
+  const importBtnMin = document.createElement("button");
   importBtnMin.className = "looper-btn";
   importBtnMin.innerText = "Import loop";
   importBtnMin.title = "Import an Audio Loop for the Looper";
   importBtnMin.addEventListener("click", onImportAudioClicked);
-  minimalUIContainer.appendChild(importBtnMin);
-  
-  // *** Add the Mic button here ***
-    addMicButtonToMinimalUI();
+  minimalRightCluster.appendChild(importBtnMin);
+
+  addMicButtonToMinimalUI();
 
   randomCuesButtonMin = document.createElement("button");
   randomCuesButtonMin.className = "looper-btn";
@@ -8129,14 +8101,16 @@ minimalUIContainer.appendChild(importMediaBtn);
     pushUndoState();
     randomizeCuesInOneClick();
   });
-  minimalUIContainer.appendChild(randomCuesButtonMin);
+  minimalCenterCluster.appendChild(randomCuesButtonMin);
 
-  let advBtnMin = document.createElement("button");
+  const advBtnMin = document.createElement("button");
   advBtnMin.className = "looper-btn";
   advBtnMin.innerText = "Advanced";
   advBtnMin.title = "Open the Advanced Panel";
   advBtnMin.addEventListener("click", goAdvancedUI);
-  minimalUIContainer.appendChild(advBtnMin);
+  minimalRightCluster.appendChild(advBtnMin);
+
+  addTouchButtonToMinimalUI();
 
   minimalUIContainer.style.display = minimalActive ? "flex" : "none";
 
@@ -8271,6 +8245,10 @@ function goAdvancedUI() {
   // Remove any minimal UI containers present in the DOM.
   document.querySelectorAll('.ytbm-minimal-bar').forEach(el => el.remove());
   minimalUIContainer = null;
+  minimalPitchRail = null;
+  minimalLeftCluster = null;
+  minimalCenterCluster = null;
+  minimalRightCluster = null;
   if (window.refreshMinimalState) window.refreshMinimalState();
 }
 
@@ -8284,6 +8262,7 @@ function goMinimalUI() {
     addTouchButtonToMinimalUI();
   } else {
     minimalUIContainer.style.display = "flex";
+    addTouchButtonToMinimalUI();
   }
   if (window.refreshMinimalState) window.refreshMinimalState();
   // Make sure Mic + Detect-BPM buttons exist every time we return
@@ -11373,57 +11352,72 @@ function injectCustomCSS() {
     }
     .ytbm-minimal-bar {
       display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, rgba(10,10,10,0.94), rgba(38,38,38,0.88));
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 14px 32px rgba(0,0,0,0.45);
+      backdrop-filter: blur(24px);
+      color: #f1f1f1;
+      font-family: 'Roboto','Noto Sans',sans-serif;
+      max-width: min(92vw, 820px);
+      width: min(100%, 820px);
+      box-sizing: border-box;
+    }
+    .ytbm-minimal-surface {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
+    .ytbm-minimal-rail {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      padding-inline: 4px;
+      box-sizing: border-box;
+    }
+    .ytbm-minimal-card {
+      position: relative;
+      display: flex;
       align-items: center;
       gap: 10px;
-      margin-right: 6px;
-      padding: 8px 14px;
-      background: rgba(16,16,16,0.82);
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.12);
-      backdrop-filter: blur(24px);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
-      font-family: 'Roboto','Noto Sans',sans-serif;
-      color: #f1f1f1;
-      overflow-x: auto;
-      max-width: min(96vw, 1200px);
-    }
-    .ytbm-minimal-bar::-webkit-scrollbar {
-      height: 6px;
-    }
-    .ytbm-minimal-bar::-webkit-scrollbar-thumb {
-      background: rgba(255,255,255,0.25);
-      border-radius: 999px;
-    }
-    .ytbm-minimal-bar::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .ytbm-minimal-block {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
+      padding: 8px 12px;
       background: rgba(255,255,255,0.04);
-      border-radius: 999px;
+      border-radius: 16px;
       border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+      min-height: 42px;
+    }
+    .ytbm-minimal-card--pitch {
+      flex: 1;
+      min-width: 0;
     }
     .ytbm-minimal-label {
       text-transform: uppercase;
-      font-size: 0.7rem;
-      letter-spacing: 0.16em;
-      color: rgba(255,255,255,0.65);
+      font-size: 0.68rem;
+      letter-spacing: 0.18em;
+      color: rgba(255,255,255,0.62);
+      white-space: nowrap;
     }
     .ytbm-minimal-value {
       font-variant-numeric: tabular-nums;
       font-size: 0.85rem;
-      min-width: 42px;
+      min-width: 44px;
       text-align: right;
       color: #fff;
     }
+    .ytbm-minimal-card--pitch input.looper-knob {
+      flex: 1;
+    }
     .ytbm-minimal-bar input.looper-knob {
       appearance: none;
-      width: 100px;
-      height: 4px;
-      background: rgba(255,255,255,0.16);
+      width: 100%;
+      height: 6px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.26), rgba(255,255,255,0.08));
       border-radius: 999px;
       border: none;
       outline: none;
@@ -11435,11 +11429,12 @@ function injectCustomCSS() {
       height: 14px;
       border-radius: 50%;
       background: #ff4e45;
-      box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
-      transition: transform 0.2s ease;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.5);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
     }
     .ytbm-minimal-bar input.looper-knob::-webkit-slider-thumb:hover {
       transform: scale(1.08);
+      box-shadow: 0 0 0 3px rgba(255,78,69,0.35);
     }
     .ytbm-minimal-bar input.looper-knob::-moz-range-thumb {
       width: 14px;
@@ -11447,21 +11442,58 @@ function injectCustomCSS() {
       border-radius: 50%;
       background: #ff4e45;
       border: none;
-      box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
-      transition: transform 0.2s ease;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.5);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
     }
     .ytbm-minimal-bar input.looper-knob::-moz-range-thumb:hover {
       transform: scale(1.08);
+      box-shadow: 0 0 0 3px rgba(255,78,69,0.35);
+    }
+    .ytbm-minimal-actions {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+    }
+    .ytbm-minimal-cluster {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
+      row-gap: 6px;
+    }
+    .ytbm-minimal-cluster--center {
+      justify-content: center;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: thin;
+    }
+    .ytbm-minimal-cluster--center::-webkit-scrollbar {
+      height: 6px;
+    }
+    .ytbm-minimal-cluster--center::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.25);
+      border-radius: 999px;
+    }
+    .ytbm-minimal-cluster--center::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .ytbm-minimal-cluster--right {
+      justify-content: flex-end;
     }
     .ytbm-minimal-bar .looper-btn {
+      position: relative;
       background: rgba(255,255,255,0.06);
       color: inherit;
       border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 999px;
-      padding: 6px 12px;
-      font-size: 0.78rem;
+      border-radius: 12px;
+      padding: 6px 14px;
+      font-size: 0.72rem;
       font-weight: 600;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       display: inline-flex;
       align-items: center;
@@ -11477,10 +11509,14 @@ function injectCustomCSS() {
     .ytbm-minimal-bar .looper-btn:active {
       transform: translateY(0);
     }
+    .ytbm-minimal-bar .looper-btn:focus-visible {
+      outline: 2px solid var(--btn-accent, rgba(255,255,255,0.6));
+      outline-offset: 3px;
+    }
     .ytbm-minimal-bar .looper-btn[data-state="on"] {
       background: linear-gradient(135deg, var(--btn-accent-soft, rgba(255,78,69,0.28)), rgba(255,255,255,0.08));
       border-color: var(--btn-accent, #ff4e45);
-      box-shadow: 0 14px 26px rgba(0,0,0,0.35);
+      box-shadow: 0 16px 32px rgba(0,0,0,0.38);
     }
     .ytbm-minimal-bar .looper-btn[data-tone="muted"] {
       color: rgba(255,255,255,0.7);
@@ -11530,6 +11566,58 @@ function injectCustomCSS() {
     .ytbm-minimal-bar .looper-btn[data-tone="monitor"] {
       --btn-accent: #f97316;
       --btn-accent-soft: rgba(249, 115, 22, 0.28);
+    }
+    .ytbm-minimal-loop {
+      padding: 2px 18px 18px;
+      align-items: stretch;
+    }
+    .ytbm-minimal-loop-btn {
+      padding: 10px 20px;
+    }
+    .ytbm-minimal-loop-progress {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: -8px;
+      height: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      pointer-events: none;
+    }
+    .ytbm-minimal-loop-track {
+      position: relative;
+      flex: 1;
+      background: rgba(255,255,255,0.1);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .ytbm-minimal-loop-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 0%;
+      opacity: 0;
+      transition: width 0.18s ease, opacity 0.18s ease;
+    }
+    .ytbm-minimal-loop-record {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 2px;
+      background: #ff4e45;
+      opacity: 0;
+    }
+    .ytbm-minimal-loop-beat {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255,255,255,0.18);
+      opacity: 0.45;
+      pointer-events: none;
     }
     .looper-manual-container,
     .looper-keymap-container,
@@ -11772,13 +11860,34 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   const style = document.createElement('style');
   style.id = 'ytbm-minimal-ui-responsive';
   style.textContent = `
-    .ytbm-minimal-bar {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      overflow-x: auto !important;
-      gap: 10px !important;
-      row-gap: 12px !important;
-      padding: 10px 12px !important;
+    @media (max-width: 720px) {
+      .ytbm-minimal-bar {
+        max-width: calc(100vw - 12px);
+        padding: 10px 12px !important;
+      }
+      .ytbm-minimal-rail {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+      .ytbm-minimal-actions {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .ytbm-minimal-cluster,
+      .ytbm-minimal-cluster--center,
+      .ytbm-minimal-cluster--right {
+        justify-content: flex-start;
+      }
+    }
+    @media (max-width: 500px) {
+      .ytbm-minimal-bar {
+        padding: 10px !important;
+      }
+      .ytbm-minimal-card {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
     }
   `;
   document.head.appendChild(style);
