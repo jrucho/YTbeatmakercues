@@ -3764,12 +3764,26 @@ function createIconButton(iconPath, labelText, options = {}) {
  * Minimal UI Bar
  **************************************/
 function buildMinimalUIBar() {
-  const host = document.querySelector(".html5-video-player") || document.body;
+  const player = document.querySelector(".html5-video-player");
+  const chromeBottom = player ? player.querySelector(".ytp-chrome-bottom") : null;
+  const host = chromeBottom || player || document.body;
 
   minimalUIContainer = document.createElement("div");
   minimalUIContainer.className = "ytbm-minimal-bar ytbm-glass";
   minimalUIContainer.style.display = "none";
   host.appendChild(minimalUIContainer);
+
+  if (!chromeBottom && player) {
+    const observer = new MutationObserver(() => {
+      const liveChromeBottom = player.querySelector(".ytp-chrome-bottom");
+      if (liveChromeBottom) {
+        liveChromeBottom.appendChild(minimalUIContainer);
+        observer.disconnect();
+      }
+    });
+    observer.observe(player, { childList: true, subtree: true });
+    cleanupFunctions.push(() => observer.disconnect());
+  }
 
   const pitchCluster = document.createElement("div");
   pitchCluster.className = "ytbm-pitch-cluster";
@@ -11210,15 +11224,19 @@ function injectCustomCSS() {
     .html5-video-player {
       position: relative;
     }
+    .ytp-chrome-bottom {
+      position: relative;
+    }
     .ytbm-minimal-bar {
       position: absolute;
       left: 50%;
-      transform: translateX(-50%);
-      bottom: 84px;
+      top: 50%;
+      transform: translate(-50%, -50%);
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 16px;
-      padding: 10px 18px;
+      padding: 8px 18px;
       border-radius: 999px;
       background: rgba(18,18,18,0.58);
       border: 1px solid rgba(255,255,255,0.16);
@@ -11226,8 +11244,8 @@ function injectCustomCSS() {
       box-shadow: 0 26px 60px rgba(0,0,0,0.45);
       color: #fff;
       pointer-events: auto;
-      z-index: 999999;
-      max-width: calc(100% - 48px);
+      z-index: 40;
+      width: clamp(280px, calc(100% - 220px), 520px);
       flex-wrap: nowrap;
       overflow: visible;
     }
@@ -11513,9 +11531,12 @@ function injectCustomCSS() {
     }
     @media (max-width: 900px) {
       .ytbm-minimal-bar {
+        width: calc(100% - 140px);
+        min-width: 0;
+        max-width: calc(100% - 140px);
         flex-wrap: wrap;
         row-gap: 12px;
-        bottom: 72px;
+        padding: 10px 14px;
       }
       .ytbm-pitch-cluster {
         width: 100%;
@@ -11671,11 +11692,13 @@ if (typeof midiNotes !== "undefined" && midiNotes.randomCues !== undefined) {
   const style = document.createElement('style');
   style.id = 'ytbm-minimal-ui-responsive';
   style.textContent = `
-    .ytbm-minimal-bar {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      overflow-x: auto !important;
-      gap: 4px !important;
+    @media (max-width: 720px) {
+      .ytbm-minimal-bar {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        gap: 12px !important;
+      }
     }
   `;
   document.head.appendChild(style);
