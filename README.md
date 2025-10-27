@@ -1,5 +1,7 @@
 # YouTube Beatmaker Cues - Chrome Extension
 
+Version 2.0 available here: https://github.com/jrucho/YTbeatmakercues-v2
+
 You can try out my new website with some of the extension’s features here, before downloading it: https://bit.ly/beatmakercues
 
 > This extension was inspired by the muscle memory workflow of the OP-Z, the versatility of Ableton Live, and the hands-on approach I developed over the years using the SP-404.
