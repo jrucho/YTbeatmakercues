@@ -160,11 +160,25 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
 
     currentOutputNode = audioContext.destination;
+    if (!mutedOutputNode) {
+      mutedOutputNode = audioContext.createGain();
+      mutedOutputNode.gain.value = 0;
+      mutedOutputNode.connect(audioContext.destination);
+    }
     let success = true;
 
     const canUseCtxSink = typeof audioContext.setSinkId === 'function';
 
-    if (deviceId && deviceId !== 'default') {
+    if (deviceId === 'mute') {
+      currentOutputNode = mutedOutputNode;
+      if (canUseCtxSink) {
+        try {
+          await audioContext.setSinkId('');
+        } catch (err) {
+          console.warn('Failed to reset AudioContext sinkId before mute', err);
+        }
+      }
+    } else if (deviceId && deviceId !== 'default') {
       if (canUseCtxSink) {
         try {
           await audioContext.setSinkId(deviceId);
@@ -216,6 +230,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   let monitorInputSelect = null;
   let monitorToggleBtn = null;
   let currentOutputNode = null;
+  let mutedOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
   let videoStemOutputNode = null;
@@ -260,6 +275,7 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       const outputs = devices.filter(d => d.kind === 'audiooutput');
       outputDeviceSelect.innerHTML = '';
       outputDeviceSelect.add(new Option('Default output', 'default'));
+      outputDeviceSelect.add(new Option('Mute / No audio', 'mute'));
       outputs.forEach(d => {
         const opt = new Option(d.label || 'Device', d.deviceId);
         outputDeviceSelect.add(opt);
@@ -268,6 +284,11 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
       if (!saved) {
         saved = 'default';
         localStorage.setItem('ytbm_outputDeviceId', 'default');
+      }
+      const hasSaved = Array.from(outputDeviceSelect.options).some(o => o.value === saved);
+      if (!hasSaved) {
+        saved = 'default';
+        localStorage.setItem('ytbm_outputDeviceId', saved);
       }
       outputDeviceSelect.value = saved;
       outputDeviceSelect.disabled = outputs.length === 0;
