@@ -210,12 +210,20 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
   }
 
   let outputDeviceSelect = null;
+  let videoOutputDeviceSelect = null;
+  let drumsOutputDeviceSelect = null;
   let inputDeviceSelect = null;
   let monitorInputSelect = null;
   let monitorToggleBtn = null;
   let currentOutputNode = null;
   let externalOutputDest = null;
   let outputAudio = null;
+  let videoStemOutputNode = null;
+  let drumsStemOutputNode = null;
+  let videoStemOutputDest = null;
+  let drumsStemOutputDest = null;
+  let videoStemOutputAudio = null;
+  let drumsStemOutputAudio = null;
   let micDeviceId = localStorage.getItem('ytbm_inputDeviceId') || 'default';
   // Monitoring starts disabled on each page load
   let monitorMicDeviceId = localStorage.getItem('ytbm_monitorInputDeviceId') || 'off';
@@ -279,6 +287,120 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     populateOutputDeviceSelect().then(applySavedOutputDevice);
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', populateOutputDeviceSelect);
+    }
+  }
+
+  async function setStemOutputDevice(stem, deviceId) {
+    if (!audioContext) return;
+    const key = stem === 'video' ? 'ytbm_videoOutputDeviceId' : 'ytbm_drumsOutputDeviceId';
+    localStorage.setItem(key, deviceId);
+
+    const isVideoStem = stem === 'video';
+    let stemDest = isVideoStem ? videoStemOutputDest : drumsStemOutputDest;
+    let stemAudio = isVideoStem ? videoStemOutputAudio : drumsStemOutputAudio;
+
+    if (stemDest) {
+      try { stemDest.disconnect(); } catch {}
+      stemDest = null;
+    }
+    if (stemAudio) {
+      stemAudio.pause();
+      stemAudio.srcObject = null;
+      stemAudio.remove();
+      stemAudio = null;
+    }
+
+    let stemNode = null;
+    let success = true;
+
+    if (deviceId && deviceId !== 'off') {
+      try {
+        stemAudio = new Audio();
+        stemAudio.autoplay = true;
+        stemAudio.playsInline = true;
+        stemAudio.preload = 'auto';
+        stemAudio.style.display = 'none';
+        document.body.appendChild(stemAudio);
+
+        stemDest = audioContext.createMediaStreamDestination();
+        stemAudio.srcObject = stemDest.stream;
+        if (stemAudio.setSinkId) await stemAudio.setSinkId(deviceId);
+        await stemAudio.play().catch(() => {});
+        stemNode = stemDest;
+      } catch (err) {
+        console.warn(`Failed to apply ${stem} stem output device`, err);
+        success = false;
+        stemNode = null;
+      }
+    }
+
+    if (isVideoStem) {
+      videoStemOutputDest = stemDest;
+      videoStemOutputAudio = stemAudio;
+      videoStemOutputNode = stemNode;
+      if (!success && videoOutputDeviceSelect) videoOutputDeviceSelect.value = 'off';
+    } else {
+      drumsStemOutputDest = stemDest;
+      drumsStemOutputAudio = stemAudio;
+      drumsStemOutputNode = stemNode;
+      if (!success && drumsOutputDeviceSelect) drumsOutputDeviceSelect.value = 'off';
+    }
+
+    if (!success) localStorage.setItem(key, 'off');
+    applyAllFXRouting();
+  }
+
+  async function populateStemOutputDeviceSelect(selectEl, storageKey, label) {
+    if (!selectEl) return;
+    const supportsSetSink = (HTMLMediaElement.prototype.setSinkId !== undefined);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !supportsSetSink) {
+      selectEl.disabled = true;
+      selectEl.innerHTML = '<option>Unsupported</option>';
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      selectEl.innerHTML = '';
+      selectEl.add(new Option(`Off (${label} follows main output)`, 'off'));
+      outputs.forEach(d => selectEl.add(new Option(d.label || 'Device', d.deviceId)));
+      const saved = localStorage.getItem(storageKey) || 'off';
+      selectEl.value = saved;
+      selectEl.disabled = outputs.length === 0;
+    } catch (err) {
+      console.error(`Failed to enumerate ${label} output devices`, err);
+    }
+  }
+
+  function buildVideoOutputDeviceDropdown(parent) {
+    if (videoOutputDeviceSelect || !parent) return;
+    videoOutputDeviceSelect = document.createElement('select');
+    videoOutputDeviceSelect.className = 'looper-btn';
+    videoOutputDeviceSelect.style.flex = '1 1 auto';
+    videoOutputDeviceSelect.title = 'Choose separate output for video audio (post video FX, pre master FX)';
+    videoOutputDeviceSelect.addEventListener('change', e => setStemOutputDevice('video', e.target.value));
+    parent.appendChild(videoOutputDeviceSelect);
+    populateStemOutputDeviceSelect(videoOutputDeviceSelect, 'ytbm_videoOutputDeviceId', 'Video');
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () =>
+        populateStemOutputDeviceSelect(videoOutputDeviceSelect, 'ytbm_videoOutputDeviceId', 'Video')
+      );
+    }
+  }
+
+  function buildDrumsOutputDeviceDropdown(parent) {
+    if (drumsOutputDeviceSelect || !parent) return;
+    drumsOutputDeviceSelect = document.createElement('select');
+    drumsOutputDeviceSelect.className = 'looper-btn';
+    drumsOutputDeviceSelect.style.flex = '1 1 auto';
+    drumsOutputDeviceSelect.title = 'Choose separate output for drums/instrument (post track processing, pre master FX)';
+    drumsOutputDeviceSelect.addEventListener('change', e => setStemOutputDevice('drums', e.target.value));
+    parent.appendChild(drumsOutputDeviceSelect);
+    populateStemOutputDeviceSelect(drumsOutputDeviceSelect, 'ytbm_drumsOutputDeviceId', 'Drums');
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', () =>
+        populateStemOutputDeviceSelect(drumsOutputDeviceSelect, 'ytbm_drumsOutputDeviceId', 'Drums')
+      );
     }
   }
 
@@ -470,6 +592,15 @@ if (typeof randomCuesButton !== "undefined" && randomCuesButton) {
     }
     await setOutputDevice(id);
     if (outputDeviceSelect) outputDeviceSelect.value = id;
+  }
+
+  async function applySavedStemOutputDevices() {
+    const videoId = localStorage.getItem('ytbm_videoOutputDeviceId') || 'off';
+    const drumsId = localStorage.getItem('ytbm_drumsOutputDeviceId') || 'off';
+    await setStemOutputDevice('video', videoId);
+    await setStemOutputDevice('drums', drumsId);
+    if (videoOutputDeviceSelect) videoOutputDeviceSelect.value = videoId;
+    if (drumsOutputDeviceSelect) drumsOutputDeviceSelect.value = drumsId;
   }
   /**************************************
   * Global Variables
@@ -3732,6 +3863,7 @@ async function ensureAudioContext() {
   if (!deckA) { initTwoDeck(); }
   if (!currentOutputNode) currentOutputNode = audioContext.destination;
   await applySavedOutputDevice();
+  await applySavedStemOutputDevices();
   if (created) {
     applyMonitorSelection();
     loadInstrumentStateFromLocalStorage();
@@ -4815,6 +4947,8 @@ function applyAllFXRouting() {
   bus1Gain.connect(masterGain);
   bus2Gain.connect(masterGain);
   bus3Gain.connect(masterGain);
+  if (videoStemOutputNode) bus1Gain.connect(videoStemOutputNode);
+  if (drumsStemOutputNode) bus2Gain.connect(drumsStemOutputNode);
 
   masterGain.connect(fxPadMasterIn);
   if (fxPadActive && fxPadEngine) {
@@ -8220,6 +8354,8 @@ function addControls() {
   buildSamplePackDropdown();
 
   buildOutputDeviceDropdown(cw);
+  buildVideoOutputDeviceDropdown(cw);
+  buildDrumsOutputDeviceDropdown(cw);
   buildMonitorInputDropdown(cw);
   buildMonitorToggle(cw);
 
